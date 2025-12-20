@@ -301,31 +301,7 @@ static int vm_binary_op(char op, BreadValue left, BreadValue right, BreadValue* 
     return 0;
 }
 
-static void vm_print_simple_value(ExprResult inner) {
-    switch (inner.type) {
-        case TYPE_STRING:
-            printf("%s", bread_string_cstr(inner.value.string_val));
-            break;
-        case TYPE_INT:
-            printf("%d", inner.value.int_val);
-            break;
-        case TYPE_BOOL:
-            printf("%s", inner.value.bool_val ? "true" : "false");
-            break;
-        case TYPE_FLOAT:
-            printf("%f", inner.value.float_val);
-            break;
-        case TYPE_DOUBLE:
-            printf("%lf", inner.value.double_val);
-            break;
-        case TYPE_NIL:
-            printf("nil");
-            break;
-        default:
-            printf("nil");
-            break;
-    }
-}
+/* Removed unused helper `vm_print_simple_value` to avoid -Wunused-function warning. */
 
 static int vm_print_value(BreadValue v) {
     bread_print(&v);

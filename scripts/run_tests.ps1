@@ -20,6 +20,7 @@ $gccArgs = @(
     (Join-Path $RootDir "src\function.c"),
     (Join-Path $RootDir "src\interpreter.c"),
     (Join-Path $RootDir "src\print.c"),
+    (Join-Path $RootDir "src\runtime.c"),
     (Join-Path $RootDir "src\semantic.c"),
     (Join-Path $RootDir "src\value.c"),
     (Join-Path $RootDir "src\var.c"),

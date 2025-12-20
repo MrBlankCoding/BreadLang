@@ -2168,7 +2168,7 @@ ASTExecSignal ast_execute_stmt_list(ASTStmtList* stmts, ExprResult* out_return) 
                 if (!v.is_error) {
                     switch (v.type) {
                         case TYPE_STRING:
-                            printf("%s\n", v.value.string_val ? v.value.string_val : "");
+                            printf("%s\n", v.value.string_val ? bread_string_cstr(v.value.string_val) : "");
                             break;
                         case TYPE_INT:
                             printf("%d\n", v.value.int_val);
@@ -2193,7 +2193,7 @@ ASTExecSignal ast_execute_stmt_list(ASTStmtList* stmts, ExprResult* out_return) 
                                 ExprResult inner = bread_expr_result_from_value(bread_value_clone(o->value));
                                 switch (inner.type) {
                                     case TYPE_STRING:
-                                        printf("%s\n", inner.value.string_val ? inner.value.string_val : "");
+                                        printf("%s\n", inner.value.string_val ? bread_string_cstr(inner.value.string_val) : "");
                                         break;
                                     case TYPE_INT:
                                         printf("%d\n", inner.value.int_val);
@@ -2229,7 +2229,7 @@ ASTExecSignal ast_execute_stmt_list(ASTStmtList* stmts, ExprResult* out_return) 
                                 ExprResult inner = bread_expr_result_from_value(item);
                                 switch (inner.type) {
                                     case TYPE_STRING:
-                                        printf("\"%s\"", inner.value.string_val ? inner.value.string_val : "");
+                                        printf("\"%s\"", inner.value.string_val ? bread_string_cstr(inner.value.string_val) : "");
                                         break;
                                     case TYPE_INT:
                                         printf("%d", inner.value.int_val);
@@ -2262,12 +2262,12 @@ ASTExecSignal ast_execute_stmt_list(ASTStmtList* stmts, ExprResult* out_return) 
                             int n = d ? d->count : 0;
                             for (int i = 0; i < n; i++) {
                                 if (i > 0) printf(", ");
-                                printf("\"%s\": ", d->entries[i].key ? d->entries[i].key : "");
+                                printf("\"%s\": ", d->entries[i].key ? bread_string_cstr(d->entries[i].key) : "");
                                 BreadValue item = bread_value_clone(d->entries[i].value);
                                 ExprResult inner = bread_expr_result_from_value(item);
                                 switch (inner.type) {
                                     case TYPE_STRING:
-                                        printf("\"%s\"", inner.value.string_val ? inner.value.string_val : "");
+                                        printf("\"%s\"", inner.value.string_val ? bread_string_cstr(inner.value.string_val) : "");
                                         break;
                                     case TYPE_INT:
                                         printf("%d", inner.value.int_val);

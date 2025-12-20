@@ -294,7 +294,7 @@ static ExprResult parse_primary(const char** expr) {
                 }
 
                 BreadValue v = bread_value_from_expr_result(val_r);
-                if (!bread_dict_set(d, key_r.value.string_val ? key_r.value.string_val : "", v)) {
+                if (!bread_dict_set(d, key_r.value.string_val ? bread_string_cstr(key_r.value.string_val) : "", v)) {
                     printf("Error: Out of memory\n");
                     release_expr_result(&key_r);
                     release_expr_result(&val_r);
@@ -588,7 +588,7 @@ static ExprResult parse_postfix(const char** expr, ExprResult base) {
                     else release_expr_result(&base);
                     return create_error_result();
                 }
-                BreadValue* v = bread_dict_get(target.value.dict_val, idx_r.value.string_val ? idx_r.value.string_val : "");
+                BreadValue* v = bread_dict_get(target.value.dict_val, idx_r.value.string_val ? bread_string_cstr(idx_r.value.string_val) : "");
                 if (v) {
                     BreadValue cloned = bread_value_clone(*v);
                     out = bread_expr_result_from_value(cloned);
