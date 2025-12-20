@@ -3,4 +3,5 @@
 3. Improve the test folder
 4. Add more language feautures
 5. Optamasations 
-6. 
+6. Switch from GCC TO CLANG COMPLETELY
+7. Use LLVM for compilation 

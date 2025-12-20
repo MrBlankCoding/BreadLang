@@ -9,6 +9,7 @@
 #include "../include/semantic.h"
 #include "../include/compiler.h"
 #include "../include/vm.h"
+#include "../include/llvm_backend.h"
 
 #define MAX_FILE_SIZE 65536
 
@@ -26,7 +27,9 @@ int main(int argc, char* argv[]) {
     int dump_ast = 0;
     int trace = 0;
     int use_ast = 0;
+    int emit_llvm = 0;
     const char* filename = NULL;
+    const char* out_path = NULL;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--dump-ast") == 0) {
@@ -41,17 +44,30 @@ int main(int argc, char* argv[]) {
             use_ast = 1;
             continue;
         }
+         if (strcmp(argv[i], "--emit-llvm") == 0) {
+             emit_llvm = 1;
+             continue;
+         }
+         if (strcmp(argv[i], "-o") == 0) {
+             if (i + 1 >= argc) {
+                 printf("Usage: %s [--dump-ast] [--trace] [--use-ast] [--emit-llvm] [-o out.ll] <filename>\n", argv[0]);
+                 return 1;
+             }
+             out_path = argv[i + 1];
+             i++;
+             continue;
+         }
         if (!filename) {
             filename = argv[i];
             continue;
         }
 
-        printf("Usage: %s [--dump-ast] [--trace] [--use-ast] <filename>\n", argv[0]);
+        printf("Usage: %s [--dump-ast] [--trace] [--use-ast] [--emit-llvm] [-o out.ll] <filename>\n", argv[0]);
         return 1;
     }
 
     if (!filename) {
-        printf("Usage: %s [--dump-ast] [--trace] [--use-ast] <filename>\n", argv[0]);
+        printf("Usage: %s [--dump-ast] [--trace] [--use-ast] [--emit-llvm] [-o out.ll] <filename>\n", argv[0]);
         return 1;
     }
 
@@ -84,7 +100,10 @@ int main(int argc, char* argv[]) {
             ast_dump_stmt_list(program, stdout);
         } else {
             if (semantic_analyze(program)) {
-                if (use_ast) {
+                if (emit_llvm) {
+                    const char* dst = out_path ? out_path : "out.ll";
+                    (void)bread_llvm_emit_ll(program, dst);
+                } else if (use_ast) {
                     (void)ast_execute_stmt_list(program, NULL);
                 } else {
                     BytecodeChunk chunk;
