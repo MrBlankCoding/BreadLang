@@ -6,6 +6,7 @@
 #include "../include/var.h"
 #include "../include/expr.h"
 #include "../include/value.h"
+#include "../include/runtime.h"
 
 #define MAX_VARS 256
 #define MAX_LINE 1024
@@ -104,10 +105,15 @@ int declare_variable_raw(const char* name, VarType type, VarValue value, int is_
 
     switch (type) {
         case TYPE_STRING:
-            var->value.string_val = value.string_val ? strdup(value.string_val) : strdup("");
-            if (!var->value.string_val) {
-                release_variable(var);
-                return 0;
+            if (value.string_val) {
+                var->value.string_val = value.string_val;
+                bread_string_retain(var->value.string_val);
+            } else {
+                var->value.string_val = bread_string_new("");
+                if (!var->value.string_val) {
+                    release_variable(var);
+                    return 0;
+                }
             }
             break;
         case TYPE_INT:
@@ -145,16 +151,16 @@ int declare_variable_raw(const char* name, VarType type, VarValue value, int is_
     return 1;
 }
 
-static void set_string_value(Variable* var, char* new_value) {
+static void set_string_value(Variable* var, BreadString* new_value) {
     if (var->value.string_val) {
-        free(var->value.string_val);
+        bread_string_release(var->value.string_val);
     }
     var->value.string_val = new_value;
 }
 
 static void release_variable(Variable* var) {
     if (var->type == TYPE_STRING && var->value.string_val) {
-        free(var->value.string_val);
+        bread_string_release(var->value.string_val);
         var->value.string_val = NULL;
     } else if (var->type == TYPE_ARRAY && var->value.array_val) {
         bread_array_release(var->value.array_val);
@@ -246,10 +252,14 @@ static int set_variable_value_from_expr_result(Variable* target, const ExprResul
 
     switch (target->type) {
         case TYPE_STRING: {
-            char* dup = expr_result->value.string_val ? strdup(expr_result->value.string_val) : strdup("");
-            if (!dup) return 0;
-            if (target->value.string_val) free(target->value.string_val);
-            target->value.string_val = dup;
+            BreadString* s = expr_result->value.string_val;
+            if (s) bread_string_retain(s);
+            else {
+                s = bread_string_new("");
+                if (!s) return 0;
+            }
+            if (target->value.string_val) bread_string_release(target->value.string_val);
+            target->value.string_val = s;
             break;
         }
         case TYPE_INT:
@@ -363,9 +373,13 @@ static int set_variable_value(Variable* target, char* raw_value) {
         if (can_assign) {
             switch (target->type) {
                 case TYPE_STRING: {
-                    char* dup = expr_result.value.string_val ? strdup(expr_result.value.string_val) : strdup("");
-                    if (!dup) return 0;
-                    set_string_value(target, dup);
+                    BreadString* s = expr_result.value.string_val;
+                    if (s) bread_string_retain(s);
+                    else {
+                        s = bread_string_new("");
+                        if (!s) return 0;
+                    }
+                    set_string_value(target, s);
                     break;
                 }
                 case TYPE_INT:

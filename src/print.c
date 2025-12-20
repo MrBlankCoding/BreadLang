@@ -6,6 +6,7 @@
 #include "../include/var.h"
 #include "../include/expr.h"
 #include "../include/value.h"
+#include "../include/runtime.h"
 
 #define MAX_LINE 1024
 
@@ -46,7 +47,7 @@ void execute_print(char* line) {
     // Print the result
     switch (result.type) {
         case TYPE_STRING:
-            printf("%s\n", result.value.string_val ? result.value.string_val : "");
+            printf("%s\n", bread_string_cstr(result.value.string_val));
             break;
         case TYPE_INT:
             printf("%d\n", result.value.int_val);
@@ -72,7 +73,7 @@ void execute_print(char* line) {
                 // Recurse via printing logic (without re-evaluating)
                 switch (inner.type) {
                     case TYPE_STRING:
-                        printf("%s\n", inner.value.string_val ? inner.value.string_val : "");
+                        printf("%s\n", bread_string_cstr(inner.value.string_val));
                         break;
                     case TYPE_INT:
                         printf("%d\n", inner.value.int_val);
@@ -108,7 +109,7 @@ void execute_print(char* line) {
                 ExprResult inner = bread_expr_result_from_value(item);
                 switch (inner.type) {
                     case TYPE_STRING:
-                        printf("\"%s\"", inner.value.string_val ? inner.value.string_val : "");
+                        printf("\"%s\"", bread_string_cstr(inner.value.string_val));
                         break;
                     case TYPE_INT:
                         printf("%d", inner.value.int_val);
@@ -141,12 +142,12 @@ void execute_print(char* line) {
             int n = d ? d->count : 0;
             for (int i = 0; i < n; i++) {
                 if (i > 0) printf(", ");
-                printf("\"%s\": ", d->entries[i].key ? d->entries[i].key : "");
+                printf("\"%s\": ", bread_string_cstr(d->entries[i].key));
                 BreadValue item = bread_value_clone(d->entries[i].value);
                 ExprResult inner = bread_expr_result_from_value(item);
                 switch (inner.type) {
                     case TYPE_STRING:
-                        printf("\"%s\"", inner.value.string_val ? inner.value.string_val : "");
+                        printf("\"%s\"", bread_string_cstr(inner.value.string_val));
                         break;
                     case TYPE_INT:
                         printf("%d", inner.value.int_val);

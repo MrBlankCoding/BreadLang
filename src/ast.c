@@ -5,10 +5,11 @@
 
 #include "../include/ast.h"
 #include "../include/expr.h"
-#include "../include/function.h"
 #include "../include/print.h"
-#include "../include/value.h"
 #include "../include/var.h"
+#include "../include/function.h"
+#include "../include/value.h"
+#include "../include/runtime.h"
 
 #define MAX_TOKEN_LEN 1024
 
@@ -1711,7 +1712,7 @@ static ExprResult ast_eval_expr(ASTExpr* e) {
             memset(&r, 0, sizeof(r));
             r.is_error = 0;
             r.type = TYPE_STRING;
-            r.value.string_val = e->as.string_val ? strdup(e->as.string_val) : strdup("");
+            r.value.string_val = bread_string_new(e->as.string_val ? e->as.string_val : "");
             if (!r.value.string_val) return ast_error_result();
             return r;
         }
@@ -1727,8 +1728,8 @@ static ExprResult ast_eval_expr(ASTExpr* e) {
             r.type = var->type;
             switch (var->type) {
                 case TYPE_STRING:
-                    r.value.string_val = var->value.string_val ? strdup(var->value.string_val) : strdup("");
-                    if (!r.value.string_val) return ast_error_result();
+                    r.value.string_val = var->value.string_val;
+                    bread_string_retain(r.value.string_val);
                     break;
                 case TYPE_ARRAY:
                     r.value.array_val = var->value.array_val;
@@ -1882,7 +1883,7 @@ static ExprResult ast_eval_expr(ASTExpr* e) {
                 }
 
                 BreadValue vv = bread_value_from_expr_result(val_r);
-                if (!bread_dict_set(d, key_r.value.string_val ? key_r.value.string_val : "", vv)) {
+                if (!bread_dict_set(d, bread_string_cstr(key_r.value.string_val), vv)) {
                     BreadValue kt = bread_value_from_expr_result(key_r);
                     bread_value_release(&kt);
                     BreadValue vt = bread_value_from_expr_result(val_r);
@@ -1956,7 +1957,7 @@ static ExprResult ast_eval_expr(ASTExpr* e) {
                     printf("Error: Dictionary key must be String\n");
                     return ast_error_result();
                 }
-                BreadValue* v = bread_dict_get(real_target.value.dict_val, idx.value.string_val ? idx.value.string_val : "");
+                BreadValue* v = bread_dict_get(real_target.value.dict_val, bread_string_cstr(idx.value.string_val));
                 if (v) {
                     BreadValue cloned = bread_value_clone(*v);
                     out = bread_expr_result_from_value(cloned);

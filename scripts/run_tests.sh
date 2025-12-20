@@ -20,6 +20,7 @@ cc -std=c11 -Wall -Wextra -O0 -g \
   "$ROOT_DIR"/src/function.c \
   "$ROOT_DIR"/src/interpreter.c \
   "$ROOT_DIR"/src/print.c \
+  "$ROOT_DIR"/src/runtime.c \
   "$ROOT_DIR"/src/semantic.c \
   "$ROOT_DIR"/src/value.c \
   "$ROOT_DIR"/src/var.c \

@@ -4,6 +4,7 @@
 
 #include "../include/expr.h"
 #include "../include/var.h"
+#include "../include/runtime.h"
 
 static ExprResult ops_create_error_result(void) {
     ExprResult result;
@@ -35,7 +36,7 @@ static ExprResult ops_create_double_result(double val) {
     return result;
 }
 
-static ExprResult ops_create_string_result(char* val) {
+static ExprResult ops_create_string_result(BreadString* val) {
     ExprResult result;
     result.is_error = 0;
     result.type = TYPE_STRING;
@@ -50,17 +51,13 @@ ExprResult evaluate_binary_op(ExprResult left, ExprResult right, char op) {
             printf("Error: Cannot concatenate string with non-string\n");
             return ops_create_error_result();
         }
-        size_t len1 = left.value.string_val ? strlen(left.value.string_val) : 0;
-        size_t len2 = right.value.string_val ? strlen(right.value.string_val) : 0;
-        char* result = malloc(len1 + len2 + 1);
+        BreadString* result = bread_string_concat(left.value.string_val, right.value.string_val);
         if (!result) {
             printf("Error: Out of memory\n");
             return ops_create_error_result();
         }
-        strcpy(result, left.value.string_val ? left.value.string_val : "");
-        strcat(result, right.value.string_val ? right.value.string_val : "");
-        free(left.value.string_val);
-        free(right.value.string_val);
+        bread_string_release(left.value.string_val);
+        bread_string_release(right.value.string_val);
         return ops_create_string_result(result);
     }
 
@@ -160,8 +157,7 @@ ExprResult evaluate_binary_op(ExprResult left, ExprResult right, char op) {
                 case '>': result_val = left.value.bool_val > right.value.bool_val; break;
             }
         } else if (left.type == TYPE_STRING && right.type == TYPE_STRING) {
-            int cmp = strcmp(left.value.string_val ? left.value.string_val : "",
-                           right.value.string_val ? right.value.string_val : "");
+            int cmp = bread_string_cmp(left.value.string_val, right.value.string_val);
             switch (op) {
                 case '=': result_val = cmp == 0; break;
                 case '!': result_val = cmp != 0; break;

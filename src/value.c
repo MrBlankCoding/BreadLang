@@ -36,7 +36,8 @@ BreadValue bread_value_clone(BreadValue v) {
 
     switch (v.type) {
         case TYPE_STRING:
-            out.value.string_val = v.value.string_val ? strdup(v.value.string_val) : strdup("");
+            out.value.string_val = v.value.string_val;
+            bread_string_retain(out.value.string_val);
             break;
         case TYPE_ARRAY:
             out.value.array_val = v.value.array_val;
@@ -62,7 +63,7 @@ void bread_value_release(BreadValue* v) {
     if (!v) return;
     switch (v->type) {
         case TYPE_STRING:
-            free(v->value.string_val);
+            bread_string_release(v->value.string_val);
             v->value.string_val = NULL;
             break;
         case TYPE_ARRAY:
@@ -86,7 +87,8 @@ void bread_value_release(BreadValue* v) {
 BreadArray* bread_array_new(void) {
     BreadArray* a = malloc(sizeof(BreadArray));
     if (!a) return NULL;
-    a->refcount = 1;
+    a->header.kind = BREAD_OBJ_ARRAY;
+    a->header.refcount = 1;
     a->count = 0;
     a->capacity = 0;
     a->items = NULL;
@@ -94,13 +96,13 @@ BreadArray* bread_array_new(void) {
 }
 
 void bread_array_retain(BreadArray* a) {
-    if (a) a->refcount++;
+    if (a) a->header.refcount++;
 }
 
 void bread_array_release(BreadArray* a) {
     if (!a) return;
-    a->refcount--;
-    if (a->refcount > 0) return;
+    a->header.refcount--;
+    if (a->header.refcount > 0) return;
 
     for (int i = 0; i < a->count; i++) {
         bread_value_release(&a->items[i]);
@@ -138,7 +140,8 @@ BreadValue* bread_array_get(BreadArray* a, int idx) {
 BreadDict* bread_dict_new(void) {
     BreadDict* d = malloc(sizeof(BreadDict));
     if (!d) return NULL;
-    d->refcount = 1;
+    d->header.kind = BREAD_OBJ_DICT;
+    d->header.refcount = 1;
     d->count = 0;
     d->capacity = 0;
     d->entries = NULL;
@@ -146,16 +149,16 @@ BreadDict* bread_dict_new(void) {
 }
 
 void bread_dict_retain(BreadDict* d) {
-    if (d) d->refcount++;
+    if (d) d->header.refcount++;
 }
 
 void bread_dict_release(BreadDict* d) {
     if (!d) return;
-    d->refcount--;
-    if (d->refcount > 0) return;
+    d->header.refcount--;
+    if (d->header.refcount > 0) return;
 
     for (int i = 0; i < d->count; i++) {
-        free(d->entries[i].key);
+        bread_string_release(d->entries[i].key);
         bread_value_release(&d->entries[i].value);
     }
     free(d->entries);
@@ -177,7 +180,7 @@ static int bread_dict_ensure_cap(BreadDict* d, int need) {
 BreadValue* bread_dict_get(BreadDict* d, const char* key) {
     if (!d || !key) return NULL;
     for (int i = 0; i < d->count; i++) {
-        if (strcmp(d->entries[i].key, key) == 0) {
+        if (strcmp(bread_string_cstr(d->entries[i].key), key) == 0) {
             return &d->entries[i].value;
         }
     }
@@ -196,7 +199,7 @@ int bread_dict_set(BreadDict* d, const char* key, BreadValue v) {
 
     if (!bread_dict_ensure_cap(d, d->count + 1)) return 0;
 
-    d->entries[d->count].key = strdup(key);
+    d->entries[d->count].key = bread_string_new(key);
     if (!d->entries[d->count].key) return 0;
     d->entries[d->count].value = bread_value_clone(v);
     d->count++;
@@ -206,7 +209,8 @@ int bread_dict_set(BreadDict* d, const char* key, BreadValue v) {
 BreadOptional* bread_optional_new_none(void) {
     BreadOptional* o = malloc(sizeof(BreadOptional));
     if (!o) return NULL;
-    o->refcount = 1;
+    o->header.kind = BREAD_OBJ_OPTIONAL;
+    o->header.refcount = 1;
     o->is_some = 0;
     o->value = bread_value_make_nil();
     return o;
@@ -215,20 +219,21 @@ BreadOptional* bread_optional_new_none(void) {
 BreadOptional* bread_optional_new_some(BreadValue v) {
     BreadOptional* o = malloc(sizeof(BreadOptional));
     if (!o) return NULL;
-    o->refcount = 1;
+    o->header.kind = BREAD_OBJ_OPTIONAL;
+    o->header.refcount = 1;
     o->is_some = 1;
     o->value = bread_value_clone(v);
     return o;
 }
 
 void bread_optional_retain(BreadOptional* o) {
-    if (o) o->refcount++;
+    if (o) o->header.refcount++;
 }
 
 void bread_optional_release(BreadOptional* o) {
     if (!o) return;
-    o->refcount--;
-    if (o->refcount > 0) return;
+    o->header.refcount--;
+    if (o->header.refcount > 0) return;
     if (o->is_some) {
         bread_value_release(&o->value);
     }

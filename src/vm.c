@@ -7,6 +7,7 @@
 #include "../include/function.h"
 #include "../include/value.h"
 #include "../include/ast.h"
+#include "../include/runtime.h"
 
 static void vm_stack_reset(VM* vm) {
     if (!vm) return;
@@ -69,7 +70,7 @@ static const char* vm_const_cstr(const BytecodeChunk* chunk, uint16_t idx) {
     if (!chunk) return "";
     if (idx >= (uint16_t)chunk->constants_count) return "";
     if (chunk->constants[idx].type != TYPE_STRING) return "";
-    return chunk->constants[idx].value.string_val ? chunk->constants[idx].value.string_val : "";
+    return bread_string_cstr(chunk->constants[idx].value.string_val);
 }
 
 static int vm_is_truthy(BreadValue v) {
@@ -133,31 +134,18 @@ static int vm_binary_op(char op, BreadValue left, BreadValue right, BreadValue* 
         return 0;
     }
 
-    if (op == '+' && (left.type == TYPE_STRING || right.type == TYPE_STRING)) {
-        if (left.type != TYPE_STRING || right.type != TYPE_STRING) {
-            printf("Error: Cannot concatenate string with non-string\n");
+    if (op == '+') {
+        BreadValue tmp;
+        if (!bread_add(&left, &right, &tmp)) {
             bread_value_release(&left);
             bread_value_release(&right);
             return 0;
         }
-        size_t len1 = left.value.string_val ? strlen(left.value.string_val) : 0;
-        size_t len2 = right.value.string_val ? strlen(right.value.string_val) : 0;
-        char* result = malloc(len1 + len2 + 1);
-        if (!result) {
-            printf("Error: Out of memory\n");
-            bread_value_release(&left);
-            bread_value_release(&right);
-            return 0;
-        }
-        strcpy(result, left.value.string_val ? left.value.string_val : "");
-        strcat(result, right.value.string_val ? right.value.string_val : "");
 
         bread_value_release(&left);
         bread_value_release(&right);
 
-        memset(out, 0, sizeof(*out));
-        out->type = TYPE_STRING;
-        out->value.string_val = result;
+        *out = tmp;
         return 1;
     }
 
@@ -264,7 +252,7 @@ static int vm_binary_op(char op, BreadValue left, BreadValue right, BreadValue* 
                 case '>': result_val = (l.value.bool_val > r.value.bool_val); break;
             }
         } else if (l.type == TYPE_STRING && r.type == TYPE_STRING) {
-            int cmp = strcmp(l.value.string_val ? l.value.string_val : "", r.value.string_val ? r.value.string_val : "");
+            int cmp = bread_string_cmp(l.value.string_val, r.value.string_val);
             switch (op) {
                 case '=': result_val = (cmp == 0); break;
                 case '!': result_val = (cmp != 0); break;
@@ -316,7 +304,7 @@ static int vm_binary_op(char op, BreadValue left, BreadValue right, BreadValue* 
 static void vm_print_simple_value(ExprResult inner) {
     switch (inner.type) {
         case TYPE_STRING:
-            printf("%s", inner.value.string_val ? inner.value.string_val : "");
+            printf("%s", bread_string_cstr(inner.value.string_val));
             break;
         case TYPE_INT:
             printf("%d", inner.value.int_val);
@@ -340,86 +328,7 @@ static void vm_print_simple_value(ExprResult inner) {
 }
 
 static int vm_print_value(BreadValue v) {
-    ExprResult r = bread_expr_result_from_value(bread_value_clone(v));
-
-    switch (r.type) {
-        case TYPE_STRING:
-            printf("%s\n", r.value.string_val ? r.value.string_val : "");
-            break;
-        case TYPE_INT:
-            printf("%d\n", r.value.int_val);
-            break;
-        case TYPE_BOOL:
-            printf("%s\n", r.value.bool_val ? "true" : "false");
-            break;
-        case TYPE_FLOAT:
-            printf("%f\n", r.value.float_val);
-            break;
-        case TYPE_DOUBLE:
-            printf("%lf\n", r.value.double_val);
-            break;
-        case TYPE_NIL:
-            printf("nil\n");
-            break;
-        case TYPE_OPTIONAL: {
-            BreadOptional* o = r.value.optional_val;
-            if (!o || !o->is_some) {
-                printf("nil\n");
-            } else {
-                ExprResult inner = bread_expr_result_from_value(bread_value_clone(o->value));
-                vm_print_simple_value(inner);
-                printf("\n");
-                BreadValue iv = bread_value_from_expr_result(inner);
-                bread_value_release(&iv);
-            }
-            break;
-        }
-        case TYPE_ARRAY: {
-            BreadArray* a = r.value.array_val;
-            printf("[");
-            int n = a ? a->count : 0;
-            for (int i = 0; i < n; i++) {
-                if (i > 0) printf(", ");
-                BreadValue item = bread_value_clone(a->items[i]);
-                ExprResult inner = bread_expr_result_from_value(item);
-                if (inner.type == TYPE_STRING) {
-                    printf("\"%s\"", inner.value.string_val ? inner.value.string_val : "");
-                } else {
-                    vm_print_simple_value(inner);
-                }
-                BreadValue iv = bread_value_from_expr_result(inner);
-                bread_value_release(&iv);
-            }
-            printf("]\n");
-            break;
-        }
-        case TYPE_DICT: {
-            BreadDict* d = r.value.dict_val;
-            printf("[");
-            int n = d ? d->count : 0;
-            for (int i = 0; i < n; i++) {
-                if (i > 0) printf(", ");
-                printf("\"%s\": ", d->entries[i].key ? d->entries[i].key : "");
-                BreadValue item = bread_value_clone(d->entries[i].value);
-                ExprResult inner = bread_expr_result_from_value(item);
-                if (inner.type == TYPE_STRING) {
-                    printf("\"%s\"", inner.value.string_val ? inner.value.string_val : "");
-                } else {
-                    vm_print_simple_value(inner);
-                }
-                BreadValue iv = bread_value_from_expr_result(inner);
-                bread_value_release(&iv);
-            }
-            printf("]\n");
-            break;
-        }
-        default:
-            printf("Error: Unsupported type for print\n");
-            break;
-    }
-
-    BreadValue tmp = bread_value_from_expr_result(r);
-    bread_value_release(&tmp);
+    bread_print(&v);
     return 1;
 }
 
@@ -684,7 +593,7 @@ int vm_run(VM* vm, const BytecodeChunk* chunk, int is_function, ExprResult* out_
                         vm->had_error = 1;
                         return -1;
                     }
-                    if (!bread_dict_set(d, key.value.string_val ? key.value.string_val : "", val)) {
+                    if (!bread_dict_set(d, bread_string_cstr(key.value.string_val), val)) {
                         printf("Error: Out of memory\n");
                         bread_value_release(&key);
                         bread_value_release(&val);
@@ -754,7 +663,7 @@ int vm_run(VM* vm, const BytecodeChunk* chunk, int is_function, ExprResult* out_
                         vm->had_error = 1;
                         return -1;
                     }
-                    BreadValue* v = bread_dict_get(real_target.value.dict_val, idx.value.string_val ? idx.value.string_val : "");
+                    BreadValue* v = bread_dict_get(real_target.value.dict_val, bread_string_cstr(idx.value.string_val));
                     if (v) out = bread_value_clone(*v);
                 } else {
                     printf("Error: Type does not support indexing\n");

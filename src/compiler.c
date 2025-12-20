@@ -70,8 +70,11 @@ static int add_string_const(CompCtx* c, const char* s) {
     BreadValue v;
     memset(&v, 0, sizeof(v));
     v.type = TYPE_STRING;
-    v.value.string_val = (char*)(s ? s : "");
-    return (int)bc_chunk_add_constant(c->chunk, v);
+    v.value.string_val = bread_string_new(s ? s : "");
+    if (!v.value.string_val) return -1;
+    int idx = (int)bc_chunk_add_constant(c->chunk, v);
+    bread_value_release(&v);
+    return idx;
 }
 
 static int add_int_const(CompCtx* c, int x) {

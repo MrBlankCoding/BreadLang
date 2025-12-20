@@ -3,33 +3,34 @@
 
 #include "../include/expr.h"
 #include "../include/var.h"
+#include "../include/runtime.h"
 
-typedef struct {
+typedef struct BreadValue {
     VarType type;
     VarValue value;
 } BreadValue;
 
 struct BreadArray {
-    int refcount;
+    BreadObjHeader header;
     int count;
     int capacity;
     BreadValue* items;
 };
 
 typedef struct {
-    char* key;
+    BreadString* key;
     BreadValue value;
 } BreadDictEntry;
 
 struct BreadDict {
-    int refcount;
+    BreadObjHeader header;
     int count;
     int capacity;
     BreadDictEntry* entries;
 };
 
 struct BreadOptional {
-    int refcount;
+    BreadObjHeader header;
     int is_some;
     BreadValue value;
 };

@@ -13,12 +13,14 @@ typedef enum {
     TYPE_NIL
 } VarType;
 
+ typedef struct BreadString BreadString;
+
 typedef struct BreadArray BreadArray;
 typedef struct BreadDict BreadDict;
 typedef struct BreadOptional BreadOptional;
 
 typedef union {
-    char* string_val;
+    BreadString* string_val;
     int int_val;
     int bool_val;
     float float_val;

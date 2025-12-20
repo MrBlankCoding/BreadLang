@@ -24,7 +24,7 @@ static ExprResult create_error_result();
 static ExprResult create_int_result(int val);
 static ExprResult create_bool_result(int val);
 static ExprResult create_double_result(double val);
-static ExprResult create_string_result(char* val);
+static ExprResult create_string_result(BreadString* val);
 
 static void release_expr_result(ExprResult* r);
 static ExprResult parse_postfix(const char** expr, ExprResult base);
@@ -402,13 +402,11 @@ static ExprResult parse_primary(const char** expr) {
             return create_error_result();
         }
         size_t len = *expr - start;
-        char* str = malloc(len + 1);
+        BreadString* str = bread_string_new_len(start, len);
         if (!str) {
             printf("Error: Out of memory\n");
             return create_error_result();
         }
-        strncpy(str, start, len);
-        str[len] = '\0';
         (*expr)++;
         return create_string_result(str);
     }
@@ -462,122 +460,27 @@ static ExprResult parse_primary(const char** expr) {
     }
 
     if (*expr > start) {
-        size_t len = *expr - start;
-        char var_name[MAX_EXPR_LEN];
-        if (len >= MAX_EXPR_LEN) {
-            printf("Error: Variable name too long\n");
+        char* var_name = dup_range(start, *expr);
+        if (!var_name) {
+            printf("Error: Out of memory\n");
             return create_error_result();
         }
-        strncpy(var_name, start, len);
-        var_name[len] = '\0';
-
-        // Function call: identifier(...)
-        const char* after_ident = *expr;
-        skip_whitespace(expr);
-        if (**expr == '(') {
-            (*expr)++; // consume '('
-            const char** arg_exprs = NULL;
-            int arg_count = 0;
-            int arg_cap = 0;
-
-            skip_whitespace(expr);
-            if (**expr != ')') {
-                while (**expr) {
-                    const char* arg_start = *expr;
-                    int paren_depth = 0;
-                    int in_string = 0;
-                    int escape = 0;
-                    while (**expr) {
-                        if (in_string) {
-                            if (escape) {
-                                escape = 0;
-                            } else if (**expr == '\\') {
-                                escape = 1;
-                            } else if (**expr == '"') {
-                                in_string = 0;
-                            }
-                            (*expr)++;
-                            continue;
-                        }
-                        if (**expr == '"') {
-                            in_string = 1;
-                            (*expr)++;
-                            continue;
-                        }
-                        if (**expr == '(') {
-                            paren_depth++;
-                        } else if (**expr == ')') {
-                            if (paren_depth == 0) break;
-                            paren_depth--;
-                        } else if (**expr == ',' && paren_depth == 0) {
-                            break;
-                        }
-                        (*expr)++;
-                    }
-
-                    const char* arg_end = *expr;
-                    while (arg_end > arg_start && isspace((unsigned char)*(arg_end - 1))) arg_end--;
-                    while (arg_start < arg_end && isspace((unsigned char)*arg_start)) arg_start++;
-
-                    char* arg = dup_range(arg_start, arg_end);
-                    if (!arg) {
-                        ExprResult err = create_error_result();
-                        return err;
-                    }
-
-                    if (arg_count >= arg_cap) {
-                        int new_cap = arg_cap == 0 ? 4 : arg_cap * 2;
-                        const char** new_arr = realloc(arg_exprs, sizeof(char*) * (size_t)new_cap);
-                        if (!new_arr) {
-                            free(arg);
-                            free(arg_exprs);
-                            ExprResult err = create_error_result();
-                            return err;
-                        }
-                        arg_exprs = new_arr;
-                        arg_cap = new_cap;
-                    }
-                    arg_exprs[arg_count++] = arg;
-
-                    skip_whitespace(expr);
-                    if (**expr == ',') {
-                        (*expr)++;
-                        skip_whitespace(expr);
-                        continue;
-                    }
-                    break;
-                }
-            }
-
-            skip_whitespace(expr);
-            if (**expr != ')') {
-                for (int i = 0; i < arg_count; i++) free((void*)arg_exprs[i]);
-                free(arg_exprs);
-                printf("Error: Missing closing parenthesis in function call\n");
-                return create_error_result();
-            }
-            (*expr)++; // consume ')'
-
-            ExprResult call_res = call_function(var_name, arg_count, arg_exprs);
-            for (int i = 0; i < arg_count; i++) free((void*)arg_exprs[i]);
-            free(arg_exprs);
-            return call_res;
-        }
-
-        *expr = after_ident;
 
         Variable* var = get_variable(var_name);
         if (!var) {
             printf("Error: Unknown variable '%s'\n", var_name);
+            free(var_name);
             return create_error_result();
         }
+        free(var_name);
 
         ExprResult result;
         result.is_error = 0;
         result.type = var->type;
         switch (var->type) {
             case TYPE_STRING:
-                result.value.string_val = var->value.string_val ? strdup(var->value.string_val) : strdup("");
+                result.value.string_val = var->value.string_val;
+                bread_string_retain(result.value.string_val);
                 break;
             case TYPE_INT:
                 result.value.int_val = var->value.int_val;
@@ -726,7 +629,7 @@ static ExprResult parse_postfix(const char** expr, ExprResult base) {
         const char* mstart = *expr;
         (*expr)++;
         while (**expr && is_ident_char(**expr)) (*expr)++;
-        char* member = dup_range(mstart, *expr);
+        BreadString* member = bread_string_new_len(mstart, *expr - mstart);
         if (!member) {
             printf("Error: Out of memory\n");
             release_expr_result(&base);
@@ -738,7 +641,7 @@ static ExprResult parse_postfix(const char** expr, ExprResult base) {
         int target_owned = 0;
         if (is_optional_chain) {
             if (target.type == TYPE_NIL) {
-                free(member);
+                bread_string_release(member);
                 release_expr_result(&target);
                 ExprResult nil_r;
                 memset(&nil_r, 0, sizeof(nil_r));
@@ -749,7 +652,7 @@ static ExprResult parse_postfix(const char** expr, ExprResult base) {
             if (target.type == TYPE_OPTIONAL) {
                 BreadOptional* o = target.value.optional_val;
                 if (!o || !o->is_some) {
-                    free(member);
+                    bread_string_release(member);
                     release_expr_result(&target);
                     ExprResult nil_r;
                     memset(&nil_r, 0, sizeof(nil_r));
@@ -767,11 +670,11 @@ static ExprResult parse_postfix(const char** expr, ExprResult base) {
         skip_whitespace(expr);
 
         // Method call: .append(...)
-        if (strcmp(member, "append") == 0 && **expr == '(') {
+        if (strcmp(bread_string_cstr(member), "append") == 0 && **expr == '(') {
             (*expr)++; // consume '('
             ExprResult arg = parse_expression(expr);
             if (arg.is_error) {
-                free(member);
+                bread_string_release(member);
                 if (target_owned) release_expr_result(&target);
                 else release_expr_result(&base);
                 return arg;
@@ -779,7 +682,7 @@ static ExprResult parse_postfix(const char** expr, ExprResult base) {
             skip_whitespace(expr);
             if (**expr != ')') {
                 printf("Error: Missing ')' in append call\n");
-                free(member);
+                bread_string_release(member);
                 release_expr_result(&arg);
                 if (target_owned) release_expr_result(&target);
                 else release_expr_result(&base);
@@ -789,7 +692,7 @@ static ExprResult parse_postfix(const char** expr, ExprResult base) {
 
             if (target.type != TYPE_ARRAY) {
                 printf("Error: append() is only supported on arrays\n");
-                free(member);
+                bread_string_release(member);
                 release_expr_result(&arg);
                 if (target_owned) release_expr_result(&target);
                 else release_expr_result(&base);
@@ -799,14 +702,14 @@ static ExprResult parse_postfix(const char** expr, ExprResult base) {
             BreadValue av = bread_value_from_expr_result(arg);
             if (!bread_array_append(target.value.array_val, av)) {
                 printf("Error: Out of memory\n");
-                free(member);
+                bread_string_release(member);
                 release_expr_result(&arg);
                 if (target_owned) release_expr_result(&target);
                 else release_expr_result(&base);
                 return create_error_result();
             }
 
-            free(member);
+            bread_string_release(member);
             release_expr_result(&arg);
             if (target_owned) release_expr_result(&target);
             else release_expr_result(&base);
@@ -820,7 +723,7 @@ static ExprResult parse_postfix(const char** expr, ExprResult base) {
         }
 
         // Property: .length
-        if (strcmp(member, "length") == 0) {
+        if (strcmp(bread_string_cstr(member), "length") == 0) {
             ExprResult out;
             memset(&out, 0, sizeof(out));
             out.is_error = 0;
@@ -829,12 +732,12 @@ static ExprResult parse_postfix(const char** expr, ExprResult base) {
             else if (target.type == TYPE_DICT) out.value.int_val = target.value.dict_val ? target.value.dict_val->count : 0;
             else {
                 printf("Error: length is only supported on arrays and dictionaries\n");
-                free(member);
+                bread_string_release(member);
                 if (target_owned) release_expr_result(&target);
                 else release_expr_result(&base);
                 return create_error_result();
             }
-            free(member);
+            bread_string_release(member);
             if (target_owned) release_expr_result(&target);
             else release_expr_result(&base);
             base = out;
@@ -843,7 +746,7 @@ static ExprResult parse_postfix(const char** expr, ExprResult base) {
 
         // Dictionary member sugar: obj.name -> obj["name"]
         if (target.type == TYPE_DICT) {
-            BreadValue* v = bread_dict_get(target.value.dict_val, member);
+            BreadValue* v = bread_dict_get(target.value.dict_val, bread_string_cstr(member));
             ExprResult out;
             memset(&out, 0, sizeof(out));
             out.is_error = 0;
@@ -852,7 +755,7 @@ static ExprResult parse_postfix(const char** expr, ExprResult base) {
                 BreadValue cloned = bread_value_clone(*v);
                 out = bread_expr_result_from_value(cloned);
             }
-            free(member);
+            bread_string_release(member);
             if (target_owned) release_expr_result(&target);
             else release_expr_result(&base);
             base = out;
@@ -860,7 +763,7 @@ static ExprResult parse_postfix(const char** expr, ExprResult base) {
         }
 
         printf("Error: Unsupported member access\n");
-        free(member);
+        bread_string_release(member);
         if (target_owned) release_expr_result(&target);
         else release_expr_result(&base);
         return create_error_result();
@@ -905,7 +808,7 @@ static ExprResult create_double_result(double val) {
     return result;
 }
 
-static ExprResult create_string_result(char* val) {
+static ExprResult create_string_result(BreadString* val) {
     ExprResult result;
     result.is_error = 0;
     result.type = TYPE_STRING;
