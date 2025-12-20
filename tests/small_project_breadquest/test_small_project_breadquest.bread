@@ -1,0 +1,64 @@
+print("=== BreadQuest ===")
+
+let gold: Int = 0
+let hp: Int = 10
+
+func earn_gold(current: Int, amount: Int) -> Int {
+    return current + amount
+}
+
+func take_damage(current: Int, dmg: Int) -> Int {
+    let next: Int = current - dmg
+    if next < 0 {
+        return 0
+    }
+    return next
+}
+
+func is_alive(current: Int) -> Bool {
+    return current > 0
+}
+
+func fact(n: Int) -> Int {
+    if n == 0 {
+        return 1
+    }
+    return n * fact(n - 1)
+}
+
+for room in range(3) {
+    if room == 0 {
+        print("Room 0: Slime")
+        hp = take_damage(hp, 1)
+        gold = earn_gold(gold, 2)
+    } else {
+        if room == 1 {
+            print("Room 1: Trap")
+            hp = take_damage(hp, 3)
+            gold = earn_gold(gold, 1)
+        } else {
+            print("Room 2: Goblin")
+            let turns: Int = 0
+            while turns < 2 {
+                hp = take_damage(hp, 2)
+                turns = turns + 1
+            }
+            gold = earn_gold(gold, 5)
+        }
+    }
+}
+
+print("Final HP:")
+print(hp)
+print("Final Gold:")
+print(gold)
+
+let can_buy: Bool = (gold >= 5) && is_alive(hp)
+if can_buy {
+    print("You buy bread.")
+} else {
+    print("No bread today.")
+}
+
+print("Luck score:")
+print(fact(5))

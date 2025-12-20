@@ -1,0 +1,4 @@
+let first: String = "Hello"
+let second: String = "World"
+print(first + " " + second)
+print(first + second)

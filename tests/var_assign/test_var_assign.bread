@@ -1,0 +1,6 @@
+let a: Int = 5
+let b: Int = 10
+print(a)
+print(b)
+a = b
+print(a)

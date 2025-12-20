@@ -1,0 +1,6 @@
+let num: Int = 42
+let flag: Bool = true
+let pi: Float = 3.14
+print(num)
+print(flag)
+print(pi)
