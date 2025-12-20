@@ -183,6 +183,115 @@ static void release_expr_result(ExprResult* r) {
     r->type = TYPE_NIL;
 }
 
+static const char* type_name(VarType t) {
+    switch (t) {
+        case TYPE_STRING: return "String";
+        case TYPE_INT: return "Int";
+        case TYPE_BOOL: return "Bool";
+        case TYPE_FLOAT: return "Float";
+        case TYPE_DOUBLE: return "Double";
+        case TYPE_ARRAY: return "Array";
+        case TYPE_DICT: return "Dict";
+        case TYPE_OPTIONAL: return "Optional";
+        case TYPE_NIL: return "Nil";
+        default: return "Nil";
+    }
+}
+
+static int set_variable_value_from_expr_result(Variable* target, const ExprResult* expr_result) {
+    if (!target || !expr_result || expr_result->is_error) return 0;
+
+    int can_assign = 0;
+    VarValue coerced_value;
+    memset(&coerced_value, 0, sizeof(coerced_value));
+
+    if (target->type == expr_result->type) {
+        can_assign = 1;
+        coerced_value = expr_result->value;
+    } else if (target->type == TYPE_OPTIONAL && expr_result->type == TYPE_NIL) {
+        can_assign = 1;
+        coerced_value.optional_val = bread_optional_new_none();
+        if (!coerced_value.optional_val) return 0;
+    } else if (target->type == TYPE_OPTIONAL && expr_result->type != TYPE_OPTIONAL) {
+        can_assign = 1;
+        BreadValue inner = bread_value_from_expr_result(*expr_result);
+        coerced_value.optional_val = bread_optional_new_some(inner);
+        if (!coerced_value.optional_val) return 0;
+    } else if (target->type == TYPE_DOUBLE && expr_result->type == TYPE_INT) {
+        can_assign = 1;
+        coerced_value.double_val = (double)expr_result->value.int_val;
+    } else if (target->type == TYPE_DOUBLE && expr_result->type == TYPE_FLOAT) {
+        can_assign = 1;
+        coerced_value.double_val = (double)expr_result->value.float_val;
+    } else if (target->type == TYPE_FLOAT && expr_result->type == TYPE_INT) {
+        can_assign = 1;
+        coerced_value.float_val = (float)expr_result->value.int_val;
+    } else if (target->type == TYPE_FLOAT && expr_result->type == TYPE_DOUBLE) {
+        can_assign = 1;
+        coerced_value.float_val = (float)expr_result->value.double_val;
+    } else if (target->type == TYPE_INT && expr_result->type == TYPE_DOUBLE) {
+        can_assign = 1;
+        coerced_value.int_val = (int)expr_result->value.double_val;
+    } else if (target->type == TYPE_INT && expr_result->type == TYPE_FLOAT) {
+        can_assign = 1;
+        coerced_value.int_val = (int)expr_result->value.float_val;
+    } else {
+        printf("Error: Type mismatch: cannot assign expression result of type %s to variable of type %s\n",
+               type_name(expr_result->type),
+               type_name(target->type));
+        return 0;
+    }
+
+    if (!can_assign) return 0;
+
+    switch (target->type) {
+        case TYPE_STRING: {
+            char* dup = expr_result->value.string_val ? strdup(expr_result->value.string_val) : strdup("");
+            if (!dup) return 0;
+            if (target->value.string_val) free(target->value.string_val);
+            target->value.string_val = dup;
+            break;
+        }
+        case TYPE_INT:
+            target->value.int_val = coerced_value.int_val;
+            break;
+        case TYPE_BOOL:
+            target->value.bool_val = coerced_value.bool_val;
+            break;
+        case TYPE_FLOAT:
+            target->value.float_val = coerced_value.float_val;
+            break;
+        case TYPE_DOUBLE:
+            target->value.double_val = coerced_value.double_val;
+            break;
+        case TYPE_ARRAY:
+            if (target->value.array_val) bread_array_release(target->value.array_val);
+            target->value.array_val = coerced_value.array_val;
+            bread_array_retain(target->value.array_val);
+            break;
+        case TYPE_DICT:
+            if (target->value.dict_val) bread_dict_release(target->value.dict_val);
+            target->value.dict_val = coerced_value.dict_val;
+            bread_dict_retain(target->value.dict_val);
+            break;
+        case TYPE_OPTIONAL:
+            if (target->value.optional_val) bread_optional_release(target->value.optional_val);
+            target->value.optional_val = coerced_value.optional_val;
+            bread_optional_retain(target->value.optional_val);
+            break;
+        case TYPE_NIL:
+            break;
+        default:
+            return 0;
+    }
+
+    if (target->type == TYPE_OPTIONAL && expr_result->type != TYPE_OPTIONAL) {
+        if (coerced_value.optional_val) bread_optional_release(coerced_value.optional_val);
+    }
+
+    return 1;
+}
+
 static int set_variable_value(Variable* target, char* raw_value) {
     // First try to evaluate as an expression
     ExprResult expr_result = evaluate_expression(raw_value);
@@ -474,6 +583,33 @@ void execute_variable_assignment(char* line) {
     if (!set_variable_value(var, value)) {
         return;
     }
+}
+
+int bread_init_variable_from_expr_result(const char* name, const struct ExprResult* value) {
+    if (!name) return 0;
+    if (!value) return 0;
+    Variable* var = get_variable((char*)name);
+    if (!var) {
+        printf("Error: Unknown variable '%s'\n", name);
+        return 0;
+    }
+
+    return set_variable_value_from_expr_result(var, value);
+}
+
+int bread_assign_variable_from_expr_result(const char* name, const struct ExprResult* value) {
+    if (!name) return 0;
+    if (!value) return 0;
+    Variable* var = get_variable((char*)name);
+    if (!var) {
+        printf("Error: Unknown variable '%s'\n", name);
+        return 0;
+    }
+    if (var->is_const) {
+        printf("Error: Cannot reassign constant '%s'\n", name);
+        return 0;
+    }
+    return bread_init_variable_from_expr_result(name, value);
 }
 
 void cleanup_variables() {

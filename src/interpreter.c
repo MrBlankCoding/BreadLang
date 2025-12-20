@@ -4,8 +4,9 @@
 #include <ctype.h>
 #include "../include/print.h"
 #include "../include/var.h"
-#include "../include/stmt.h"
+#include "../include/ast.h"
 #include "../include/function.h"
+#include "../include/semantic.h"
 
 #define MAX_FILE_SIZE 65536
 
@@ -20,14 +21,36 @@ char* trim_main(char* str) {
 }
 
 int main(int argc, char* argv[]) {
-    if (argc != 2) {
-        printf("Usage: %s <filename>\n", argv[0]);
+    int dump_ast = 0;
+    int trace = 0;
+    const char* filename = NULL;
+
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--dump-ast") == 0) {
+            dump_ast = 1;
+            continue;
+        }
+        if (strcmp(argv[i], "--trace") == 0) {
+            trace = 1;
+            continue;
+        }
+        if (!filename) {
+            filename = argv[i];
+            continue;
+        }
+
+        printf("Usage: %s [--dump-ast] [--trace] <filename>\n", argv[0]);
         return 1;
     }
-    
-    FILE* file = fopen(argv[1], "r");
+
+    if (!filename) {
+        printf("Usage: %s [--dump-ast] [--trace] <filename>\n", argv[0]);
+        return 1;
+    }
+
+    FILE* file = fopen(filename, "r");
     if (!file) {
-        printf("Error: Could not open file '%s'\n", argv[1]);
+        printf("Error: Could not open file '%s'\n", filename);
         return 1;
     }
     
@@ -44,15 +67,24 @@ int main(int argc, char* argv[]) {
     
     init_variables();
     init_functions();
-    
-    // Parse and execute statements
-    StmtList* stmts = parse_statements(code);
-    if (stmts) {
-        (void)execute_statements(stmts, NULL);
-        free_stmt_list(stmts);
+
+    bread_set_trace(trace);
+    ast_runtime_init();
+     
+    ASTStmtList* program = ast_parse_program(code);
+    if (program) {
+        if (dump_ast) {
+            ast_dump_stmt_list(program, stdout);
+        } else {
+            if (semantic_analyze(program)) {
+                (void)ast_execute_stmt_list(program, NULL);
+            }
+        }
+        ast_free_stmt_list(program);
     }
-    
+     
     free(code);
+    ast_runtime_cleanup();
     cleanup_functions();
     cleanup_variables();
     return 0;

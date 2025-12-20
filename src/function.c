@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "../include/function.h"
+#include "../include/ast.h"
 #include "../include/var.h"
 #include "../include/value.h"
 
@@ -19,8 +20,8 @@ static void free_function(Function* fn) {
     }
     free(fn->param_names);
     free(fn->param_types);
-    // body is owned by the parser/stmt list; freed via free_stmt_list
     fn->body = NULL;
+    fn->body_is_ast = 0;
     fn->name = NULL;
     fn->param_count = 0;
     fn->param_names = NULL;
@@ -63,6 +64,7 @@ int register_function(const Function* fn) {
     dst->param_count = fn->param_count;
     dst->return_type = fn->return_type;
     dst->body = fn->body;
+    dst->body_is_ast = fn->body_is_ast;
 
     if (fn->param_count > 0) {
         dst->param_names = malloc(sizeof(char*) * fn->param_count);
@@ -143,7 +145,12 @@ static VarValue coerce_value(VarType target, ExprResult val) {
     return out;
 }
 
-ExprResult call_function(const char* name, int arg_count, const char** arg_exprs) {
+static ASTExecSignal exec_ast_body(const Function* fn, ExprResult* out) {
+    if (!fn || !fn->body) return AST_EXEC_SIGNAL_NONE;
+    return ast_execute_stmt_list((ASTStmtList*)fn->body, out);
+}
+
+ExprResult call_function_values(const char* name, int arg_count, ExprResult* arg_vals) {
     const Function* fn = get_function(name);
     if (!fn) {
         printf("Error: Unknown function '%s'\n", name ? name : "");
@@ -162,16 +169,10 @@ ExprResult call_function(const char* name, int arg_count, const char** arg_exprs
     push_scope();
 
     for (int i = 0; i < fn->param_count; i++) {
-        ExprResult arg_val = evaluate_expression(arg_exprs[i]);
-        if (arg_val.is_error) {
-            pop_scope();
-            return arg_val;
-        }
+        ExprResult arg_val = arg_vals[i];
 
         if (!type_compatible(fn->param_types[i], arg_val.type)) {
             printf("Error: Type mismatch for parameter '%s' in call to '%s'\n", fn->param_names[i], fn->name);
-            BreadValue tmp = bread_value_from_expr_result(arg_val);
-            bread_value_release(&tmp);
             ExprResult err;
             err.is_error = 1;
             pop_scope();
@@ -180,17 +181,12 @@ ExprResult call_function(const char* name, int arg_count, const char** arg_exprs
 
         VarValue v = coerce_value(fn->param_types[i], arg_val);
         if (!declare_variable_raw(fn->param_names[i], fn->param_types[i], v, 1)) {
-            BreadValue tmp = bread_value_from_expr_result(arg_val);
-            bread_value_release(&tmp);
             ExprResult err;
             err.is_error = 1;
             pop_scope();
             return err;
         }
 
-        // Release the original arg value (if we wrapped into optional, also release wrapper)
-        BreadValue tmp = bread_value_from_expr_result(arg_val);
-        bread_value_release(&tmp);
         if (fn->param_types[i] == TYPE_OPTIONAL && arg_val.type != TYPE_OPTIONAL) {
             if (v.optional_val) bread_optional_release(v.optional_val);
         }
@@ -201,8 +197,8 @@ ExprResult call_function(const char* name, int arg_count, const char** arg_exprs
     body_val.is_error = 0;
     body_val.type = fn->return_type;
 
-    ExecSignal sig = execute_statements(fn->body, &body_val);
-    if (sig != EXEC_SIGNAL_RETURN) {
+    ASTExecSignal sig = exec_ast_body(fn, &body_val);
+    if (sig != AST_EXEC_SIGNAL_RETURN) {
         printf("Error: Function '%s' ended without return\n", fn->name);
         body_val.is_error = 1;
         pop_scope();
@@ -211,4 +207,54 @@ ExprResult call_function(const char* name, int arg_count, const char** arg_exprs
 
     pop_scope();
     return body_val;
+}
+
+ExprResult call_function(const char* name, int arg_count, const char** arg_exprs) {
+    const Function* fn = get_function(name);
+    if (!fn) {
+        printf("Error: Unknown function '%s'\n", name ? name : "");
+        ExprResult err;
+        err.is_error = 1;
+        return err;
+    }
+
+    if (arg_count != fn->param_count) {
+        printf("Error: Function '%s' expected %d args but got %d\n", fn->name, fn->param_count, arg_count);
+        ExprResult err;
+        err.is_error = 1;
+        return err;
+    }
+
+    ExprResult* arg_vals = NULL;
+    if (arg_count > 0) {
+        arg_vals = malloc(sizeof(ExprResult) * (size_t)arg_count);
+        if (!arg_vals) {
+            printf("Error: Out of memory\n");
+            ExprResult err;
+            err.is_error = 1;
+            return err;
+        }
+    }
+
+    for (int i = 0; i < arg_count; i++) {
+        arg_vals[i] = evaluate_expression(arg_exprs[i]);
+        if (arg_vals[i].is_error) {
+            for (int j = 0; j < i; j++) {
+                BreadValue tmp = bread_value_from_expr_result(arg_vals[j]);
+                bread_value_release(&tmp);
+            }
+            free(arg_vals);
+            return arg_vals[i];
+        }
+    }
+
+    ExprResult out = call_function_values(name, arg_count, arg_vals);
+
+    for (int i = 0; i < arg_count; i++) {
+        BreadValue tmp = bread_value_from_expr_result(arg_vals[i]);
+        bread_value_release(&tmp);
+    }
+    free(arg_vals);
+
+    return out;
 }

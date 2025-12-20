@@ -35,11 +35,15 @@ typedef struct {
     int is_const;
 } Variable;
 
+struct ExprResult;
+
 void init_variables();
 void push_scope();
 void pop_scope();
 void execute_variable_declaration(char* line);
 void execute_variable_assignment(char* line);
+int bread_init_variable_from_expr_result(const char* name, const struct ExprResult* value);
+int bread_assign_variable_from_expr_result(const char* name, const struct ExprResult* value);
 int declare_variable_raw(const char* name, VarType type, VarValue value, int is_const);
 Variable* get_variable(char* name);
 void cleanup_variables();

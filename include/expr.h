@@ -4,7 +4,7 @@
 #include "../include/var.h"
 
 // Expression evaluation result
-typedef struct {
+typedef struct ExprResult {
     VarType type;
     VarValue value;
     int is_error;

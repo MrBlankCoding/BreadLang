@@ -1,0 +1,2 @@
+var_decl name=x type=Int expr=1
+print expr=x
