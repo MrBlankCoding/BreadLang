@@ -13,6 +13,8 @@ $gccArgs = @(
     '-O0',
     '-g',
     (Join-Path $RootDir "src\ast.c"),
+    (Join-Path $RootDir "src\bytecode.c"),
+    (Join-Path $RootDir "src\compiler.c"),
     (Join-Path $RootDir "src\expr.c"),
     (Join-Path $RootDir "src\expr_ops.c"),
     (Join-Path $RootDir "src\function.c"),
@@ -21,6 +23,7 @@ $gccArgs = @(
     (Join-Path $RootDir "src\semantic.c"),
     (Join-Path $RootDir "src\value.c"),
     (Join-Path $RootDir "src\var.c"),
+    (Join-Path $RootDir "src\vm.c"),
     '-o', $BreadLang,
     '-lm'
 )

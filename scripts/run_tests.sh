@@ -13,6 +13,8 @@ echo "Running BreadLang tests..."
 
 cc -std=c11 -Wall -Wextra -O0 -g \
   "$ROOT_DIR"/src/ast.c \
+  "$ROOT_DIR"/src/bytecode.c \
+  "$ROOT_DIR"/src/compiler.c \
   "$ROOT_DIR"/src/expr.c \
   "$ROOT_DIR"/src/expr_ops.c \
   "$ROOT_DIR"/src/function.c \
@@ -21,6 +23,7 @@ cc -std=c11 -Wall -Wextra -O0 -g \
   "$ROOT_DIR"/src/semantic.c \
   "$ROOT_DIR"/src/value.c \
   "$ROOT_DIR"/src/var.c \
+  "$ROOT_DIR"/src/vm.c \
   -o "$BREADLANG" -lm
 
 for test_file in $(find "$TEST_DIR" -name "*.bread"); do

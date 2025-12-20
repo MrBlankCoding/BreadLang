@@ -1,6 +1,8 @@
 # BreadLang
 
-This repository contains a small C interpreter for **BreadLang**.
+This repository contains a small C implementation of **BreadLang** with both:
+- an AST interpreter (debug/fallback)
+- a bytecode compiler + stack-based VM (default execution)
 
 ## Build
 
@@ -18,10 +20,17 @@ This produces a `./breadlang` binary.
 ./breadlang <file.bread>
 ```
 
+By default, BreadLang runs the pipeline:
+
+- Parse program into AST
+- Semantic analysis
+- Compile AST to bytecode (`BytecodeChunk`)
+- Execute bytecode on the VM
+
 ## Command-line flags
 
 ```sh
-./breadlang [--dump-ast] [--trace] <file.bread>
+./breadlang [--dump-ast] [--trace] [--use-ast] <file.bread>
 ```
 
 - **`--dump-ast`**
@@ -33,6 +42,10 @@ This produces a `./breadlang` binary.
   - Executes the program but prints a simple step-by-step trace to `stderr`.
   - Current trace format: `trace: <stmt_kind>` (example: `trace: var_decl`, `trace: print`).
 
+- **`--use-ast`**
+  - Runs the legacy AST interpreter instead of the bytecode VM.
+  - Useful as a correctness fallback while the VM/compiler evolves.
+
 ## Tests
 
 There is a simple test runner script that builds and runs all `.bread` files under `tests/` and compares output against the matching `.expected` file.
@@ -41,10 +54,17 @@ There is a simple test runner script that builds and runs all `.bread` files und
 ./run_tests.sh
 ```
 
+CLI flag tests:
+
+```sh
+bash scripts/cli_flags_tests.sh
+```
+
 ## Repo layout
 
 - `src/`
-  - Interpreter implementation (parser + evaluator)
+  - Parser + semantic analysis + AST interpreter
+  - Bytecode compiler (`compiler.c`) and VM runtime (`vm.c`)
   - Entry point: `src/interpreter.c`
 - `include/`
   - Public headers
@@ -53,5 +73,5 @@ There is a simple test runner script that builds and runs all `.bread` files und
 
 ## Notes for extending
 
-- Parsing currently produces a `StmtList` (statements are structured), but expressions are evaluated from expression strings (`evaluate_expression`).
-- Variable/function state is currently global; Phase 0 work aims to stabilize semantics and then make error handling/state passing more explicit.
+- Expressions in the AST are stored as structured nodes (`ASTExpr`), and bytecode compilation walks the AST.
+- Function declarations are registered during compilation; user-defined function bodies are currently still executed via the AST interpreter when called.

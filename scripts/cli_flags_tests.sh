@@ -41,6 +41,8 @@ run_case() {
 
 run_case "dump_ast_simple" "--dump-ast" "$TEST_DIR/dump_ast_simple.bread" "$TEST_DIR/dump_ast_simple.expected"
 run_case "trace_simple" "--trace" "$TEST_DIR/trace_simple.bread" "$TEST_DIR/trace_simple.expected"
+run_case "use_ast_simple" "--use-ast" "$TEST_DIR/use_ast_simple.bread" "$TEST_DIR/use_ast_simple.expected"
+run_case "trace_use_ast_simple" "--trace --use-ast" "$TEST_DIR/trace_use_ast_simple.bread" "$TEST_DIR/trace_use_ast_simple.expected"
 
 echo ""
 echo "Results: $PASSED passed, $FAILED failed"

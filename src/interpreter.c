@@ -7,6 +7,8 @@
 #include "../include/ast.h"
 #include "../include/function.h"
 #include "../include/semantic.h"
+#include "../include/compiler.h"
+#include "../include/vm.h"
 
 #define MAX_FILE_SIZE 65536
 
@@ -23,6 +25,7 @@ char* trim_main(char* str) {
 int main(int argc, char* argv[]) {
     int dump_ast = 0;
     int trace = 0;
+    int use_ast = 0;
     const char* filename = NULL;
 
     for (int i = 1; i < argc; i++) {
@@ -34,17 +37,21 @@ int main(int argc, char* argv[]) {
             trace = 1;
             continue;
         }
+        if (strcmp(argv[i], "--use-ast") == 0) {
+            use_ast = 1;
+            continue;
+        }
         if (!filename) {
             filename = argv[i];
             continue;
         }
 
-        printf("Usage: %s [--dump-ast] [--trace] <filename>\n", argv[0]);
+        printf("Usage: %s [--dump-ast] [--trace] [--use-ast] <filename>\n", argv[0]);
         return 1;
     }
 
     if (!filename) {
-        printf("Usage: %s [--dump-ast] [--trace] <filename>\n", argv[0]);
+        printf("Usage: %s [--dump-ast] [--trace] [--use-ast] <filename>\n", argv[0]);
         return 1;
     }
 
@@ -77,7 +84,19 @@ int main(int argc, char* argv[]) {
             ast_dump_stmt_list(program, stdout);
         } else {
             if (semantic_analyze(program)) {
-                (void)ast_execute_stmt_list(program, NULL);
+                if (use_ast) {
+                    (void)ast_execute_stmt_list(program, NULL);
+                } else {
+                    BytecodeChunk chunk;
+                    bc_chunk_init(&chunk);
+                    if (compile_program(program, &chunk)) {
+                        VM vm;
+                        vm_init(&vm);
+                        (void)vm_run(&vm, &chunk, 0, NULL);
+                        vm_free(&vm);
+                    }
+                    bc_chunk_free(&chunk);
+                }
             }
         }
         ast_free_stmt_list(program);
