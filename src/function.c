@@ -243,8 +243,9 @@ ExprResult call_function(const char* name, int arg_count, const char** arg_exprs
                 BreadValue tmp = bread_value_from_expr_result(arg_vals[j]);
                 bread_value_release(&tmp);
             }
+            ExprResult err = arg_vals[i];
             free(arg_vals);
-            return arg_vals[i];
+            return err;
         }
     }
 

@@ -1778,11 +1778,12 @@ static ExprResult ast_eval_expr(ASTExpr* e) {
             for (int i = 0; i < e->as.call.arg_count; i++) {
                 arg_vals[i] = ast_eval_expr(e->as.call.args[i]);
                 if (arg_vals[i].is_error) {
+                    ExprResult err = arg_vals[i];
                     for (int j = 0; j < i; j++) {
                         ast_release_expr_result(&arg_vals[j]);
                     }
                     free(arg_vals);
-                    return arg_vals[i];
+                    return err;
                 }
             }
 
