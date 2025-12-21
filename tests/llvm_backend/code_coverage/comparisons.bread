@@ -1,0 +1,13 @@
+var a = 5;
+if (a < 10) {
+    print("less");
+}
+if (a > 3) {
+    print("greater");
+}
+if (a == 5) {
+    print("equal");
+}
+if (a != 0) {
+    print("notequal");
+}

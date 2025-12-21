@@ -1,0 +1,6 @@
+var a = 42;
+var b = 3.14;
+var c = "test";
+print(a);
+print(b);
+print(c);

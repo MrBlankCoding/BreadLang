@@ -1,0 +1,8 @@
+fn outer(x) {
+    fn inner(y) {
+        return x + y;
+    }
+    return inner(5);
+}
+
+print(outer(10));

@@ -1,0 +1,15 @@
+# LLVM IR Validation Test
+# This file contains expected patterns that should appear in the generated LLVM IR
+# for the simple_print.bread test
+
+# Should have module definition
+@"bread_module"
+
+# Should have main function
+define i32 @main()
+
+# Should contain call to bread_print
+call void @bread_print
+
+# Should have return statement  
+ret i32 0

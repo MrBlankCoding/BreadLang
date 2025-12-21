@@ -1,0 +1,2 @@
+var d = {key: 42, name: "test"};
+print(d["key"]);
