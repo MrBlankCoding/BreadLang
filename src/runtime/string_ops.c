@@ -3,6 +3,7 @@
 #include <stdio.h>
 
 #include "runtime/runtime.h"
+#include "runtime/memory.h"
 #include "runtime/error.h"
 #include "core/value.h"
 
@@ -12,10 +13,8 @@ static int intern_initialized = 0;
 
 static BreadString* bread_string_alloc(size_t len) {
     size_t total = sizeof(BreadString) + len + 1;
-    BreadString* s = (BreadString*)bread_alloc(total);
+    BreadString* s = (BreadString*)bread_memory_alloc(total, BREAD_OBJ_STRING);
     if (!s) return NULL;
-    s->header.kind = BREAD_OBJ_STRING;
-    s->header.refcount = 1;
     s->len = (uint32_t)len;
     s->flags = (len <= BREAD_STRING_SMALL_MAX) ? BREAD_STRING_SMALL : 0;
     s->data[len] = '\0';
@@ -110,15 +109,19 @@ size_t bread_string_len(const BreadString* s) {
 }
 
 void bread_string_retain(BreadString* s) {
-    if (s) s->header.refcount++;
+    bread_object_retain(s);
 }
 
 void bread_string_release(BreadString* s) {
     if (!s) return;
-    if (s->header.refcount == 0) return;
-    s->header.refcount--;
-    if (s->header.refcount > 0) return;
-    bread_free(s);
+    
+    BreadObjHeader* header = (BreadObjHeader*)s;
+    if (header->refcount == 0) return;  // Already freed
+    
+    header->refcount--;
+    if (header->refcount == 0) {
+        bread_memory_free(s);
+    }
 }
 
 BreadString* bread_string_concat(const BreadString* a, const BreadString* b) {

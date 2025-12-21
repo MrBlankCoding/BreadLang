@@ -64,7 +64,6 @@ typedef struct BreadValue {
 int bread_add(const struct BreadValue* left, const struct BreadValue* right, struct BreadValue* out);
 int bread_eq(const struct BreadValue* left, const struct BreadValue* right, int* out_bool);
 void bread_print(const struct BreadValue* v);
-
 void bread_value_set_nil(struct BreadValue* out);
 void bread_value_set_bool(struct BreadValue* out, int v);
 void bread_value_set_int(struct BreadValue* out, int v);
@@ -74,45 +73,31 @@ void bread_value_set_string(struct BreadValue* out, const char* cstr);
 void bread_value_set_array(struct BreadValue* out, struct BreadArray* a);
 void bread_value_set_dict(struct BreadValue* out, struct BreadDict* d);
 void bread_value_set_optional(struct BreadValue* out, struct BreadOptional* o);
-
 size_t bread_value_size(void);
-
 void bread_value_copy(const struct BreadValue* in, struct BreadValue* out);
 void bread_value_release_value(struct BreadValue* v);
-
+int bread_value_assign(struct BreadValue* target, const struct BreadValue* source);
 int bread_is_truthy(const BreadValue* v);
-
 int bread_unary_not(const BreadValue* in, BreadValue* out);
 int bread_binary_op(char op, const BreadValue* left, const BreadValue* right, BreadValue* out);
-
 int bread_coerce_value(VarType target, const BreadValue* in, BreadValue* out);
-
 int bread_index_op(const BreadValue* target, const BreadValue* idx, BreadValue* out);
 int bread_member_op(const BreadValue* target, const char* member, int is_opt, BreadValue* out);
 int bread_method_call_op(const BreadValue* target, const char* name, int argc, const BreadValue* args, int is_opt, BreadValue* out);
-
 int bread_dict_set_value(struct BreadDict* d, const BreadValue* key, const BreadValue* val);
 int bread_array_append_value(struct BreadArray* a, const BreadValue* v);
 int bread_array_set_value(struct BreadArray* a, int index, const BreadValue* v);
-
 int bread_var_decl(const char* name, VarType type, int is_const, const BreadValue* init);
 int bread_var_decl_if_missing(const char* name, VarType type, int is_const, const BreadValue* init);
 int bread_var_assign(const char* name, const BreadValue* value);
 int bread_var_load(const char* name, BreadValue* out);
-
 void bread_push_scope(void);
 void bread_pop_scope(void);
-
-// Built-in range functions
 struct BreadArray* bread_range_create(int start, int end, int step);
 struct BreadArray* bread_range(int n);
-
-// LLVM backend wrapper functions
 int bread_array_get_value(struct BreadArray* a, int idx, struct BreadValue* out);
 int bread_value_array_get(struct BreadValue* array_val, int idx, struct BreadValue* out);
 int bread_value_array_length(struct BreadValue* array_val);
-
-// Built-in function system
 typedef struct {
     char* name;
     int param_count;
@@ -126,8 +111,6 @@ void bread_builtin_cleanup(void);
 int bread_builtin_register(const BuiltinFunction* builtin);
 const BuiltinFunction* bread_builtin_lookup(const char* name);
 BreadValue bread_builtin_call(const char* name, BreadValue* args, int arg_count);
-
-// Exposed built-in function implementations for testing
 BreadValue bread_builtin_len(BreadValue* args, int arg_count);
 BreadValue bread_builtin_type(BreadValue* args, int arg_count);
 BreadValue bread_builtin_str(BreadValue* args, int arg_count);

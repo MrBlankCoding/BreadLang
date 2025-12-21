@@ -34,6 +34,7 @@ CORE_SOURCES = \
 	$(SRC_DIR)/codegen/codegen.c \
 	$(SRC_DIR)/codegen/optimized_codegen.c \
 	$(SRC_DIR)/runtime/print.c \
+	$(SRC_DIR)/runtime/memory.c \
 	$(SRC_DIR)/runtime/string_ops.c \
 	$(SRC_DIR)/runtime/value_ops.c \
 	$(SRC_DIR)/runtime/operators.c \
@@ -41,7 +42,7 @@ CORE_SOURCES = \
 	$(SRC_DIR)/runtime/array_utils.c
 
 PBT_SOURCES = pbt_framework.c
-TESTS = type_properties string_properties array_properties parser_properties control_properties builtin_properties error_properties
+TESTS = type_properties string_properties array_properties parser_properties control_properties builtin_properties error_properties memory_properties
 
 .PHONY: all clean run
 
@@ -66,6 +67,9 @@ builtin_properties: builtin_properties.c $(PBT_SOURCES) $(CORE_SOURCES)
 	$(CC) $(CFLAGS) $(LLVM_CFLAGS) $(LLVM_DEFS) -o $@ $^ $(LDFLAGS) $(LLVM_LDFLAGS) $(LLVM_LIBS) -lm
 
 error_properties: error_properties.c $(PBT_SOURCES) $(CORE_SOURCES)
+	$(CC) $(CFLAGS) $(LLVM_CFLAGS) $(LLVM_DEFS) -o $@ $^ $(LDFLAGS) $(LLVM_LDFLAGS) $(LLVM_LIBS) -lm
+
+memory_properties: memory_properties.c $(PBT_SOURCES) $(CORE_SOURCES)
 	$(CC) $(CFLAGS) $(LLVM_CFLAGS) $(LLVM_DEFS) -o $@ $^ $(LDFLAGS) $(LLVM_LDFLAGS) $(LLVM_LIBS) -lm
 
 run: $(TESTS)
@@ -100,3 +104,6 @@ run-builtin: builtin_properties
 
 run-error: error_properties
 	./error_properties
+
+run-memory: memory_properties
+	./memory_properties

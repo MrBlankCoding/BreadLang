@@ -4,6 +4,7 @@
 #include <ctype.h>
 #include "runtime/print.h"
 #include "runtime/runtime.h"
+#include "runtime/memory.h"
 #include "runtime/error.h"
 #include "core/var.h"
 #include "compiler/ast/ast.h"
@@ -128,6 +129,8 @@ int main(int argc, char* argv[]) {
     
     init_variables();
     init_functions();
+    bread_memory_init();
+    bread_string_intern_init();
     bread_builtin_init();
     bread_error_init();
      
@@ -143,6 +146,8 @@ int main(int argc, char* argv[]) {
         free(code);
         bread_error_cleanup();
         bread_builtin_cleanup();
+        bread_string_intern_cleanup();
+        bread_memory_cleanup();
         cleanup_functions();
         cleanup_variables();
         return 1;
@@ -159,6 +164,8 @@ int main(int argc, char* argv[]) {
         free(code);
         bread_error_cleanup();
         bread_builtin_cleanup();
+        bread_string_intern_cleanup();
+        bread_memory_cleanup();
         cleanup_functions();
         cleanup_variables();
         return 1;
@@ -170,6 +177,8 @@ int main(int argc, char* argv[]) {
         free(code);
         bread_error_cleanup();
         bread_builtin_cleanup();
+        bread_string_intern_cleanup();
+        bread_memory_cleanup();
         cleanup_functions();
         cleanup_variables();
         return 0;
@@ -186,6 +195,8 @@ int main(int argc, char* argv[]) {
         free(code);
         bread_error_cleanup();
         bread_builtin_cleanup();
+        bread_string_intern_cleanup();
+        bread_memory_cleanup();
         cleanup_functions();
         cleanup_variables();
         return 1;
@@ -202,6 +213,8 @@ int main(int argc, char* argv[]) {
         free(code);
         bread_error_cleanup();
         bread_builtin_cleanup();
+        bread_string_intern_cleanup();
+        bread_memory_cleanup();
         cleanup_functions();
         cleanup_variables();
         return 1;
@@ -243,6 +256,8 @@ int main(int argc, char* argv[]) {
     free(code);
     bread_error_cleanup();
     bread_builtin_cleanup();
+    bread_string_intern_cleanup();
+    bread_memory_cleanup();
     cleanup_functions();
     cleanup_variables();
     return result;

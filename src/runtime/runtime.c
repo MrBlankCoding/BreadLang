@@ -4,22 +4,23 @@
 #include <limits.h>
 
 #include "runtime/runtime.h"
+#include "runtime/memory.h"
 #include "runtime/error.h"
 #include "core/value.h"
 #include "core/var.h"
 #include "compiler/parser/expr.h"
 
-// Memory management functions
+// Memory management functions - now using enhanced memory manager
 void* bread_alloc(size_t size) {
-    return malloc(size);
+    return bread_memory_alloc(size, BREAD_OBJ_STRING);  // Default to string type
 }
 
 void* bread_realloc(void* ptr, size_t new_size) {
-    return realloc(ptr, new_size);
+    return bread_memory_realloc(ptr, new_size);
 }
 
 void bread_free(void* ptr) {
-    free(ptr);
+    bread_memory_free(ptr);
 }
 
 // Variable management functions

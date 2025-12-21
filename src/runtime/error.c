@@ -1,4 +1,5 @@
 #include "runtime/error.h"
+#include "runtime/memory.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

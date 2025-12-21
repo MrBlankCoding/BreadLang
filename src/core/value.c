@@ -3,6 +3,7 @@
 #include <stdio.h>
 
 #include "core/value.h"
+#include "runtime/memory.h"
 #include "compiler/parser/expr.h"
 
 static int bread_string_equals(const BreadString* bs, const char* str) {
@@ -85,10 +86,8 @@ void bread_value_release(BreadValue* v) {
 
 
 BreadArray* bread_array_new(void) {
-    BreadArray* a = malloc(sizeof(BreadArray));
+    BreadArray* a = (BreadArray*)bread_memory_alloc(sizeof(BreadArray), BREAD_OBJ_ARRAY);
     if (!a) return NULL;
-    a->header.kind = BREAD_OBJ_ARRAY;
-    a->header.refcount = 1;
     a->count = 0;
     a->capacity = 0;
     a->element_type = TYPE_NIL;  // No type constraint by default
@@ -97,10 +96,8 @@ BreadArray* bread_array_new(void) {
 }
 
 BreadArray* bread_array_new_typed(VarType element_type) {
-    BreadArray* a = malloc(sizeof(BreadArray));
+    BreadArray* a = (BreadArray*)bread_memory_alloc(sizeof(BreadArray), BREAD_OBJ_ARRAY);
     if (!a) return NULL;
-    a->header.kind = BREAD_OBJ_ARRAY;
-    a->header.refcount = 1;
     a->count = 0;
     a->capacity = 0;
     a->element_type = element_type;  // Set type constraint
@@ -109,20 +106,24 @@ BreadArray* bread_array_new_typed(VarType element_type) {
 }
 
 void bread_array_retain(BreadArray* a) {
-    if (a) a->header.refcount++;
+    bread_object_retain(a);
 }
 
 void bread_array_release(BreadArray* a) {
     if (!a) return;
-    a->header.refcount--;
-    if (a->header.refcount <= 0) {
+    
+    BreadObjHeader* header = (BreadObjHeader*)a;
+    if (header->refcount == 0) return;  // Already freed
+    
+    header->refcount--;
+    if (header->refcount == 0) {
         if (a->items) {
             for (int i = 0; i < a->count; i++) {
                 bread_value_release(&a->items[i]);
             }
             free(a->items);
         }
-        free(a);
+        bread_memory_free(a);
     }
 }
 
@@ -175,10 +176,8 @@ int bread_array_length(BreadArray* a) {
 }
 
 BreadDict* bread_dict_new(void) {
-    BreadDict* d = malloc(sizeof(BreadDict));
+    BreadDict* d = (BreadDict*)bread_memory_alloc(sizeof(BreadDict), BREAD_OBJ_DICT);
     if (!d) return NULL;
-    d->header.kind = BREAD_OBJ_DICT;
-    d->header.refcount = 1;
     d->count = 0;
     d->capacity = 0;
     d->entries = NULL;
@@ -186,13 +185,17 @@ BreadDict* bread_dict_new(void) {
 }
 
 void bread_dict_retain(BreadDict* d) {
-    if (d) d->header.refcount++;
+    bread_object_retain(d);
 }
 
 void bread_dict_release(BreadDict* d) {
     if (!d) return;
-    d->header.refcount--;
-    if (d->header.refcount <= 0) {
+    
+    BreadObjHeader* header = (BreadObjHeader*)d;
+    if (header->refcount == 0) return;  // Already freed
+    
+    header->refcount--;
+    if (header->refcount == 0) {
         if (d->entries) {
             for (int i = 0; i < d->capacity; i++) {
                 if (d->entries[i].key) {
@@ -202,7 +205,7 @@ void bread_dict_release(BreadDict* d) {
             }
             free(d->entries);
         }
-        free(d);
+        bread_memory_free(d);
     }
 }
 
@@ -248,37 +251,37 @@ BreadValue* bread_dict_get(BreadDict* d, const char* key) {
 }
 
 BreadOptional* bread_optional_new_none(void) {
-    BreadOptional* o = malloc(sizeof(BreadOptional));
+    BreadOptional* o = (BreadOptional*)bread_memory_alloc(sizeof(BreadOptional), BREAD_OBJ_OPTIONAL);
     if (!o) return NULL;
-    o->header.kind = BREAD_OBJ_OPTIONAL;
-    o->header.refcount = 1;
     o->is_some = 0;
     memset(&o->value, 0, sizeof(BreadValue));
     return o;
 }
 
 BreadOptional* bread_optional_new_some(BreadValue v) {
-    BreadOptional* o = malloc(sizeof(BreadOptional));
+    BreadOptional* o = (BreadOptional*)bread_memory_alloc(sizeof(BreadOptional), BREAD_OBJ_OPTIONAL);
     if (!o) return NULL;
-    o->header.kind = BREAD_OBJ_OPTIONAL;
-    o->header.refcount = 1;
     o->is_some = 1;
     o->value = v;
     return o;
 }
 
 void bread_optional_retain(BreadOptional* o) {
-    if (o) o->header.refcount++;
+    bread_object_retain(o);
 }
 
 void bread_optional_release(BreadOptional* o) {
     if (!o) return;
-    o->header.refcount--;
-    if (o->header.refcount <= 0) {
+    
+    BreadObjHeader* header = (BreadObjHeader*)o;
+    if (header->refcount == 0) return;  // Already freed
+    
+    header->refcount--;
+    if (header->refcount == 0) {
         if (o->is_some) {
             bread_value_release(&o->value);
         }
-        free(o);
+        bread_memory_free(o);
     }
 }
 

@@ -257,6 +257,22 @@ void bread_value_release_value(struct BreadValue* v) {
     bread_value_release(v);
 }
 
+// Automatic assignment with reference counting
+int bread_value_assign(struct BreadValue* target, const struct BreadValue* source) {
+    if (!target || !source) return 0;
+    
+    // Clone the source value (increments reference count)
+    BreadValue new_value = bread_value_clone(*source);
+    
+    // Release the old value in target
+    bread_value_release(target);
+    
+    // Assign the new value
+    *target = new_value;
+    
+    return 1;
+}
+
 int bread_is_truthy(const BreadValue* v) {
     if (!v) return 0;
     switch (v->type) {
