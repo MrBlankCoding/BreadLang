@@ -1,0 +1,6 @@
+let x: Int = 10
+print(x)
+x = x + 1
+print(x)
+const pi: Double = 3.14
+print(pi)

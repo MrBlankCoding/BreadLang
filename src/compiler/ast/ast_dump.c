@@ -69,12 +69,6 @@ static void ast_dump_expr(const ASTExpr* e, FILE* out) {
             }
             fprintf(out, "]");
             break;
-        case AST_EXPR_RANGE:
-            ast_dump_expr(e->as.range.start, out);
-            fprintf(out, "..");
-            if (!e->as.range.is_inclusive) fprintf(out, "<");
-            ast_dump_expr(e->as.range.end, out);
-            break;
         case AST_EXPR_DICT:
             fprintf(out, "[");
             for (int i = 0; i < e->as.dict.entry_count; i++) {
@@ -118,7 +112,7 @@ void ast_dump_stmt_list(const ASTStmtList* stmts, FILE* out) {
         switch (cur->kind) {
             case AST_STMT_VAR_DECL:
                 fprintf(out, "%s %s: %s = ", 
-                    cur->as.var_decl.is_const ? "const" : "var",
+                    cur->as.var_decl.is_const ? "const" : "let",
                     cur->as.var_decl.var_name ? cur->as.var_decl.var_name : "",
                     cur->as.var_decl.type_str ? cur->as.var_decl.type_str : "");
                 ast_dump_expr(cur->as.var_decl.init, out);

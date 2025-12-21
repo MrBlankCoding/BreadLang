@@ -1,0 +1,15 @@
+let xs: [Int] = [1, 2, 3]
+print(xs.length)
+print(xs[0])
+xs.append(4)
+print(xs.length)
+print(xs[3])
+xs[1] = 99
+print(xs[1])
+
+let d: [String: Int] = ["a": 1, "b": 2]
+print(d.length)
+print(d["a"])
+d["a"] = 5
+print(d["a"])
+print(d.b)

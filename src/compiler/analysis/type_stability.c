@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include "compiler/analysis/type_stability.h"
-#include "compiler/analysis/semantic.h"
 
 #define MAX_TRACKED_VARS 256
 
@@ -275,16 +274,6 @@ static void analyze_expr_stability(ASTExpr* expr) {
                 analyze_expr_stability(expr->as.array_literal.elements[i]);
             }
             info->stability = STABILITY_UNSTABLE; // Arrays are mutable
-            break;
-        case AST_EXPR_RANGE:
-            // Analyze range bounds
-            if (expr->as.range.start) {
-                analyze_expr_stability(expr->as.range.start);
-            }
-            if (expr->as.range.end) {
-                analyze_expr_stability(expr->as.range.end);
-            }
-            info->stability = STABILITY_STABLE; // Ranges are immutable
             break;
     }
 }

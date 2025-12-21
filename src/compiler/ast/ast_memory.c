@@ -92,10 +92,6 @@ void ast_free_expr(ASTExpr* e) {
         case AST_EXPR_ARRAY_LITERAL:
             ast_free_expr_list(e->as.array_literal.elements, e->as.array_literal.element_count);
             break;
-        case AST_EXPR_RANGE:
-            ast_free_expr(e->as.range.start);
-            ast_free_expr(e->as.range.end);
-            break;
         case AST_EXPR_DICT:
             for (int i = 0; i < e->as.dict.entry_count; i++) {
                 ast_free_expr(e->as.dict.entries[i].key);

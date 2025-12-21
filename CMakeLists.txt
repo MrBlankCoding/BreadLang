@@ -43,7 +43,6 @@ set(BREADLANG_SOURCES
     src/compiler/ast/ast_dump.c
     src/compiler/parser/expr.c
     src/compiler/parser/expr_ops.c
-    src/compiler/analysis/semantic.c
     src/compiler/analysis/type_stability.c
     src/compiler/analysis/escape_analysis.c
     src/compiler/optimization/optimization.c
@@ -102,11 +101,36 @@ install(TARGETS breadlang DESTINATION bin)
 # Testing
 enable_testing()
 
-# Add custom target for running tests
+# CTest-based language tests
+add_executable(bread_test_runner
+    tests/bread_test_runner.c
+)
+
+add_dependencies(bread_test_runner breadlang)
+
+file(GLOB BREADLANG_TEST_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_SOURCE_DIR}/tests/ctest/*.bread"
+)
+
+foreach(test_src ${BREADLANG_TEST_SOURCES})
+    get_filename_component(test_name "${test_src}" NAME_WE)
+    set(expected_file "${CMAKE_SOURCE_DIR}/tests/ctest/${test_name}.expected")
+
+    if (EXISTS "${expected_file}")
+        add_test(
+            NAME "bread.${test_name}"
+            COMMAND bread_test_runner
+                "$<TARGET_FILE:breadlang>"
+                "${test_src}"
+                "${expected_file}"
+        )
+    endif()
+endforeach()
+
 add_custom_target(test-all
-    COMMAND ${CMAKE_SOURCE_DIR}/scripts/tests.sh
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    COMMENT "Running all BreadLang tests"
+    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    COMMENT "Running all BreadLang CTest tests"
 )
 
 # Property-based tests
@@ -114,18 +138,4 @@ add_custom_target(test-property
     COMMAND make -C tests/property test
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     COMMENT "Running property-based tests"
-)
-
-# Integration tests
-add_custom_target(test-integration
-    COMMAND ${CMAKE_SOURCE_DIR}/scripts/tests.sh -t integration
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    COMMENT "Running integration tests"
-)
-
-# LLVM backend tests
-add_custom_target(test-llvm
-    COMMAND ${CMAKE_SOURCE_DIR}/scripts/tests.sh -t llvm_backend
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    COMMENT "Running LLVM backend tests"
 )

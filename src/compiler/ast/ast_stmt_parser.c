@@ -169,22 +169,24 @@ ASTStmt* parse_stmt(const char** code) {
         }
         (*code)++;
 
+        VarType ret_type = TYPE_INT;
         skip_whitespace(code);
-        if (**code != '-' || *(*code + 1) != '>') {
-            free(fn_name);
-            for (int i = 0; i < param_count; i++) {
-                free(param_names[i]);
-                if (param_defaults && param_defaults[i]) ast_free_expr(param_defaults[i]);
+        if (**code == '-' && *(*code + 1) == '>') {
+            *code += 2;
+            if (!parse_type_token(code, &ret_type)) {
+                free(fn_name);
+                for (int i = 0; i < param_count; i++) {
+                    free(param_names[i]);
+                    if (param_defaults && param_defaults[i]) ast_free_expr(param_defaults[i]);
+                }
+                free(param_names);
+                free(param_types);
+                free(param_defaults);
+                return NULL;
             }
-            free(param_names);
-            free(param_types);
-            free(param_defaults);
-            return NULL;
         }
-        *code += 2;
 
-        VarType ret_type;
-        if (!parse_type_token(code, &ret_type)) {
+        if (**code == '-' && *(*code + 1) == '>') {
             free(fn_name);
             for (int i = 0; i < param_count; i++) {
                 free(param_names[i]);
@@ -272,9 +274,10 @@ ASTStmt* parse_stmt(const char** code) {
         return s;
     }
 
-    if (strncmp(*code, "var ", 4) == 0 || strncmp(*code, "let ", 4) == 0 || strncmp(*code, "const ", 6) == 0) {
+    if (strncmp(*code, "let ", 4) == 0 || strncmp(*code, "var ", 4) == 0 || strncmp(*code, "const ", 6) == 0) {
         int is_const = strncmp(*code, "const ", 6) == 0;
-        *code += strncmp(*code, "const ", 6) == 0 ? 6 : 4;
+        if (strncmp(*code, "const ", 6) == 0) *code += 6;
+        else *code += 4;
         skip_whitespace(code);
 
         const char* start = *code;

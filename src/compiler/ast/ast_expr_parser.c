@@ -217,38 +217,6 @@ static ASTExpr* parse_term(const char** expr) {
 
     skip_whitespace(expr);
     
-    // Check for range operator first
-    if (**expr == '.' && *(*expr + 1) == '.') {
-        *expr += 2;
-        int is_inclusive = 1; // Default to inclusive
-        
-        // Check for exclusive range (..<)
-        if (**expr == '<') {
-            (*expr)++;
-            is_inclusive = 0;
-        }
-        
-        ASTExpr* right = parse_factor(expr);
-        if (!right) {
-            ast_free_expr(left);
-            return NULL;
-        }
-        
-        ASTExpr* range = ast_expr_new(AST_EXPR_RANGE);
-        if (!range) {
-            ast_free_expr(left);
-            ast_free_expr(right);
-            return NULL;
-        }
-        
-        range->as.range.start = left;
-        range->as.range.end = right;
-        range->as.range.is_inclusive = is_inclusive;
-        range->tag.is_known = 1;
-        range->tag.type = TYPE_ARRAY; // Ranges are treated as arrays for iteration
-        return range;
-    }
-    
     // Handle arithmetic operators
     while (**expr == '+' || **expr == '-') {
         char op = **expr;
@@ -837,11 +805,7 @@ static ASTExpr* parse_postfix(const char** expr, ASTExpr* base) {
             is_optional_chain = 1;
             *expr += 2;
         } else if (**expr == '.') {
-            // Check if this is a range operator (..)
-            if (*(*expr + 1) == '.') {
-                break; // Don't consume, let range parsing handle it
-            }
-            (*expr)++;
+            *expr += 1;
         } else {
             break;
         }

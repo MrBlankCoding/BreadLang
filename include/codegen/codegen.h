@@ -10,12 +10,16 @@
 typedef struct CgVar {
     char* name;
     LLVMValueRef alloca;
+    VarType type;
+    int is_const;
+    int is_initialized;
     struct CgVar* next;
 } CgVar;
 
 typedef struct CgScope {
     CgVar* vars;
     struct CgScope* parent;
+    int depth;
 } CgScope;
 
 typedef struct CgFunction {
@@ -142,6 +146,11 @@ typedef struct {
     CgFunction* functions;
     LLVMTypeRef value_type;
     LLVMTypeRef value_ptr_type;
+    
+    // Symbol management for semantic analysis replacement
+    CgScope* global_scope;
+    int scope_depth;
+    int had_error;
 } Cg;
 
 LLVMValueRef cg_declare_fn(Cg* cg, const char* name, LLVMTypeRef fn_type);
@@ -152,5 +161,17 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
 int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stmt);
 CgVar* cg_scope_add_var(CgScope* scope, const char* name, LLVMValueRef alloca);
 CgVar* cg_scope_find_var(CgScope* scope, const char* name);
+
+// Semantic analysis functions integrated into codegen
+int cg_semantic_analyze(Cg* cg, ASTStmtList* program);
+int cg_analyze_stmt(Cg* cg, ASTStmt* stmt);
+int cg_analyze_expr(Cg* cg, ASTExpr* expr);
+void cg_enter_scope(Cg* cg);
+void cg_leave_scope(Cg* cg);
+int cg_declare_var(Cg* cg, const char* name, VarType type, int is_const);
+CgVar* cg_find_var(Cg* cg, const char* name);
+int cg_declare_function(Cg* cg, const char* name, int param_count);
+CgFunction* cg_find_function(Cg* cg, const char* name);
+void cg_error(Cg* cg, const char* msg, const char* name);
 
 #endif

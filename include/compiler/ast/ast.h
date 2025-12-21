@@ -31,8 +31,7 @@ typedef enum {
     AST_EXPR_MEMBER,
     AST_EXPR_METHOD_CALL,
     AST_EXPR_STRING_LITERAL,
-    AST_EXPR_ARRAY_LITERAL,
-    AST_EXPR_RANGE
+    AST_EXPR_ARRAY_LITERAL
 } ASTExprKind;
 
 typedef struct {
@@ -99,11 +98,6 @@ struct ASTExpr {
             ASTExpr** elements;
             VarType element_type;
         } array_literal;
-        struct {
-            ASTExpr* start;
-            ASTExpr* end;
-            int is_inclusive;
-        } range;
     } as;
 };
 

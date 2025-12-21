@@ -1,9 +1,0 @@
-let key1: String = "hello"
-let key2: String = "world"
-let val1: Int = 1
-let val2: Int = 2
-
-print(key1)
-print(val1)
-print(key2)
-print(val2)

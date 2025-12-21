@@ -176,15 +176,6 @@ static void analyze_expr_escape(ASTExpr* expr, int is_assignment_target) {
                 analyze_expr_escape(expr->as.array_literal.elements[i], 0);
             }
             break;
-        case AST_EXPR_RANGE:
-            // Analyze range bounds
-            if (expr->as.range.start) {
-                analyze_expr_escape(expr->as.range.start, 0);
-            }
-            if (expr->as.range.end) {
-                analyze_expr_escape(expr->as.range.end, 0);
-            }
-            break;
     }
 }
 

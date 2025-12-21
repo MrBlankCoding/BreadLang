@@ -16,6 +16,7 @@
 #include <llvm-c/Support.h>
 
 #include <limits.h>
+#include <unistd.h>
 
 #include "core/var.h"
 #include "core/function.h"
@@ -42,6 +43,51 @@ static int write_text_file(const char* path, const char* data) {
     }
     fclose(f);
     return 1;
+}
+
+static int bread_is_project_root_dir(const char* dir) {
+    if (!dir) return 0;
+    char src_dir[PATH_MAX];
+    char inc_dir[PATH_MAX];
+    char marker[PATH_MAX];
+    snprintf(src_dir, sizeof(src_dir), "%s/src", dir);
+    snprintf(inc_dir, sizeof(inc_dir), "%s/include", dir);
+    snprintf(marker, sizeof(marker), "%s/src/runtime/runtime.c", dir);
+    if (access(src_dir, F_OK) != 0) return 0;
+    if (access(inc_dir, F_OK) != 0) return 0;
+    if (access(marker, R_OK) != 0) return 0;
+    return 1;
+}
+
+static int bread_find_project_root_from_exe_dir(const char* exe_dir, char* out_root, size_t cap) {
+    if (!exe_dir || !out_root || cap == 0) return 0;
+
+    char candidate[PATH_MAX];
+    snprintf(candidate, sizeof(candidate), "%s", exe_dir);
+    if (bread_is_project_root_dir(candidate)) {
+        snprintf(out_root, cap, "%s", candidate);
+        return 1;
+    }
+
+    snprintf(candidate, sizeof(candidate), "%s/..", exe_dir);
+    if (bread_is_project_root_dir(candidate)) {
+        snprintf(out_root, cap, "%s", candidate);
+        return 1;
+    }
+
+    snprintf(candidate, sizeof(candidate), "%s/../..", exe_dir);
+    if (bread_is_project_root_dir(candidate)) {
+        snprintf(out_root, cap, "%s", candidate);
+        return 1;
+    }
+
+    snprintf(candidate, sizeof(candidate), "%s/../../..", exe_dir);
+    if (bread_is_project_root_dir(candidate)) {
+        snprintf(out_root, cap, "%s", candidate);
+        return 1;
+    }
+
+    return 0;
 }
 
 static int bread_get_exe_dir(char* out_dir, size_t cap) {
@@ -97,6 +143,11 @@ static void cg_init(Cg* cg, LLVMModuleRef mod, LLVMBuilderRef builder) {
     cg->current_loop_continue = NULL;
     cg->value_type = LLVMArrayType(cg->i8, 128);
     cg->value_ptr_type = LLVMPointerType(cg->value_type, 0);
+    
+    // Initialize semantic analysis fields
+    cg->global_scope = NULL;
+    cg->scope_depth = 0;
+    cg->had_error = 0;
 
     cg->ty_bread_value_size = LLVMFunctionType(cg->i64, NULL, 0, 0);
     cg->fn_bread_value_size = cg_declare_fn(cg, "bread_value_size", cg->ty_bread_value_size);
@@ -212,6 +263,15 @@ static int bread_llvm_build_module_from_program(const ASTStmtList* program, LLVM
     mod = LLVMModuleCreateWithName("bread_module");
     builder = LLVMCreateBuilder();
 
+    cg_init(&cg, mod, builder);
+    
+    // Integrated semantic analysis - replaces separate semantic analysis pass
+    if (!cg_semantic_analyze(&cg, (ASTStmtList*)program)) {
+        LLVMDisposeBuilder(builder);
+        LLVMDisposeModule(mod);
+        return 0;
+    }
+
     // Run Stage 5 optimization analysis passes
     if (!type_stability_analyze((ASTStmtList*)program)) {
         // Type stability analysis failed - continue anyway
@@ -224,8 +284,6 @@ static int bread_llvm_build_module_from_program(const ASTStmtList* program, LLVM
     if (!optimization_analyze((ASTStmtList*)program)) {
         // Optimization analysis failed - continue anyway
     }
-
-    cg_init(&cg, mod, builder);
 
     main_ty = LLVMFunctionType(cg.i32, NULL, 0, 0);
     main_fn = LLVMAddFunction(mod, "main", main_ty);
@@ -429,10 +487,17 @@ int bread_llvm_emit_obj(const ASTStmtList* program, const char* out_path) {
 static int bread_llvm_link_executable_with_clang(const char* obj_path, const char* out_path) {
     if (!obj_path || !out_path) return 0;
 
+    char exe_dir[PATH_MAX];
+    memset(exe_dir, 0, sizeof(exe_dir));
+    if (!bread_get_exe_dir(exe_dir, sizeof(exe_dir))) {
+        printf("Error: could not determine BreadLang install directory for linking\n");
+        return 0;
+    }
+
     char root_dir[PATH_MAX];
     memset(root_dir, 0, sizeof(root_dir));
-    if (!bread_get_exe_dir(root_dir, sizeof(root_dir))) {
-        printf("Error: could not determine BreadLang install directory for linking\n");
+    if (!bread_find_project_root_from_exe_dir(exe_dir, root_dir, sizeof(root_dir))) {
+        printf("Error: could not determine BreadLang project root directory for linking\n");
         return 0;
     }
 

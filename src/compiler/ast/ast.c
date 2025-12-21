@@ -27,11 +27,6 @@ ASTStmtList* ast_parse_program(const char* code) {
 
         if (*ptr == '\0') break;
 
-        if (*ptr == '#') {
-            while (*ptr && *ptr != '\n') ptr++;
-            continue;
-        }
-
         if (*ptr == '/' && *(ptr + 1) == '/') {
             while (*ptr && *ptr != '\n') ptr++;
             continue;

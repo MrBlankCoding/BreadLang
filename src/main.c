@@ -11,7 +11,6 @@
 #include "core/var.h"
 #include "compiler/ast/ast.h"
 #include "core/function.h"
-#include "compiler/analysis/semantic.h"
 #include "backends/llvm_backend.h"
 
 #define MAX_FILE_SIZE 1048576  // 1MB max file size
@@ -22,26 +21,16 @@ static void print_usage(const char* prog) {
     printf("Usage: %s [options] <file>\n", prog);
     printf("Options:\n");
     printf("  -h, --help            Show this help message\n");
-    printf("  -v, --version         Show version information\n");
-    printf("  -c, --eval <code>     Execute BreadLang code from command line\n");
-    printf("  --dump-ast            Print the parsed AST\n");
     printf("  --emit-llvm           Emit LLVM IR to a .ll file\n");
     printf("  --emit-obj            Emit an object file\n");
-    printf("  --emit-exe            Emit a native executable\n");
+    printf("  --emit-exe            Emit a native executable (default)\n");
     printf("  -o <file>             Output path for emit operations\n");
     printf("  --verbose             Enable verbose output\n");
     printf("\nExamples:\n");
-    printf("  %s -c 'print(1 + 2)'                    # Execute inline code\n", prog);
-    printf("  %s program.bread                         # Run a BreadLang program\n", prog);
+    printf("  %s -o myapp program.bread                # Build a native executable\n", prog);
     printf("  %s --emit-llvm -o out.ll program.bread   # Emit LLVM IR\n", prog);
     printf("  %s --emit-exe -o myapp program.bread     # Create standalone executable\n", prog);
     printf("\nFor more information, visit: https://github.com/breadlang/breadlang\n");
-}
-
-static void print_version(void) {
-    printf("BreadLang %s\n", VERSION);
-    printf("Built with LLVM JIT compilation support\n");
-    printf("Copyright (c) 2024 BreadLang Contributors\n");
 }
 
 char* trim_main(char* str) {
@@ -55,28 +44,18 @@ char* trim_main(char* str) {
 }
 
 int main(int argc, char* argv[]) {
-    int dump_ast = 0;
     int emit_llvm = 0;
     int emit_obj = 0;
     int emit_exe = 0;
     int verbose = 0;
     const char* filename = NULL;
     const char* out_path = NULL;
-    const char* inline_code = NULL;
 
     // Parse command line arguments
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
             print_usage(argv[0]);
             return 0;
-        }
-        if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--version") == 0) {
-            print_version();
-            return 0;
-        }
-        if (strcmp(argv[i], "--dump-ast") == 0) {
-            dump_ast = 1;
-            continue;
         }
         if (strcmp(argv[i], "--verbose") == 0) {
             verbose = 1;
@@ -92,16 +71,6 @@ int main(int argc, char* argv[]) {
          }
          if (strcmp(argv[i], "--emit-exe") == 0) {
              emit_exe = 1;
-             continue;
-         }
-         if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--eval") == 0) {
-             if (i + 1 >= argc) {
-                 fprintf(stderr, "Error: -c/--eval requires a code argument\n");
-                 print_usage(argv[0]);
-                 return 1;
-             }
-             inline_code = argv[i + 1];
-             i++;
              continue;
          }
          if (strcmp(argv[i], "-o") == 0) {
@@ -129,69 +98,53 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    if (!filename && !inline_code) {
-        fprintf(stderr, "Error: No input file or code specified\n");
+    if (!filename) {
+        fprintf(stderr, "Error: No input file specified\n");
         print_usage(argv[0]);
         return 1;
     }
 
     if (verbose) {
         printf("BreadLang v%s starting...\n", VERSION);
-        if (filename) {
-            printf("Processing file: %s\n", filename);
-        } else {
-            printf("Processing inline code\n");
-        }
+        printf("Processing file: %s\n", filename);
     }
 
-    // Read input code
-    char* code = NULL;
-    if (inline_code) {
-        size_t n = strlen(inline_code);
-        code = malloc(n + 1);
-        if (!code) {
-            fprintf(stderr, "Error: Out of memory\n");
-            return 1;
-        }
-        memcpy(code, inline_code, n + 1);
-    } else {
-        // Check if file exists and is readable
-        if (access(filename, R_OK) != 0) {
-            fprintf(stderr, "Error: Cannot read file '%s'\n", filename);
-            return 1;
-        }
-        
-        FILE* file = fopen(filename, "r");
-        if (!file) {
-            fprintf(stderr, "Error: Could not open file '%s'\n", filename);
-            return 1;
-        }
-        
-        // Get file size
-        fseek(file, 0, SEEK_END);
-        long file_size = ftell(file);
-        fseek(file, 0, SEEK_SET);
-        
-        if (file_size > MAX_FILE_SIZE) {
-            fprintf(stderr, "Error: File '%s' is too large (max %d bytes)\n", filename, MAX_FILE_SIZE);
-            fclose(file);
-            return 1;
-        }
-        
-        code = malloc(file_size + 1);
-        if (!code) {
-            fprintf(stderr, "Error: Out of memory\n");
-            fclose(file);
-            return 1;
-        }
-        
-        size_t bytes_read = fread(code, 1, file_size, file);
-        code[bytes_read] = '\0';
+    // Check if file exists and is readable
+    if (access(filename, R_OK) != 0) {
+        fprintf(stderr, "Error: Cannot read file '%s'\n", filename);
+        return 1;
+    }
+    
+    FILE* file = fopen(filename, "r");
+    if (!file) {
+        fprintf(stderr, "Error: Could not open file '%s'\n", filename);
+        return 1;
+    }
+    
+    // Get file size
+    fseek(file, 0, SEEK_END);
+    long file_size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    
+    if (file_size > MAX_FILE_SIZE) {
+        fprintf(stderr, "Error: File '%s' is too large (max %d bytes)\n", filename, MAX_FILE_SIZE);
         fclose(file);
-        
-        if (verbose) {
-            printf("Read %zu bytes from %s\n", bytes_read, filename);
-        }
+        return 1;
+    }
+    
+    char* code = malloc(file_size + 1);
+    if (!code) {
+        fprintf(stderr, "Error: Out of memory\n");
+        fclose(file);
+        return 1;
+    }
+    
+    size_t bytes_read = fread(code, 1, file_size, file);
+    code[bytes_read] = '\0';
+    fclose(file);
+    
+    if (verbose) {
+        printf("Read %zu bytes from %s\n", bytes_read, filename);
     }
     
     // Initialize runtime systems
@@ -248,57 +201,14 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     
-    if (dump_ast) {
-        ast_dump_stmt_list(program, stdout);
-        ast_free_stmt_list(program);
-        free(code);
-        bread_error_cleanup();
-        bread_builtin_cleanup();
-        bread_string_intern_cleanup();
-        bread_memory_cleanup();
-        cleanup_functions();
-        cleanup_variables();
-        return 0;
-    }
-    
-    // Perform semantic analysis
-    if (!semantic_analyze(program)) {
-        fprintf(stderr, "\n");
-        fprintf(stderr, "error: could not compile due to previous error(s)\n");
-        if (bread_error_has_error()) {
-            bread_error_print_current();
-        }
-        ast_free_stmt_list(program);
-        free(code);
-        bread_error_cleanup();
-        bread_builtin_cleanup();
-        bread_string_intern_cleanup();
-        bread_memory_cleanup();
-        cleanup_functions();
-        cleanup_variables();
-        return 1;
-    }
-    
-    // Check for compilation errors after semantic analysis
-    if (bread_error_has_compilation_errors()) {
-        fprintf(stderr, "\n");
-        fprintf(stderr, "error: could not compile due to previous error(s)\n");
-        if (bread_error_has_error()) {
-            bread_error_print_current();
-        }
-        ast_free_stmt_list(program);
-        free(code);
-        bread_error_cleanup();
-        bread_builtin_cleanup();
-        bread_string_intern_cleanup();
-        bread_memory_cleanup();
-        cleanup_functions();
-        cleanup_variables();
-        return 1;
-    }
+    // Semantic analysis is now integrated into LLVM codegen
+    // No separate semantic_analyze() call needed
     
     // Code generation and execution
     int result = 0;
+    if (!emit_llvm && !emit_obj && !emit_exe) {
+        emit_exe = 1;
+    }
     if (emit_llvm) {
         const char* dst = out_path ? out_path : "out.ll";
         if (!bread_llvm_emit_ll(program, dst)) {
@@ -318,13 +228,6 @@ int main(int argc, char* argv[]) {
         if (!bread_llvm_emit_exe(program, dst)) {
             fprintf(stderr, "\n");
             fprintf(stderr, "error: failed to emit executable\n");
-            result = 1;
-        }
-    } else {
-        // Default execution: LLVM JIT
-        if (bread_llvm_jit_exec(program) != 0) {
-            fprintf(stderr, "\n");
-            fprintf(stderr, "error: execution failed\n");
             result = 1;
         }
     }
