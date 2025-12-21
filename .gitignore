@@ -1,5 +1,6 @@
 breadlang
 .kiro*
+build/
 
 ### C ###
 # Prerequisites

@@ -26,39 +26,35 @@ BreadLang is a modern programming language implemented in C with LLVM JIT compil
 ### Prerequisites
 
 - **Clang**: Required C compiler supporting C11 (GCC is not supported)
-- **LLVM**: Required for JIT compilation (`llvm-config` must be in your PATH)
-  - Tested with LLVM 14+
-  - On macOS: `brew install llvm`
-  - On Ubuntu: `sudo apt install llvm-dev`
+- **CMake**: Build system generator (version 3.16 or higher)
+- **LLVM**: Required for JIT compilation (LLVM 14+)
+  - On macOS: `brew install llvm cmake`
+  - On Ubuntu: `sudo apt install llvm-dev cmake`
 
 ### Building
 
-BreadLang uses clang and LLVM for optimal performance. You can build using either the shell script or CMake:
+1. Configure and build the project:
+   ```sh
+   mkdir -p build && cd build
+   cmake ..
+   cmake --build .
+   ```
 
-#### Using build.sh (Quick Build)
+The `breadlang` executable will be available in the `build` directory.
+
+### Running Tests
+
+After building, you can run the test suite:
 
 ```sh
-./build.sh
-```
-
-This will produce the `breadlang` executable in the project root.
-
-#### Using CMake (Recommended for Development)
-
-```sh
-mkdir build
 cd build
-cmake ..
-make
+ctest --output-on-failure
 ```
 
-The executable will be in `build/breadlang`. You can also run tests:
-
+Or run specific test suites:
 ```sh
-make test-all          # Run all tests
-make test-integration  # Run integration tests only
-make test-llvm         # Run LLVM backend tests only
-make test-property     # Run property-based tests only
+ctest -R integration  # Run integration tests
+ctest -R llvm         # Run LLVM backend tests
 ```
 
 ## Usage
@@ -66,13 +62,20 @@ make test-property     # Run property-based tests only
 Run a BreadLang program using LLVM JIT compilation:
 
 ```sh
-./breadlang program.bread
+./build/breadlang program.bread
+```
+
+To build a native executable from a BreadLang program:
+
+```sh
+./build/breadlang --output program program.bread
+./program
 ```
 
 Run inline BreadLang code from the command line:
 
 ```sh
-./breadlang -c 'print(1 + 2)'
+./build/breadlang -c 'print(1 + 2)'
 ```
 
 ### Command-Line Options

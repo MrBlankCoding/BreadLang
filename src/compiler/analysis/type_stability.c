@@ -309,6 +309,16 @@ static void analyze_stmt_stability(ASTStmt* stmt) {
             track_var_mutation(stmt->as.var_assign.var_name);
             break;
             
+        case AST_STMT_INDEX_ASSIGN:
+            analyze_expr_stability(stmt->as.index_assign.target);
+            analyze_expr_stability(stmt->as.index_assign.index);
+            analyze_expr_stability(stmt->as.index_assign.value);
+            // Mark the target as mutated
+            if (stmt->as.index_assign.target->kind == AST_EXPR_VAR) {
+                track_var_mutation(stmt->as.index_assign.target->as.var_name);
+            }
+            break;
+            
         case AST_STMT_PRINT:
             analyze_expr_stability(stmt->as.print.expr);
             break;

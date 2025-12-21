@@ -3,7 +3,7 @@
 #include <string.h>
 #include <assert.h>
 
-#include "pbt_framework.h"
+#include "../framework/pbt_framework.h"
 #include "../../include/core/var.h"
 #include "../../include/core/value.h"
 #include "../../include/runtime/runtime.h"
@@ -74,6 +74,46 @@ typedef struct {
     BreadValue search_element;
     int expected_index;
 } ArrayIndexOfData;
+
+// Test data structure for Property 11: Dictionary Literal Creation Preserves Pairs
+typedef struct {
+    VarType key_type;
+    VarType value_type;
+    BreadValue* keys;
+    BreadValue* values;
+    int count;
+} DictLiteralData;
+
+// Test data structure for Property 12: Dictionary Access Round Trip
+typedef struct {
+    BreadDict* dict;
+    BreadValue key;
+    BreadValue new_value;
+} DictAccessData;
+
+// Test data structure for Property 13: Dictionary Get With Default
+typedef struct {
+    BreadDict* dict;
+    BreadValue existing_key;
+    BreadValue missing_key;
+    BreadValue default_value;
+} DictGetDefaultData;
+
+// Test data structure for Property 14: Dictionary Keys and Values Consistency
+typedef struct {
+    BreadDict* dict;
+} DictKeysValuesData;
+
+// Test data structure for Property 15: Dictionary Remove Decreases Count
+typedef struct {
+    BreadDict* dict;
+    BreadValue key_to_remove;
+} DictRemoveData;
+
+// Test data structure for Property 16: Dictionary Clear Empties Collection
+typedef struct {
+    BreadDict* dict;
+} DictClearData;
 
 // Initialize runtime for tests
 static void init_runtime() {
@@ -441,6 +481,260 @@ void* generate_array_index_of_test_data(PBTGenerator* gen) {
     return data;
 }
 
+// Generator for Property 11: Dictionary Literal Creation Preserves Pairs
+void* generate_dict_literal_test_data(PBTGenerator* gen) {
+    init_runtime();
+    
+    DictLiteralData* data = malloc(sizeof(DictLiteralData));
+    if (!data) return NULL;
+    
+    // Generate either int->string or string->int dictionaries
+    data->key_type = (pbt_random_uint32(gen) % 2 == 0) ? TYPE_INT : TYPE_STRING;
+    data->value_type = (data->key_type == TYPE_INT) ? TYPE_STRING : TYPE_INT;
+    data->count = pbt_random_int(gen, 1, 5);
+    
+    data->keys = malloc(sizeof(BreadValue) * data->count);
+    data->values = malloc(sizeof(BreadValue) * data->count);
+    if (!data->keys || !data->values) {
+        if (data->keys) free(data->keys);
+        if (data->values) free(data->values);
+        free(data);
+        return NULL;
+    }
+    
+    // Generate key-value pairs
+    for (int i = 0; i < data->count; i++) {
+        if (data->key_type == TYPE_INT) {
+            bread_value_set_int(&data->keys[i], i * 10); // Unique keys
+            char* str = pbt_random_string(gen, 8);
+            if (!str) {
+                // Cleanup on failure
+                for (int j = 0; j < i; j++) {
+                    bread_value_release(&data->keys[j]);
+                    bread_value_release(&data->values[j]);
+                }
+                free(data->keys);
+                free(data->values);
+                free(data);
+                return NULL;
+            }
+            bread_value_set_string(&data->values[i], str);
+            free(str);
+        } else {
+            char key_str[16];
+            snprintf(key_str, sizeof(key_str), "key%d", i);
+            bread_value_set_string(&data->keys[i], key_str);
+            bread_value_set_int(&data->values[i], pbt_random_int(gen, 0, 100));
+        }
+    }
+    
+    return data;
+}
+
+// Generator for Property 12: Dictionary Access Round Trip
+void* generate_dict_access_test_data(PBTGenerator* gen) {
+    init_runtime();
+    
+    DictAccessData* data = malloc(sizeof(DictAccessData));
+    if (!data) return NULL;
+    
+    data->dict = bread_dict_new_typed(TYPE_INT, TYPE_STRING);
+    if (!data->dict) {
+        free(data);
+        return NULL;
+    }
+    
+    // Add some initial entries
+    int count = pbt_random_int(gen, 1, 5);
+    for (int i = 0; i < count; i++) {
+        BreadValue key, value;
+        bread_value_set_int(&key, i * 10);
+        char* str = pbt_random_string(gen, 8);
+        if (!str) {
+            bread_value_release(&key);
+            bread_dict_release(data->dict);
+            free(data);
+            return NULL;
+        }
+        bread_value_set_string(&value, str);
+        free(str);
+        
+        if (!bread_dict_set_safe(data->dict, key, value)) {
+            bread_value_release(&key);
+            bread_value_release(&value);
+            bread_dict_release(data->dict);
+            free(data);
+            return NULL;
+        }
+        bread_value_release(&key);
+        bread_value_release(&value);
+    }
+    
+    // Choose a key to test with and new value
+    bread_value_set_int(&data->key, pbt_random_int(gen, 0, (count - 1) * 10));
+    char* new_str = pbt_random_string(gen, 10);
+    if (!new_str) {
+        bread_dict_release(data->dict);
+        free(data);
+        return NULL;
+    }
+    bread_value_set_string(&data->new_value, new_str);
+    free(new_str);
+    
+    return data;
+}
+
+// Generator for Property 13: Dictionary Get With Default
+void* generate_dict_get_default_test_data(PBTGenerator* gen) {
+    init_runtime();
+    
+    DictGetDefaultData* data = malloc(sizeof(DictGetDefaultData));
+    if (!data) return NULL;
+    
+    data->dict = bread_dict_new_typed(TYPE_STRING, TYPE_INT);
+    if (!data->dict) {
+        free(data);
+        return NULL;
+    }
+    
+    // Add one entry
+    bread_value_set_string(&data->existing_key, "existing");
+    BreadValue existing_value;
+    bread_value_set_int(&existing_value, 42);
+    
+    if (!bread_dict_set_safe(data->dict, data->existing_key, existing_value)) {
+        bread_value_release(&existing_value);
+        bread_dict_release(data->dict);
+        free(data);
+        return NULL;
+    }
+    bread_value_release(&existing_value);
+    
+    // Set up missing key and default value
+    bread_value_set_string(&data->missing_key, "missing");
+    bread_value_set_int(&data->default_value, 999);
+    
+    return data;
+}
+
+// Generator for Property 14: Dictionary Keys and Values Consistency
+void* generate_dict_keys_values_test_data(PBTGenerator* gen) {
+    init_runtime();
+    
+    DictKeysValuesData* data = malloc(sizeof(DictKeysValuesData));
+    if (!data) return NULL;
+    
+    data->dict = bread_dict_new_typed(TYPE_STRING, TYPE_INT);
+    if (!data->dict) {
+        free(data);
+        return NULL;
+    }
+    
+    // Add several entries
+    int count = pbt_random_int(gen, 1, 5);
+    for (int i = 0; i < count; i++) {
+        BreadValue key, value;
+        char key_str[16];
+        snprintf(key_str, sizeof(key_str), "key%d", i);
+        bread_value_set_string(&key, key_str);
+        bread_value_set_int(&value, i * 10);
+        
+        if (!bread_dict_set_safe(data->dict, key, value)) {
+            bread_value_release(&key);
+            bread_value_release(&value);
+            bread_dict_release(data->dict);
+            free(data);
+            return NULL;
+        }
+        bread_value_release(&key);
+        bread_value_release(&value);
+    }
+    
+    return data;
+}
+
+// Generator for Property 15: Dictionary Remove Decreases Count
+void* generate_dict_remove_test_data(PBTGenerator* gen) {
+    init_runtime();
+    
+    DictRemoveData* data = malloc(sizeof(DictRemoveData));
+    if (!data) return NULL;
+    
+    data->dict = bread_dict_new_typed(TYPE_INT, TYPE_STRING);
+    if (!data->dict) {
+        free(data);
+        return NULL;
+    }
+    
+    // Add several entries
+    int count = pbt_random_int(gen, 1, 5);
+    for (int i = 0; i < count; i++) {
+        BreadValue key, value;
+        bread_value_set_int(&key, i * 10);
+        char* str = pbt_random_string(gen, 8);
+        if (!str) {
+            bread_value_release(&key);
+            bread_dict_release(data->dict);
+            free(data);
+            return NULL;
+        }
+        bread_value_set_string(&value, str);
+        free(str);
+        
+        if (!bread_dict_set_safe(data->dict, key, value)) {
+            bread_value_release(&key);
+            bread_value_release(&value);
+            bread_dict_release(data->dict);
+            free(data);
+            return NULL;
+        }
+        bread_value_release(&key);
+        bread_value_release(&value);
+    }
+    
+    // Choose a key to remove (pick one that exists)
+    int remove_index = pbt_random_int(gen, 0, count - 1);
+    bread_value_set_int(&data->key_to_remove, remove_index * 10);
+    
+    return data;
+}
+
+// Generator for Property 16: Dictionary Clear Empties Collection
+void* generate_dict_clear_test_data(PBTGenerator* gen) {
+    init_runtime();
+    
+    DictClearData* data = malloc(sizeof(DictClearData));
+    if (!data) return NULL;
+    
+    data->dict = bread_dict_new_typed(TYPE_STRING, TYPE_INT);
+    if (!data->dict) {
+        free(data);
+        return NULL;
+    }
+    
+    // Add several entries
+    int count = pbt_random_int(gen, 1, 5);
+    for (int i = 0; i < count; i++) {
+        BreadValue key, value;
+        char key_str[16];
+        snprintf(key_str, sizeof(key_str), "key%d", i);
+        bread_value_set_string(&key, key_str);
+        bread_value_set_int(&value, pbt_random_int(gen, 0, 100));
+        
+        if (!bread_dict_set_safe(data->dict, key, value)) {
+            bread_value_release(&key);
+            bread_value_release(&value);
+            bread_dict_release(data->dict);
+            free(data);
+            return NULL;
+        }
+        bread_value_release(&key);
+        bread_value_release(&value);
+    }
+    
+    return data;
+}
+
 // Cleanup function for array literal test data
 void cleanup_array_literal_data(void* test_data) {
     ArrayLiteralData* data = (ArrayLiteralData*)test_data;
@@ -539,6 +833,77 @@ void cleanup_array_index_of_data(void* test_data) {
     
     if (data->array) bread_array_release(data->array);
     bread_value_release(&data->search_element);
+    free(data);
+}
+
+// Cleanup function for dictionary literal test data
+void cleanup_dict_literal_data(void* test_data) {
+    DictLiteralData* data = (DictLiteralData*)test_data;
+    if (!data) return;
+    
+    if (data->keys) {
+        for (int i = 0; i < data->count; i++) {
+            bread_value_release(&data->keys[i]);
+        }
+        free(data->keys);
+    }
+    if (data->values) {
+        for (int i = 0; i < data->count; i++) {
+            bread_value_release(&data->values[i]);
+        }
+        free(data->values);
+    }
+    free(data);
+}
+
+// Cleanup function for dictionary access test data
+void cleanup_dict_access_data(void* test_data) {
+    DictAccessData* data = (DictAccessData*)test_data;
+    if (!data) return;
+    
+    if (data->dict) bread_dict_release(data->dict);
+    bread_value_release(&data->key);
+    bread_value_release(&data->new_value);
+    free(data);
+}
+
+// Cleanup function for dictionary get default test data
+void cleanup_dict_get_default_data(void* test_data) {
+    DictGetDefaultData* data = (DictGetDefaultData*)test_data;
+    if (!data) return;
+    
+    if (data->dict) bread_dict_release(data->dict);
+    bread_value_release(&data->existing_key);
+    bread_value_release(&data->missing_key);
+    bread_value_release(&data->default_value);
+    free(data);
+}
+
+// Cleanup function for dictionary keys values test data
+void cleanup_dict_keys_values_data(void* test_data) {
+    DictKeysValuesData* data = (DictKeysValuesData*)test_data;
+    if (!data) return;
+    
+    if (data->dict) bread_dict_release(data->dict);
+    free(data);
+}
+
+// Cleanup function for dictionary remove test data
+void cleanup_dict_remove_data(void* test_data) {
+    DictRemoveData* data = (DictRemoveData*)test_data;
+    if (!data) return;
+    
+    if (data->dict) bread_dict_release(data->dict);
+    bread_value_release(&data->key_to_remove);
+    free(data);
+}
+
+// Cleanup function for dictionary clear test data
+void cleanup_dict_clear_data(void* test_data) {
+    DictClearData* data = (DictClearData*)test_data;
+    if (!data) return;
+    
+    if (data->dict) bread_dict_release(data->dict);
     free(data);
 }
 
@@ -1097,6 +1462,306 @@ int property_array_index_of_correctness(void* test_data) {
     return (index_of_result == manual_index);
 }
 
+// Property 11: Dictionary Literal Creation Preserves Pairs
+// For any valid dictionary literal with consistent key and value types, creating a dictionary 
+// should result in a dictionary containing exactly those key-value pairs.
+int property_dict_literal_creation_preserves_pairs(void* test_data) {
+    DictLiteralData* data = (DictLiteralData*)test_data;
+    if (!data) return 0;
+    
+    // Create BreadDictEntry array from test data
+    BreadDictEntry* entries = malloc(sizeof(BreadDictEntry) * data->count);
+    if (!entries) return 0;
+    
+    for (int i = 0; i < data->count; i++) {
+        entries[i].key = data->keys[i];
+        entries[i].value = data->values[i];
+        entries[i].is_occupied = 1;
+        entries[i].is_deleted = 0;
+    }
+    
+    // Create dictionary from literal
+    BreadDict* dict = bread_dict_from_literal(entries, data->count);
+    if (!dict) {
+        free(entries);
+        return 0;
+    }
+    
+    // Verify dictionary count matches input count
+    if (bread_dict_count(dict) != data->count) {
+        bread_dict_release(dict);
+        free(entries);
+        return 0;
+    }
+    
+    // Verify each key-value pair is preserved
+    for (int i = 0; i < data->count; i++) {
+        BreadValue* retrieved = bread_dict_get_safe(dict, data->keys[i]);
+        if (!retrieved) {
+            bread_dict_release(dict);
+            free(entries);
+            return 0;
+        }
+        
+        // Check value matches
+        if (retrieved->type != data->values[i].type) {
+            bread_dict_release(dict);
+            free(entries);
+            return 0;
+        }
+        
+        if (data->value_type == TYPE_INT) {
+            if (retrieved->value.int_val != data->values[i].value.int_val) {
+                bread_dict_release(dict);
+                free(entries);
+                return 0;
+            }
+        } else if (data->value_type == TYPE_STRING) {
+            const char* retrieved_str = bread_string_cstr(retrieved->value.string_val);
+            const char* original_str = bread_string_cstr(data->values[i].value.string_val);
+            if (strcmp(retrieved_str, original_str) != 0) {
+                bread_dict_release(dict);
+                free(entries);
+                return 0;
+            }
+        }
+    }
+    
+    bread_dict_release(dict);
+    free(entries);
+    return 1; // Property holds
+}
+
+// Property 12: Dictionary Access Round Trip
+// For any dictionary and key, setting dictionary[key] = value then accessing dictionary[key] 
+// should return the same value.
+int property_dict_access_round_trip(void* test_data) {
+    DictAccessData* data = (DictAccessData*)test_data;
+    if (!data || !data->dict) return 0;
+    
+    // Set value at key using safe setter
+    if (!bread_dict_set_safe(data->dict, data->key, data->new_value)) {
+        return 0; // Should succeed for compatible types
+    }
+    
+    // Get value back using safe getter
+    BreadValue* retrieved = bread_dict_get_safe(data->dict, data->key);
+    if (!retrieved) {
+        return 0; // Should succeed for existing key
+    }
+    
+    // Verify the retrieved value matches what we set
+    if (retrieved->type != data->new_value.type) {
+        return 0;
+    }
+    
+    if (data->new_value.type == TYPE_STRING) {
+        const char* retrieved_str = bread_string_cstr(retrieved->value.string_val);
+        const char* original_str = bread_string_cstr(data->new_value.value.string_val);
+        return (strcmp(retrieved_str, original_str) == 0);
+    }
+    
+    return 1; // Property holds
+}
+
+// Property 13: Dictionary Get With Default
+// For any dictionary, key, and default value, dictionary.get(key, default) should return 
+// the associated value if the key exists, otherwise the default value.
+int property_dict_get_with_default(void* test_data) {
+    DictGetDefaultData* data = (DictGetDefaultData*)test_data;
+    if (!data || !data->dict) return 0;
+    
+    // Test with existing key - should return the stored value
+    BreadValue result_existing = bread_dict_get_with_default(data->dict, data->existing_key, data->default_value);
+    if (result_existing.type != TYPE_INT || result_existing.value.int_val != 42) {
+        bread_value_release(&result_existing);
+        return 0;
+    }
+    bread_value_release(&result_existing);
+    
+    // Test with missing key - should return the default value
+    BreadValue result_missing = bread_dict_get_with_default(data->dict, data->missing_key, data->default_value);
+    if (result_missing.type != TYPE_INT || result_missing.value.int_val != 999) {
+        bread_value_release(&result_missing);
+        return 0;
+    }
+    bread_value_release(&result_missing);
+    
+    return 1; // Property holds
+}
+
+// Property 14: Dictionary Keys and Values Consistency
+// For any dictionary, the arrays returned by dictionary.keys and dictionary.values should have 
+// the same length as dictionary.count, and each key should map to the corresponding value at the same index.
+int property_dict_keys_values_consistency(void* test_data) {
+    DictKeysValuesData* data = (DictKeysValuesData*)test_data;
+    if (!data || !data->dict) return 0;
+    
+    int dict_count = bread_dict_count(data->dict);
+    
+    // Get keys and values arrays
+    BreadArray* keys = bread_dict_keys(data->dict);
+    BreadArray* values = bread_dict_values(data->dict);
+    
+    if (!keys || !values) {
+        if (keys) bread_array_release(keys);
+        if (values) bread_array_release(values);
+        return 0;
+    }
+    
+    // Check lengths match dictionary count
+    int keys_length = bread_array_length(keys);
+    int values_length = bread_array_length(values);
+    
+    if (keys_length != dict_count || values_length != dict_count) {
+        bread_array_release(keys);
+        bread_array_release(values);
+        return 0;
+    }
+    
+    // Check that each key maps to the corresponding value
+    for (int i = 0; i < keys_length; i++) {
+        BreadValue* key = bread_array_get(keys, i);
+        BreadValue* expected_value = bread_array_get(values, i);
+        
+        if (!key || !expected_value) {
+            bread_array_release(keys);
+            bread_array_release(values);
+            return 0;
+        }
+        
+        // Look up the key in the dictionary
+        BreadValue* actual_value = bread_dict_get_safe(data->dict, *key);
+        if (!actual_value) {
+            bread_array_release(keys);
+            bread_array_release(values);
+            return 0;
+        }
+        
+        // Check values match
+        if (actual_value->type != expected_value->type) {
+            bread_array_release(keys);
+            bread_array_release(values);
+            return 0;
+        }
+        
+        if (expected_value->type == TYPE_INT) {
+            if (actual_value->value.int_val != expected_value->value.int_val) {
+                bread_array_release(keys);
+                bread_array_release(values);
+                return 0;
+            }
+        } else if (expected_value->type == TYPE_STRING) {
+            const char* actual_str = bread_string_cstr(actual_value->value.string_val);
+            const char* expected_str = bread_string_cstr(expected_value->value.string_val);
+            if (strcmp(actual_str, expected_str) != 0) {
+                bread_array_release(keys);
+                bread_array_release(values);
+                return 0;
+            }
+        }
+    }
+    
+    bread_array_release(keys);
+    bread_array_release(values);
+    return 1; // Property holds
+}
+
+// Property 15: Dictionary Remove Decreases Count
+// For any dictionary and existing key, removing the key should decrease the count by exactly one 
+// and return the associated value.
+int property_dict_remove_decreases_count(void* test_data) {
+    DictRemoveData* data = (DictRemoveData*)test_data;
+    if (!data || !data->dict) return 0;
+    
+    int original_count = bread_dict_count(data->dict);
+    
+    // Get the expected value before removal
+    BreadValue* expected_value = bread_dict_get_safe(data->dict, data->key_to_remove);
+    if (!expected_value) {
+        return 1; // Key doesn't exist, skip this test case
+    }
+    BreadValue expected_clone = bread_value_clone(*expected_value);
+    
+    // Remove the key
+    BreadValue removed_value = bread_dict_remove(data->dict, data->key_to_remove);
+    
+    // Check count decreased by exactly one
+    int new_count = bread_dict_count(data->dict);
+    if (new_count != original_count - 1) {
+        bread_value_release(&expected_clone);
+        bread_value_release(&removed_value);
+        return 0;
+    }
+    
+    // Check returned value matches what was stored
+    if (removed_value.type != expected_clone.type) {
+        bread_value_release(&expected_clone);
+        bread_value_release(&removed_value);
+        return 0;
+    }
+    
+    int values_match = 0;
+    if (removed_value.type == TYPE_INT) {
+        values_match = (removed_value.value.int_val == expected_clone.value.int_val);
+    } else if (removed_value.type == TYPE_STRING) {
+        const char* removed_str = bread_string_cstr(removed_value.value.string_val);
+        const char* expected_str = bread_string_cstr(expected_clone.value.string_val);
+        values_match = (strcmp(removed_str, expected_str) == 0);
+    } else {
+        values_match = 1; // For other types, just check type match
+    }
+    
+    // Check key no longer exists
+    BreadValue* lookup_result = bread_dict_get_safe(data->dict, data->key_to_remove);
+    int key_removed = (lookup_result == NULL);
+    
+    bread_value_release(&expected_clone);
+    bread_value_release(&removed_value);
+    
+    return values_match && key_removed;
+}
+
+// Property 16: Dictionary Clear Empties Collection
+// For any dictionary, calling clear() should result in a dictionary with count zero and no keys.
+int property_dict_clear_empties_collection(void* test_data) {
+    DictClearData* data = (DictClearData*)test_data;
+    if (!data || !data->dict) return 0;
+    
+    // Clear the dictionary
+    bread_dict_clear(data->dict);
+    
+    // Check count is zero
+    int count = bread_dict_count(data->dict);
+    if (count != 0) {
+        return 0;
+    }
+    
+    // Check keys array is empty
+    BreadArray* keys = bread_dict_keys(data->dict);
+    if (!keys) {
+        return 0; // Should return empty array, not NULL
+    }
+    
+    int keys_length = bread_array_length(keys);
+    bread_array_release(keys);
+    
+    if (keys_length != 0) {
+        return 0;
+    }
+    
+    // Check values array is empty
+    BreadArray* values = bread_dict_values(data->dict);
+    if (!values) {
+        return 0; // Should return empty array, not NULL
+    }
+    
+    int values_length = bread_array_length(values);
+    bread_array_release(values);
+    
+    return (values_length == 0);
+}
+
 int run_collection_tests() {
     printf("Running Advanced Collections Property Tests\n");
     printf("==========================================\n\n");
@@ -1243,6 +1908,90 @@ int run_collection_tests() {
     
     if (result10.failed > 0) all_passed = 0;
     
+    // Property 11: Dictionary Literal Creation Preserves Pairs
+    PBTResult result11 = pbt_run_property(
+        "Dictionary Literal Creation Preserves Pairs",
+        generate_dict_literal_test_data,
+        property_dict_literal_creation_preserves_pairs,
+        cleanup_dict_literal_data,
+        PBT_MIN_ITERATIONS
+    );
+    
+    pbt_report_result("advanced-collections", 11, 
+                     "Dictionary Literal Creation Preserves Pairs", result11);
+    
+    if (result11.failed > 0) all_passed = 0;
+    
+    // Property 12: Dictionary Access Round Trip
+    PBTResult result12 = pbt_run_property(
+        "Dictionary Access Round Trip",
+        generate_dict_access_test_data,
+        property_dict_access_round_trip,
+        cleanup_dict_access_data,
+        PBT_MIN_ITERATIONS
+    );
+    
+    pbt_report_result("advanced-collections", 12, 
+                     "Dictionary Access Round Trip", result12);
+    
+    if (result12.failed > 0) all_passed = 0;
+    
+    // Property 13: Dictionary Get With Default
+    PBTResult result13 = pbt_run_property(
+        "Dictionary Get With Default",
+        generate_dict_get_default_test_data,
+        property_dict_get_with_default,
+        cleanup_dict_get_default_data,
+        PBT_MIN_ITERATIONS
+    );
+    
+    pbt_report_result("advanced-collections", 13, 
+                     "Dictionary Get With Default", result13);
+    
+    if (result13.failed > 0) all_passed = 0;
+    
+    // Property 14: Dictionary Keys and Values Consistency
+    PBTResult result14 = pbt_run_property(
+        "Dictionary Keys and Values Consistency",
+        generate_dict_keys_values_test_data,
+        property_dict_keys_values_consistency,
+        cleanup_dict_keys_values_data,
+        PBT_MIN_ITERATIONS
+    );
+    
+    pbt_report_result("advanced-collections", 14, 
+                     "Dictionary Keys and Values Consistency", result14);
+    
+    if (result14.failed > 0) all_passed = 0;
+    
+    // Property 15: Dictionary Remove Decreases Count
+    PBTResult result15 = pbt_run_property(
+        "Dictionary Remove Decreases Count",
+        generate_dict_remove_test_data,
+        property_dict_remove_decreases_count,
+        cleanup_dict_remove_data,
+        PBT_MIN_ITERATIONS
+    );
+    
+    pbt_report_result("advanced-collections", 15, 
+                     "Dictionary Remove Decreases Count", result15);
+    
+    if (result15.failed > 0) all_passed = 0;
+    
+    // Property 16: Dictionary Clear Empties Collection
+    PBTResult result16 = pbt_run_property(
+        "Dictionary Clear Empties Collection",
+        generate_dict_clear_test_data,
+        property_dict_clear_empties_collection,
+        cleanup_dict_clear_data,
+        PBT_MIN_ITERATIONS
+    );
+    
+    pbt_report_result("advanced-collections", 16, 
+                     "Dictionary Clear Empties Collection", result16);
+    
+    if (result16.failed > 0) all_passed = 0;
+    
     pbt_free_result(&result1);
     pbt_free_result(&result2);
     pbt_free_result(&result3);
@@ -1253,6 +2002,12 @@ int run_collection_tests() {
     pbt_free_result(&result8);
     pbt_free_result(&result9);
     pbt_free_result(&result10);
+    pbt_free_result(&result11);
+    pbt_free_result(&result12);
+    pbt_free_result(&result13);
+    pbt_free_result(&result14);
+    pbt_free_result(&result15);
+    pbt_free_result(&result16);
     
     return all_passed;
 }

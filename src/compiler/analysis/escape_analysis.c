@@ -207,28 +207,9 @@ static void analyze_stmt_escape(ASTStmt* stmt) {
             }
             break;
             
-        case AST_STMT_VAR_ASSIGN:
-            analyze_expr_escape(stmt->as.var_assign.value, 0);
-            
-            // Assignment - check if variable is global or local
-            // Look up variable in symbol table to determine scope
-            // For now, assume local assignment (conservative approach)
-            EscapeInfo* assign_info = (EscapeInfo*)stmt->as.var_assign.value->escape_info;
-            if (assign_info) {
-                // Local assignment doesn't cause escape by itself
-                // But we mark it as potentially escaping if the variable might be accessed later
-                if (g_escape_ctx->function_depth > 0) {
-                    mark_escape(assign_info, ESCAPE_NONE);
-                } else {
-                    // Global scope assignment - more conservative
-                    mark_escape(assign_info, ESCAPE_GLOBAL);
-                }
-            }
-            break;
-            
         case AST_STMT_PRINT:
             analyze_expr_escape(stmt->as.print.expr, 0);
-            
+        
             // Print doesn't cause escape, but value is used
             EscapeInfo* print_info = (EscapeInfo*)stmt->as.print.expr->escape_info;
             if (print_info) {
@@ -297,6 +278,16 @@ static void analyze_stmt_escape(ASTStmt* stmt) {
                     mark_escape(ret_info, ESCAPE_RETURN);
                 }
             }
+            break;
+            
+        case AST_STMT_VAR_ASSIGN:
+            analyze_expr_escape(stmt->as.var_assign.value, 0);
+            break;
+            
+        case AST_STMT_INDEX_ASSIGN:
+            analyze_expr_escape(stmt->as.index_assign.target, 0);
+            analyze_expr_escape(stmt->as.index_assign.index, 0);
+            analyze_expr_escape(stmt->as.index_assign.value, 0);
             break;
             
         case AST_STMT_EXPR:
