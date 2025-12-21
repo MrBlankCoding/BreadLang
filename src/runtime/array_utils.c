@@ -3,6 +3,7 @@
 #include <stdio.h>
 
 #include "runtime/runtime.h"
+#include "runtime/error.h"
 #include "core/value.h"
 
 // Built-in range function implementation
@@ -36,7 +37,20 @@ BreadArray* bread_range(int n) {
 int bread_array_get_value(BreadArray* a, int idx, BreadValue* out) {
     if (!out) return 0;
     bread_value_set_nil(out);
-    if (!a || idx < 0 || idx >= a->count) return 0;
+    
+    if (!a) {
+        BREAD_ERROR_SET_RUNTIME("Array is null");
+        return 0;
+    }
+    
+    if (idx < 0 || idx >= a->count) {
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg), 
+                "Array index %d out of bounds (array length: %d)", idx, a->count);
+        BREAD_ERROR_SET_INDEX_OUT_OF_BOUNDS(error_msg);
+        return 0;
+    }
+    
     *out = bread_value_clone(a->items[idx]);
     return 1;
 }
@@ -44,7 +58,12 @@ int bread_array_get_value(BreadArray* a, int idx, BreadValue* out) {
 int bread_value_array_get(BreadValue* array_val, int idx, BreadValue* out) {
     if (!array_val || !out) return 0;
     bread_value_set_nil(out);
-    if (array_val->type != TYPE_ARRAY) return 0;
+    
+    if (array_val->type != TYPE_ARRAY) {
+        BREAD_ERROR_SET_TYPE_MISMATCH("Expected array type for indexing operation");
+        return 0;
+    }
+    
     return bread_array_get_value(array_val->value.array_val, idx, out);
 }
 

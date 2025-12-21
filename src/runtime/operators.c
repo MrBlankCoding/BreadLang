@@ -3,6 +3,7 @@
 #include <stdio.h>
 
 #include "runtime/runtime.h"
+#include "runtime/error.h"
 #include "core/value.h"
 
 int bread_index_op(const BreadValue* target, const BreadValue* idx, BreadValue* out) {
@@ -24,7 +25,7 @@ int bread_index_op(const BreadValue* target, const BreadValue* idx, BreadValue* 
 
     if (real_target.type == TYPE_STRING) {
         if (idx->type != TYPE_INT) {
-            printf("Error: String index must be Int\n");
+            BREAD_ERROR_SET_TYPE_MISMATCH("String index must be Int");
             if (target_owned) bread_value_release(&real_target);
             return 0;
         }
@@ -38,7 +39,10 @@ int bread_index_op(const BreadValue* target, const BreadValue* idx, BreadValue* 
         }
         
         if (index < 0 || index >= (int)len) {
-            printf("Error: String index %d out of bounds (length %zu)\n", idx->value.int_val, len);
+            char error_msg[256];
+            snprintf(error_msg, sizeof(error_msg), 
+                    "String index %d out of bounds (length %zu)", idx->value.int_val, len);
+            BREAD_ERROR_SET_INDEX_OUT_OF_BOUNDS(error_msg);
             if (target_owned) bread_value_release(&real_target);
             return 0;
         }

@@ -2,9 +2,9 @@
 #define OPTIMIZED_CODEGEN_H
 
 #include "codegen/codegen.h"
-#include "compiler/type_stability.h"
-#include "compiler/escape_analysis.h"
-#include "compiler/optimization.h"
+#include "compiler/analysis/type_stability.h"
+#include "compiler/analysis/escape_analysis.h"
+#include "compiler/optimization/optimization.h"
 
 typedef struct {
     Cg base;                    

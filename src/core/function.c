@@ -3,7 +3,7 @@
 #include <string.h>
 
 #include "core/function.h"
-#include "compiler/ast.h"
+#include "compiler/ast/ast.h"
 #include "core/var.h"
 #include "core/value.h"
 
@@ -20,12 +20,21 @@ static void free_function(Function* fn) {
     }
     free(fn->param_names);
     free(fn->param_types);
+    if (fn->parameters) {
+        for (int i = 0; i < fn->param_count; i++) {
+            if (fn->parameters[i].has_default) {
+                bread_value_release(&fn->parameters[i].default_value);
+            }
+        }
+        free(fn->parameters);
+    }
     fn->body = NULL;
     fn->body_is_ast = 0;
     fn->name = NULL;
     fn->param_count = 0;
     fn->param_names = NULL;
     fn->param_types = NULL;
+    fn->parameters = NULL;
 }
 
 void init_functions() {
@@ -73,7 +82,8 @@ int register_function(const Function* fn) {
     if (fn->param_count > 0) {
         dst->param_names = malloc(sizeof(char*) * fn->param_count);
         dst->param_types = malloc(sizeof(VarType) * fn->param_count);
-        if (!dst->param_names || !dst->param_types) {
+        dst->parameters = malloc(sizeof(FunctionParameter) * fn->param_count);
+        if (!dst->param_names || !dst->param_types || !dst->parameters) {
             free_function(dst);
             return 0;
         }
@@ -84,6 +94,21 @@ int register_function(const Function* fn) {
                 return 0;
             }
             dst->param_types[i] = fn->param_types[i];
+            
+            // Copy parameter info including defaults
+            if (fn->parameters) {
+                dst->parameters[i].name = strdup(fn->parameters[i].name);
+                dst->parameters[i].has_default = fn->parameters[i].has_default;
+                if (fn->parameters[i].has_default) {
+                    dst->parameters[i].default_value = bread_value_clone(fn->parameters[i].default_value);
+                } else {
+                    memset(&dst->parameters[i].default_value, 0, sizeof(BreadValue));
+                }
+            } else {
+                dst->parameters[i].name = strdup(fn->param_names[i]);
+                dst->parameters[i].has_default = 0;
+                memset(&dst->parameters[i].default_value, 0, sizeof(BreadValue));
+            }
         }
     }
 
@@ -180,4 +205,60 @@ ExprResult call_function(const char* name, int arg_count, const char** arg_exprs
     memset(&err, 0, sizeof(err));
     err.is_error = 1;
     return err;
+}
+
+// Default parameter handling functions
+int function_get_required_params(const Function* fn) {
+    if (!fn || !fn->parameters) return fn ? fn->param_count : 0;
+    
+    int required = 0;
+    for (int i = 0; i < fn->param_count; i++) {
+        if (!fn->parameters[i].has_default) {
+            required++;
+        } else {
+            break; // All defaults must be at the end
+        }
+    }
+    return required;
+}
+
+int function_apply_defaults(const Function* fn, int provided_args, ExprResult* args, ExprResult** final_args) {
+    if (!fn || !final_args) return 0;
+    
+    int required = function_get_required_params(fn);
+    if (provided_args < required) {
+        printf("Error: Function '%s' requires at least %d arguments, got %d\n", 
+               fn->name ? fn->name : "unknown", required, provided_args);
+        return 0;
+    }
+    
+    if (provided_args > fn->param_count) {
+        printf("Error: Function '%s' takes at most %d arguments, got %d\n", 
+               fn->name ? fn->name : "unknown", fn->param_count, provided_args);
+        return 0;
+    }
+    
+    // Allocate array for final arguments
+    *final_args = malloc(sizeof(ExprResult) * fn->param_count);
+    if (!*final_args) return 0;
+    
+    // Copy provided arguments
+    for (int i = 0; i < provided_args; i++) {
+        (*final_args)[i] = args[i];
+    }
+    
+    // Fill in default values for missing arguments
+    for (int i = provided_args; i < fn->param_count; i++) {
+        if (fn->parameters && fn->parameters[i].has_default) {
+            // Convert BreadValue to ExprResult
+            (*final_args)[i] = bread_expr_result_from_value(fn->parameters[i].default_value);
+        } else {
+            // This shouldn't happen if validation is correct
+            free(*final_args);
+            *final_args = NULL;
+            return 0;
+        }
+    }
+    
+    return 1;
 }

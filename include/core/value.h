@@ -4,7 +4,7 @@
 #include "core/forward_decls.h"
 #include "core/var.h"
 #include "runtime/runtime.h"
-#include "compiler/expr.h"
+#include "compiler/parser/expr.h"
 
 struct BreadArray {
     BreadObjHeader header;

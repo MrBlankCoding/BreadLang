@@ -3,6 +3,7 @@
 #include <stdio.h>
 
 #include "runtime/runtime.h"
+#include "runtime/error.h"
 #include "core/value.h"
 
 #define INTERN_TABLE_SIZE 256
@@ -144,7 +145,15 @@ int bread_string_cmp(const BreadString* a, const BreadString* b) {
 }
 
 char bread_string_get_char(const BreadString* s, size_t index) {
-    if (!s || index >= s->len) {
+    if (!s) {
+        BREAD_ERROR_SET_RUNTIME("String is null");
+        return '\0';
+    }
+    if (index >= s->len) {
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg), 
+                "String index %zu out of bounds (string length: %zu)", index, s->len);
+        BREAD_ERROR_SET_INDEX_OUT_OF_BOUNDS(error_msg);
         return '\0';
     }
     return s->data[index];

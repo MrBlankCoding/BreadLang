@@ -4,7 +4,7 @@
 #include <ctype.h>
 #include <limits.h>
 #include "core/var.h"
-#include "compiler/expr.h"
+#include "compiler/parser/expr.h"
 #include "core/value.h"
 #include "runtime/runtime.h"
 

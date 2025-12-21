@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "compiler/escape_analysis.h"
+#include "compiler/analysis/escape_analysis.h"
 
 static EscapeAnalysisCtx* g_escape_ctx = NULL;
 

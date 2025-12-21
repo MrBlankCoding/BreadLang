@@ -7,7 +7,7 @@
 #include "../../include/core/var.h"
 #include "../../include/core/value.h"
 #include "../../include/runtime/runtime.h"
-#include "../../include/compiler/ast.h"
+#include "../../include/compiler/ast/ast.h"
 #include "../../include/backends/llvm_backend.h"
 
 typedef struct {

@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "compiler/type_stability.h"
-#include "compiler/semantic.h"
+#include "compiler/analysis/type_stability.h"
+#include "compiler/analysis/semantic.h"
 
 #define MAX_TRACKED_VARS 256
 

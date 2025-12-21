@@ -17,33 +17,44 @@ CORE_SOURCES = \
 	$(SRC_DIR)/core/value.c \
 	$(SRC_DIR)/core/function.c \
 	$(SRC_DIR)/runtime/runtime.c \
-	$(SRC_DIR)/compiler/expr.c \
-	$(SRC_DIR)/compiler/expr_ops.c \
-	$(SRC_DIR)/compiler/ast.c \
-	$(SRC_DIR)/compiler/semantic.c \
-	$(SRC_DIR)/compiler/type_stability.c \
-	$(SRC_DIR)/compiler/escape_analysis.c \
-	$(SRC_DIR)/compiler/optimization.c \
+	$(SRC_DIR)/runtime/error.c \
+	$(SRC_DIR)/compiler/parser/expr.c \
+	$(SRC_DIR)/compiler/parser/expr_ops.c \
+	$(SRC_DIR)/compiler/ast/ast.c \
+	$(SRC_DIR)/compiler/ast/ast_memory.c \
+	$(SRC_DIR)/compiler/ast/ast_types.c \
+	$(SRC_DIR)/compiler/ast/ast_expr_parser.c \
+	$(SRC_DIR)/compiler/ast/ast_stmt_parser.c \
+	$(SRC_DIR)/compiler/ast/ast_dump.c \
+	$(SRC_DIR)/compiler/analysis/semantic.c \
+	$(SRC_DIR)/compiler/analysis/type_stability.c \
+	$(SRC_DIR)/compiler/analysis/escape_analysis.c \
+	$(SRC_DIR)/compiler/optimization/optimization.c \
 	$(SRC_DIR)/backends/llvm_backend.c \
 	$(SRC_DIR)/codegen/codegen.c \
 	$(SRC_DIR)/codegen/optimized_codegen.c \
-	$(SRC_DIR)/runtime/print.c
+	$(SRC_DIR)/runtime/print.c \
+	$(SRC_DIR)/runtime/string_ops.c \
+	$(SRC_DIR)/runtime/value_ops.c \
+	$(SRC_DIR)/runtime/operators.c \
+	$(SRC_DIR)/runtime/builtins.c \
+	$(SRC_DIR)/runtime/array_utils.c
 
 PBT_SOURCES = pbt_framework.c
-TESTS = type_properties string_properties array_properties parser_properties control_properties builtin_properties
+TESTS = type_properties string_properties array_properties parser_properties control_properties builtin_properties error_properties
 
 .PHONY: all clean run
 
 all: $(TESTS)
 
 type_properties: type_properties.c $(PBT_SOURCES) $(CORE_SOURCES)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+	$(CC) $(CFLAGS) $(LLVM_CFLAGS) $(LLVM_DEFS) -o $@ $^ $(LDFLAGS) $(LLVM_LDFLAGS) $(LLVM_LIBS) -lm
 
 string_properties: string_properties.c $(PBT_SOURCES) $(CORE_SOURCES)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+	$(CC) $(CFLAGS) $(LLVM_CFLAGS) $(LLVM_DEFS) -o $@ $^ $(LDFLAGS) $(LLVM_LDFLAGS) $(LLVM_LIBS) -lm
 
 array_properties: array_properties.c $(PBT_SOURCES) $(CORE_SOURCES)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+	$(CC) $(CFLAGS) $(LLVM_CFLAGS) $(LLVM_DEFS) -o $@ $^ $(LDFLAGS) $(LLVM_LDFLAGS) $(LLVM_LIBS) -lm
 
 parser_properties: parser_properties.c $(PBT_SOURCES) $(CORE_SOURCES)
 	$(CC) $(CFLAGS) $(LLVM_CFLAGS) $(LLVM_DEFS) -o $@ $^ $(LDFLAGS) $(LLVM_LDFLAGS) $(LLVM_LIBS) -lm
@@ -52,6 +63,9 @@ control_properties: control_properties.c $(PBT_SOURCES) $(CORE_SOURCES)
 	$(CC) $(CFLAGS) $(LLVM_CFLAGS) $(LLVM_DEFS) -o $@ $^ $(LDFLAGS) $(LLVM_LDFLAGS) $(LLVM_LIBS) -lm
 
 builtin_properties: builtin_properties.c $(PBT_SOURCES) $(CORE_SOURCES)
+	$(CC) $(CFLAGS) $(LLVM_CFLAGS) $(LLVM_DEFS) -o $@ $^ $(LDFLAGS) $(LLVM_LDFLAGS) $(LLVM_LIBS) -lm
+
+error_properties: error_properties.c $(PBT_SOURCES) $(CORE_SOURCES)
 	$(CC) $(CFLAGS) $(LLVM_CFLAGS) $(LLVM_DEFS) -o $@ $^ $(LDFLAGS) $(LLVM_LDFLAGS) $(LLVM_LIBS) -lm
 
 run: $(TESTS)
@@ -83,3 +97,6 @@ run-control: control_properties
 
 run-builtin: builtin_properties
 	./builtin_properties
+
+run-error: error_properties
+	./error_properties

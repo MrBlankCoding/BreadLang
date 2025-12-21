@@ -1,7 +1,7 @@
 #ifndef TYPE_STABILITY_H
 #define TYPE_STABILITY_H
 
-#include "compiler/ast.h"
+#include "compiler/ast/ast.h"
 
 typedef enum {
     STABILITY_UNKNOWN,      

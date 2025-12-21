@@ -3,9 +3,10 @@
 #include <stdio.h>
 
 #include "runtime/runtime.h"
+#include "runtime/error.h"
 #include "core/value.h"
 #include "core/var.h"
-#include "compiler/expr.h"
+#include "compiler/parser/expr.h"
 
 static int bread_value_is_number(VarType t) {
     return t == TYPE_INT || t == TYPE_FLOAT || t == TYPE_DOUBLE;
@@ -27,12 +28,12 @@ int bread_add(const BreadValue* left, const BreadValue* right, BreadValue* out) 
 
     if (left->type == TYPE_STRING || right->type == TYPE_STRING) {
         if (left->type != TYPE_STRING || right->type != TYPE_STRING) {
-            printf("Error: Cannot concatenate string with non-string\n");
+            BREAD_ERROR_SET_TYPE_MISMATCH("Cannot concatenate string with non-string");
             return 0;
         }
         BreadString* s = bread_string_concat(left->value.string_val, right->value.string_val);
         if (!s) {
-            printf("Error: Out of memory\n");
+            BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory during string concatenation");
             return 0;
         }
         out->type = TYPE_STRING;
@@ -51,7 +52,7 @@ int bread_add(const BreadValue* left, const BreadValue* right, BreadValue* out) 
         return 1;
     }
 
-    printf("Error: Invalid operand types for arithmetic operation\n");
+    BREAD_ERROR_SET_TYPE_MISMATCH("Invalid operand types for arithmetic operation");
     return 0;
 }
 
@@ -213,7 +214,7 @@ void bread_value_set_string(struct BreadValue* out, const char* cstr) {
     out->type = TYPE_STRING;
     out->value.string_val = bread_string_new(cstr ? cstr : "");
     if (!out->value.string_val) {
-        printf("Error: Out of memory\n");
+        BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory creating string");
         out->type = TYPE_NIL;
     }
 }
@@ -287,7 +288,7 @@ int bread_is_truthy(const BreadValue* v) {
 int bread_unary_not(const BreadValue* in, BreadValue* out) {
     if (!in || !out) return 0;
     if (in->type != TYPE_BOOL) {
-        printf("Error: Logical NOT requires boolean operand\n");
+        BREAD_ERROR_SET_TYPE_MISMATCH("Logical NOT requires boolean operand");
         return 0;
     }
     bread_value_set_bool(out, !in->value.bool_val);
@@ -322,11 +323,11 @@ int bread_binary_op(char op, const BreadValue* left, const BreadValue* right, Br
     if (op == '-' || op == '*' || op == '/' || op == '%') {
         if (left->type == TYPE_INT && right->type == TYPE_INT) {
             if (op == '/' && right->value.int_val == 0) {
-                printf("Error: Division by zero\n");
+                BREAD_ERROR_SET_DIVISION_BY_ZERO("Integer division by zero");
                 return 0;
             }
             if (op == '%' && right->value.int_val == 0) {
-                printf("Error: Modulo by zero\n");
+                BREAD_ERROR_SET_DIVISION_BY_ZERO("Integer modulo by zero");
                 return 0;
             }
             int r = 0;
@@ -340,17 +341,17 @@ int bread_binary_op(char op, const BreadValue* left, const BreadValue* right, Br
 
         if (left->type == TYPE_DOUBLE || left->type == TYPE_FLOAT || right->type == TYPE_DOUBLE || right->type == TYPE_FLOAT) {
             if (op == '%') {
-                printf("Error: Modulo operation not supported for floating point numbers\n");
+                BREAD_ERROR_SET_TYPE_MISMATCH("Modulo operation not supported for floating point numbers");
                 return 0;
             }
             double l = 0.0;
             double r = 0.0;
             if (!bread_binary_numeric_promote(left, right, &l, &r)) {
-                printf("Error: Invalid operand types for arithmetic operation\n");
+                BREAD_ERROR_SET_TYPE_MISMATCH("Invalid operand types for arithmetic operation");
                 return 0;
             }
             if (op == '/' && r == 0.0) {
-                printf("Error: Division by zero\n");
+                BREAD_ERROR_SET_DIVISION_BY_ZERO("Floating point division by zero");
                 return 0;
             }
             double res = 0.0;
@@ -361,7 +362,7 @@ int bread_binary_op(char op, const BreadValue* left, const BreadValue* right, Br
             return 1;
         }
 
-        printf("Error: Invalid operand types for arithmetic operation\n");
+        BREAD_ERROR_SET_TYPE_MISMATCH("Invalid operand types for arithmetic operation");
         return 0;
     }
 
@@ -398,7 +399,7 @@ int bread_binary_op(char op, const BreadValue* left, const BreadValue* right, Br
             else if (op == 'l') result_val = cmp <= 0;
             else if (op == 'g') result_val = cmp >= 0;
         } else {
-            printf("Error: Cannot compare different types\n");
+            BREAD_ERROR_SET_TYPE_MISMATCH("Cannot compare different types");
             return 0;
         }
         bread_value_set_bool(out, result_val);
@@ -407,7 +408,7 @@ int bread_binary_op(char op, const BreadValue* left, const BreadValue* right, Br
 
     if (op == '&' || op == '|') {
         if (left->type != TYPE_BOOL || right->type != TYPE_BOOL) {
-            printf("Error: Logical operations require boolean operands\n");
+            BREAD_ERROR_SET_TYPE_MISMATCH("Logical operations require boolean operands");
             return 0;
         }
         int res = 0;
@@ -417,7 +418,9 @@ int bread_binary_op(char op, const BreadValue* left, const BreadValue* right, Br
         return 1;
     }
 
-    printf("Error: Unknown binary operator '%c'\n", op);
+    char error_msg[64];
+    snprintf(error_msg, sizeof(error_msg), "Unknown binary operator '%c'", op);
+    BREAD_ERROR_SET_RUNTIME(error_msg);
     return 0;
 }
 
@@ -427,7 +430,7 @@ int bread_coerce_value(VarType target, const BreadValue* in, BreadValue* out) {
     if (target == TYPE_OPTIONAL && in->type == TYPE_NIL) {
         BreadOptional* o = bread_optional_new_none();
         if (!o) {
-            printf("Error: Out of memory\n");
+            BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory creating optional value");
             return 0;
         }
         bread_value_set_optional(out, o);
@@ -438,7 +441,7 @@ int bread_coerce_value(VarType target, const BreadValue* in, BreadValue* out) {
     if (target == TYPE_OPTIONAL && in->type != TYPE_OPTIONAL) {
         BreadOptional* o = bread_optional_new_some(*in);
         if (!o) {
-            printf("Error: Out of memory\n");
+            BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory creating optional value");
             return 0;
         }
         bread_value_set_optional(out, o);
@@ -476,6 +479,6 @@ int bread_coerce_value(VarType target, const BreadValue* in, BreadValue* out) {
         return 1;
     }
 
-    printf("Error: Type mismatch\n");
+    BREAD_ERROR_SET_TYPE_MISMATCH("Type mismatch in coercion");
     return 0;
 }

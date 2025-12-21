@@ -2,9 +2,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "compiler/expr.h"
+#include "compiler/parser/expr.h"
 #include "core/var.h"
 #include "runtime/runtime.h"
+#include "runtime/error.h"
 
 static ExprResult ops_create_error_result(void) {
     ExprResult result;
@@ -48,12 +49,17 @@ ExprResult evaluate_binary_op(ExprResult left, ExprResult right, char op) {
     // Handle string concatenation
     if (op == '+' && (left.type == TYPE_STRING || right.type == TYPE_STRING)) {
         if (left.type != TYPE_STRING || right.type != TYPE_STRING) {
-            printf("Error: Cannot concatenate string with non-string\n");
+            char error_msg[256];
+            snprintf(error_msg, sizeof(error_msg), 
+                    "Cannot concatenate %s with %s using + operator", 
+                    (left.type == TYPE_STRING) ? "string" : "non-string",
+                    (right.type == TYPE_STRING) ? "string" : "non-string");
+            BREAD_ERROR_SET_TYPE_MISMATCH(error_msg);
             return ops_create_error_result();
         }
         BreadString* result = bread_string_concat(left.value.string_val, right.value.string_val);
         if (!result) {
-            printf("Error: Out of memory\n");
+            BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory during string concatenation");
             return ops_create_error_result();
         }
         bread_string_release(left.value.string_val);

@@ -1,7 +1,7 @@
 #ifndef LLVM_BACKEND_H
 #define LLVM_BACKEND_H
 
-#include "compiler/ast.h"
+#include "compiler/ast/ast.h"
 #include "core/function.h"
 
 int bread_llvm_emit_ll(const ASTStmtList* program, const char* out_path);

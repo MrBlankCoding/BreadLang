@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "compiler/optimization.h"
+#include "compiler/optimization/optimization.h"
 #include <llvm-c/Core.h>
 
 static OptimizationCtx* g_opt_ctx = NULL;

@@ -3,7 +3,8 @@
 #include <stddef.h>
 #include <string.h>
 
-#include "compiler/semantic.h"
+#include "compiler/analysis/semantic.h"
+#include "runtime/error.h"
 #include "core/function.h"
 #include "runtime/runtime.h"
 
@@ -35,8 +36,13 @@ static int sem_same_name(const char* a, const char* b) {
 }
 
 static void sem_error(SemCtx* ctx, const char* msg, const char* name) {
-    if (name) printf("Error: %s '%s'\n", msg, name);
-    else printf("Error: %s\n", msg);
+    if (name) {
+        char error_msg[512];
+        snprintf(error_msg, sizeof(error_msg), "%s '%s'", msg, name);
+        BREAD_ERROR_SET_COMPILE_ERROR(error_msg);
+    } else {
+        BREAD_ERROR_SET_COMPILE_ERROR(msg);
+    }
     if (ctx) ctx->had_error = 1;
 }
 
@@ -234,6 +240,10 @@ static void sem_visit_expr(SemCtx* ctx, ASTExpr* e) {
                 sem_error(ctx, "Unknown function", e->as.call.name);
                 return;
             }
+            
+            // For now, we'll use the original arity check since we don't store 
+            // default parameter info in semantic symbols yet
+            // TODO: Enhance semantic analysis to track default parameters
             if (f->arity != e->as.call.arg_count) {
                 printf("Error: Function '%s' expected %d args but got %d\n", e->as.call.name ? e->as.call.name : "", f->arity, e->as.call.arg_count);
                 ctx->had_error = 1;

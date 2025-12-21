@@ -34,18 +34,24 @@ LLVM_DEFS="-DBREAD_HAVE_LLVM=1"
   "$ROOT_DIR/src/core/function.c" \
   "$ROOT_DIR/src/core/value.c" \
   "$ROOT_DIR/src/core/var.c" \
-  "$ROOT_DIR/src/compiler/ast.c" \
-  "$ROOT_DIR/src/compiler/expr.c" \
-  "$ROOT_DIR/src/compiler/expr_ops.c" \
-  "$ROOT_DIR/src/compiler/semantic.c" \
-  "$ROOT_DIR/src/compiler/type_stability.c" \
-  "$ROOT_DIR/src/compiler/escape_analysis.c" \
-  "$ROOT_DIR/src/compiler/optimization.c" \
+  "$ROOT_DIR/src/compiler/ast/ast.c" \
+  "$ROOT_DIR/src/compiler/ast/ast_memory.c" \
+  "$ROOT_DIR/src/compiler/ast/ast_types.c" \
+  "$ROOT_DIR/src/compiler/ast/ast_expr_parser.c" \
+  "$ROOT_DIR/src/compiler/ast/ast_stmt_parser.c" \
+  "$ROOT_DIR/src/compiler/ast/ast_dump.c" \
+  "$ROOT_DIR/src/compiler/parser/expr.c" \
+  "$ROOT_DIR/src/compiler/parser/expr_ops.c" \
+  "$ROOT_DIR/src/compiler/analysis/semantic.c" \
+  "$ROOT_DIR/src/compiler/analysis/type_stability.c" \
+  "$ROOT_DIR/src/compiler/analysis/escape_analysis.c" \
+  "$ROOT_DIR/src/compiler/optimization/optimization.c" \
   "$ROOT_DIR/src/backends/llvm_backend.c" \
   "$ROOT_DIR/src/codegen/codegen.c" \
   "$ROOT_DIR/src/codegen/optimized_codegen.c" \
   "$ROOT_DIR/src/runtime/print.c" \
   "$ROOT_DIR/src/runtime/runtime.c" \
+  "$ROOT_DIR/src/runtime/error.c" \
   "$ROOT_DIR/src/runtime/string_ops.c" \
   "$ROOT_DIR/src/runtime/value_ops.c" \
   "$ROOT_DIR/src/runtime/operators.c" \

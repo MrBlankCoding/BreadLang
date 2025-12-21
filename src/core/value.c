@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 #include "core/value.h"
-#include "compiler/expr.h"
+#include "compiler/parser/expr.h"
 
 static int bread_string_equals(const BreadString* bs, const char* str) {
     if (!bs || !str) return 0;

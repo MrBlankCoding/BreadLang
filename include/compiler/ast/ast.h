@@ -3,7 +3,7 @@
 
 #include <stdio.h>
 
-#include "compiler/expr.h"
+#include "compiler/parser/expr.h"
 #include "core/var.h"
 
 typedef struct ASTExpr ASTExpr;
@@ -171,6 +171,7 @@ typedef struct {
     int param_count;
     char** param_names;
     VarType* param_types;
+    ASTExpr** param_defaults;  // Default value expressions (NULL if no default)
     VarType return_type;
     ASTStmtList* body;
     void* opt_info;        // FunctionOptInfo*

@@ -1,7 +1,7 @@
 #ifndef ESCAPE_ANALYSIS_H
 #define ESCAPE_ANALYSIS_H
 
-#include "compiler/ast.h"
+#include "compiler/ast/ast.h"
 
 typedef enum {
     ESCAPE_UNKNOWN,         // Hasnt been analyzed yet

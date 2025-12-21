@@ -3,7 +3,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <math.h>
-#include "compiler/expr.h"
+#include "compiler/parser/expr.h"
 #include "core/var.h"
 #include "core/function.h"
 #include "core/value.h"

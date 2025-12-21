@@ -49,6 +49,12 @@ Run a BreadLang program using LLVM JIT compilation:
 ./breadlang program.bread
 ```
 
+Run inline BreadLang code from the command line:
+
+```sh
+./breadlang -c 'print(1 + 2)'
+```
+
 ### Command-Line Options
 
 | Flag | Description |
@@ -58,6 +64,8 @@ Run a BreadLang program using LLVM JIT compilation:
 | `--emit-obj` | Compiles to an object file |
 | `--emit-exe` | Compiles to a native executable |
 | `-o <file>` | Specifies output file for emit operations |
+| `-h`, `--help` | Shows usage and available options |
+| `-c <code>`, `--eval <code>` | Executes BreadLang code passed directly on the command line |
 
 ## Language Syntax
 

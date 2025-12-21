@@ -1,13 +1,21 @@
 #ifndef FUNCTION_H
 #define FUNCTION_H
 
-#include "compiler/expr.h"
+#include "compiler/parser/expr.h"
+#include "core/value.h"
+
+typedef struct {
+    char* name;
+    BreadValue default_value;
+    int has_default;
+} FunctionParameter;
 
 typedef struct {
     char* name;
     int param_count;
     char** param_names;
     VarType* param_types;
+    FunctionParameter* parameters;  // Enhanced parameter info with defaults
     VarType return_type;
     void* body;
     int body_is_ast;
@@ -30,5 +38,9 @@ VarValue coerce_value(VarType target, ExprResult val);
 
 ExprResult call_function(const char* name, int arg_count, const char** arg_exprs);
 ExprResult call_function_values(const char* name, int arg_count, ExprResult* arg_vals);
+
+// Default parameter handling
+int function_get_required_params(const Function* fn);
+int function_apply_defaults(const Function* fn, int provided_args, ExprResult* args, ExprResult** final_args);
 
 #endif

@@ -2,7 +2,7 @@
 #define BREAD_CODEGEN_H
 
 #include <llvm-c/Core.h>
-#include "compiler/ast.h"
+#include "compiler/ast/ast.h"
 
 // Forward declaration
 // Define CG directly

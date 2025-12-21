@@ -1,7 +1,7 @@
 #ifndef OPTIMIZATION_H
 #define OPTIMIZATION_H
 
-#include "compiler/ast.h"
+#include "compiler/ast/ast.h"
 #include <llvm-c/Core.h>
 
 typedef enum {

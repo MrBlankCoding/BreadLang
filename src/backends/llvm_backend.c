@@ -3,9 +3,10 @@
 #include <string.h>
 
 #include "backends/llvm_backend.h"
-#include "compiler/type_stability.h"
-#include "compiler/escape_analysis.h"
-#include "compiler/optimization.h"
+#include "runtime/error.h"
+#include "compiler/analysis/type_stability.h"
+#include "compiler/analysis/escape_analysis.h"
+#include "compiler/optimization/optimization.h"
 #include "codegen/optimized_codegen.h"
 #include <llvm-c/Core.h>
 #include <llvm-c/Analysis.h>
@@ -333,10 +334,20 @@ static LLVMTargetMachineRef bread_llvm_create_native_target_machine(void) {
 
 int bread_llvm_emit_ll(const ASTStmtList* program, const char* out_path) {
     if (!program || !out_path) return 0;
+    
+    // Check for compilation errors before proceeding
+    if (bread_error_has_compilation_errors()) {
+        return 0;
+    }
 
     LLVMModuleRef mod = NULL;
-    if (!bread_llvm_build_module_from_program(program, &mod)) return 0;
+    if (!bread_llvm_build_module_from_program(program, &mod)) {
+        BREAD_ERROR_SET_COMPILE_ERROR("Failed to build LLVM module from program");
+        return 0;
+    }
+    
     if (!bread_llvm_verify_module(mod)) {
+        BREAD_ERROR_SET_COMPILE_ERROR("LLVM module verification failed");
         LLVMDisposeModule(mod);
         return 0;
     }
@@ -344,7 +355,9 @@ int bread_llvm_emit_ll(const ASTStmtList* program, const char* out_path) {
     char* ir_text = LLVMPrintModuleToString(mod);
     int ok = write_text_file(out_path, ir_text ? ir_text : "");
     if (!ok) {
-        printf("Error: Could not write LLVM IR to '%s'\n", out_path);
+        char error_msg[512];
+        snprintf(error_msg, sizeof(error_msg), "Could not write LLVM IR to '%s'", out_path);
+        BREAD_ERROR_SET_COMPILE_ERROR(error_msg);
     }
     if (ir_text) LLVMDisposeMessage(ir_text);
     LLVMDisposeModule(mod);
@@ -353,9 +366,17 @@ int bread_llvm_emit_ll(const ASTStmtList* program, const char* out_path) {
 
 int bread_llvm_emit_obj(const ASTStmtList* program, const char* out_path) {
     if (!program || !out_path) return 0;
+    
+    // Check for compilation errors before proceeding
+    if (bread_error_has_compilation_errors()) {
+        return 0;
+    }
 
     LLVMModuleRef mod = NULL;
-    if (!bread_llvm_build_module_from_program(program, &mod)) return 0;
+    if (!bread_llvm_build_module_from_program(program, &mod)) {
+        BREAD_ERROR_SET_COMPILE_ERROR("Failed to build LLVM module from program");
+        return 0;
+    }
 
     LLVMTargetMachineRef tm = bread_llvm_create_native_target_machine();
     if (!tm) {
@@ -426,45 +447,99 @@ static int bread_llvm_link_executable_with_clang(const char* obj_path, const cha
     char value_ops_path[PATH_MAX];
     char builtins_path[PATH_MAX];
     char inc_path[PATH_MAX];
+    // Core runtime and utilities
     snprintf(rt_path, sizeof(rt_path), "%s/src/runtime/runtime.c", root_dir);
     snprintf(print_path, sizeof(print_path), "%s/src/runtime/print.c", root_dir);
-    snprintf(value_path, sizeof(value_path), "%s/src/core/value.c", root_dir);
-    snprintf(var_path, sizeof(var_path), "%s/src/core/var.c", root_dir);
-    snprintf(function_path, sizeof(function_path), "%s/src/core/function.c", root_dir);
-    snprintf(ast_path, sizeof(ast_path), "%s/src/compiler/ast.c", root_dir);
-    snprintf(expr_path, sizeof(expr_path), "%s/src/compiler/expr.c", root_dir);
-    snprintf(expr_ops_path, sizeof(expr_ops_path), "%s/src/compiler/expr_ops.c", root_dir);
     snprintf(string_ops_path, sizeof(string_ops_path), "%s/src/runtime/string_ops.c", root_dir);
     snprintf(operators_path, sizeof(operators_path), "%s/src/runtime/operators.c", root_dir);
     snprintf(array_utils_path, sizeof(array_utils_path), "%s/src/runtime/array_utils.c", root_dir);
     snprintf(value_ops_path, sizeof(value_ops_path), "%s/src/runtime/value_ops.c", root_dir);
     snprintf(builtins_path, sizeof(builtins_path), "%s/src/runtime/builtins.c", root_dir);
+    
+    // Error handling
+    char error_path[PATH_MAX];
+    snprintf(error_path, sizeof(error_path), "%s/src/runtime/error.c", root_dir);
+    
+    // Core types and variables
+    snprintf(value_path, sizeof(value_path), "%s/src/core/value.c", root_dir);
+    snprintf(var_path, sizeof(var_path), "%s/src/core/var.c", root_dir);
+    snprintf(function_path, sizeof(function_path), "%s/src/core/function.c", root_dir);
+    
+    // AST and parser
+    snprintf(ast_path, sizeof(ast_path), "%s/src/compiler/ast/ast.c", root_dir);
+    snprintf(expr_path, sizeof(expr_path), "%s/src/compiler/parser/expr.c", root_dir);
+    snprintf(expr_ops_path, sizeof(expr_ops_path), "%s/src/compiler/parser/expr_ops.c", root_dir);
+    
+    // AST memory management
+    char ast_memory_path[PATH_MAX];
+    snprintf(ast_memory_path, sizeof(ast_memory_path), "%s/src/compiler/ast/ast_memory.c", root_dir);
+    
+    // AST types
+    char ast_types_path[PATH_MAX];
+    snprintf(ast_types_path, sizeof(ast_types_path), "%s/src/compiler/ast/ast_types.c", root_dir);
+    
+    // AST expression parser
+    char ast_expr_parser_path[PATH_MAX];
+    snprintf(ast_expr_parser_path, sizeof(ast_expr_parser_path), "%s/src/compiler/ast/ast_expr_parser.c", root_dir);
+    
+    // AST statement parser
+    char ast_stmt_parser_path[PATH_MAX];
+    snprintf(ast_stmt_parser_path, sizeof(ast_stmt_parser_path), "%s/src/compiler/ast/ast_stmt_parser.c", root_dir);
+    
+    // AST dump
+    char ast_dump_path[PATH_MAX];
+    snprintf(ast_dump_path, sizeof(ast_dump_path), "%s/src/compiler/ast/ast_dump.c", root_dir);
+    
+    // Include path
     snprintf(inc_path, sizeof(inc_path), "%s/include", root_dir);
 
-    size_t cap = strlen(obj_path) + strlen(out_path) + strlen(rt_path) + strlen(print_path) + strlen(value_path) + strlen(var_path) + strlen(function_path) + strlen(ast_path) + strlen(expr_path) + strlen(expr_ops_path) + strlen(string_ops_path) + strlen(operators_path) + strlen(array_utils_path) + strlen(value_ops_path) + strlen(builtins_path) + strlen(inc_path) + 256;
+    // Calculate required buffer size for the command
+    size_t cap = strlen(obj_path) + strlen(out_path) + 
+                strlen(rt_path) + strlen(print_path) + 
+                strlen(string_ops_path) + strlen(operators_path) + 
+                strlen(array_utils_path) + strlen(value_ops_path) + 
+                strlen(builtins_path) + strlen(error_path) + 
+                strlen(value_path) + strlen(var_path) + 
+                strlen(function_path) + strlen(ast_path) + 
+                strlen(expr_path) + strlen(expr_ops_path) + 
+                strlen(ast_memory_path) + strlen(ast_types_path) + 
+                strlen(ast_expr_parser_path) + strlen(ast_stmt_parser_path) + 
+                strlen(ast_dump_path) + strlen(inc_path) + 
+                2048;  // Extra space for flags and formatting
     char* cmd = (char*)malloc(cap);
     if (!cmd) return 0;
 
+    // Build the command with all required source files and flags
     snprintf(
         cmd,
         cap,
-        "clang -std=c11 -I'%s' -o '%s' '%s' '%s' '%s' '%s' '%s' '%s' '%s' '%s' '%s' '%s' '%s' '%s' '%s' '%s' -lm",
-        inc_path,
-        out_path,
-        obj_path,
-        rt_path,
-        print_path,
-        value_path,
-        var_path,
-        function_path,
-        ast_path,
-        expr_path,
-        expr_ops_path,
-        string_ops_path,
-        operators_path,
-        array_utils_path,
-        value_ops_path,
-        builtins_path);
+        "clang -std=c11 -I'%s' -o '%s' "
+        "'%s' "  // obj_path
+        "'%s' '%s' "  // rt_path, print_path
+        "'%s' '%s' '%s' "  // string_ops_path, operators_path, array_utils_path
+        "'%s' '%s' "  // value_ops_path, builtins_path
+        "'%s' '%s' '%s' "  // error_path, value_path, var_path
+        "'%s' '%s' "  // function_path, ast_path
+        "'%s' '%s' '%s' "  // expr_path, expr_ops_path, ast_memory_path
+        "'%s' '%s' '%s' "  // ast_types_path, ast_expr_parser_path, ast_stmt_parser_path
+        "'%s' -lm -fPIC -O2 -g",  // ast_dump_path and linker flags
+        inc_path,          // Include path
+        out_path,          // Output file
+        obj_path,          // Input object file
+        rt_path, print_path,  // Runtime
+        string_ops_path, operators_path, array_utils_path,  // Runtime utilities
+        value_ops_path, builtins_path,  // Core runtime
+        error_path, value_path, var_path,  // Error handling and core types
+        function_path, ast_path,  // Functions and AST
+        expr_path, expr_ops_path, ast_memory_path,  // Parser and AST memory
+        ast_types_path, ast_expr_parser_path, ast_stmt_parser_path,  // AST components
+        ast_dump_path  // AST dump
+    );
+    
+    // Print the command for debugging
+    if (getenv("BREAD_DEBUG_LINK")) {
+        printf("Linking command: %s\n", cmd);
+    }
     int rc = system(cmd);
     free(cmd);
     return rc == 0;
@@ -495,6 +570,11 @@ int bread_llvm_emit_exe(const ASTStmtList* program, const char* out_path) {
 
 int bread_llvm_jit_exec(const ASTStmtList* program) {
     if (!program) return 1;
+    
+    // Check for compilation errors before proceeding
+    if (bread_error_has_compilation_errors()) {
+        return 1;
+    }
 
     LLVMInitializeNativeTarget();
     LLVMInitializeNativeAsmPrinter();
