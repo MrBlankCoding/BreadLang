@@ -6,30 +6,7 @@ $Failed = 0
 
 Write-Host "Running BreadLang tests..."
 
-$gccArgs = @(
-    '-std=c11',
-    '-Wall',
-    '-Wextra',
-    '-O0',
-    '-g',
-    (Join-Path $RootDir "src\ast.c"),
-    (Join-Path $RootDir "src\bytecode.c"),
-    (Join-Path $RootDir "src\compiler.c"),
-    (Join-Path $RootDir "src\expr.c"),
-    (Join-Path $RootDir "src\expr_ops.c"),
-    (Join-Path $RootDir "src\function.c"),
-    (Join-Path $RootDir "src\interpreter.c"),
-    (Join-Path $RootDir "src\print.c"),
-    (Join-Path $RootDir "src\runtime.c"),
-    (Join-Path $RootDir "src\semantic.c"),
-    (Join-Path $RootDir "src\value.c"),
-    (Join-Path $RootDir "src\var.c"),
-    (Join-Path $RootDir "src\vm.c"),
-    '-o', $BreadLang,
-    '-lm'
-)
-
-& gcc @gccArgs
+& bash (Join-Path $RootDir "build.sh")
 
 $TestFiles = Get-ChildItem -Path $TestDir -Recurse -Filter *.bread
 
