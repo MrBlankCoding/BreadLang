@@ -97,4 +97,13 @@ int bread_var_load(const char* name, BreadValue* out);
 void bread_push_scope(void);
 void bread_pop_scope(void);
 
+// Built-in range functions
+struct BreadArray* bread_range_create(int start, int end, int step);
+struct BreadArray* bread_range(int n);
+
+// LLVM backend wrapper functions
+int bread_array_get_value(struct BreadArray* a, int idx, struct BreadValue* out);
+int bread_value_array_get(struct BreadValue* array_val, int idx, struct BreadValue* out);
+int bread_value_array_length(struct BreadValue* array_val);
+
 #endif

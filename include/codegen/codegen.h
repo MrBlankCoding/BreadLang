@@ -75,6 +75,16 @@ typedef struct {
     LLVMValueRef fn_array_release;
     LLVMValueRef fn_dict_new;
     LLVMValueRef fn_dict_release;
+    LLVMValueRef fn_string_create;
+    LLVMValueRef fn_string_concat;
+    LLVMValueRef fn_string_get_char;
+    LLVMValueRef fn_array_create;
+    LLVMValueRef fn_array_get;
+    LLVMValueRef fn_array_set;
+    LLVMValueRef fn_array_length;
+    LLVMValueRef fn_range_create;
+    LLVMValueRef fn_range_simple;
+    LLVMValueRef fn_value_get_int;
 
     LLVMTypeRef ty_bread_value_size;
     LLVMTypeRef ty_value_set_nil;
@@ -109,9 +119,23 @@ typedef struct {
     LLVMTypeRef ty_array_release;
     LLVMTypeRef ty_dict_new;
     LLVMTypeRef ty_dict_release;
+    LLVMTypeRef ty_string_create;
+    LLVMTypeRef ty_string_concat;
+    LLVMTypeRef ty_string_get_char;
+    LLVMTypeRef ty_array_create;
+    LLVMTypeRef ty_array_get;
+    LLVMTypeRef ty_array_set;
+    LLVMTypeRef ty_array_length;
+    LLVMTypeRef ty_range_create;
+    LLVMTypeRef ty_range_simple;
+    LLVMTypeRef ty_value_get_int;
 
     int loop_depth;
     int tmp_counter;
+    
+    // Loop context for break/continue
+    LLVMBasicBlockRef current_loop_end;
+    LLVMBasicBlockRef current_loop_continue;
 
     CgFunction* functions;
     LLVMTypeRef value_type;

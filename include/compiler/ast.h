@@ -29,7 +29,10 @@ typedef enum {
     AST_EXPR_DICT,
     AST_EXPR_INDEX,
     AST_EXPR_MEMBER,
-    AST_EXPR_METHOD_CALL
+    AST_EXPR_METHOD_CALL,
+    AST_EXPR_STRING_LITERAL,
+    AST_EXPR_ARRAY_LITERAL,
+    AST_EXPR_RANGE
 } ASTExprKind;
 
 typedef struct {
@@ -87,6 +90,20 @@ struct ASTExpr {
             ASTExpr** args;
             int is_optional_chain;
         } method_call;
+        struct {
+            char* value;
+            size_t length;
+        } string_literal;
+        struct {
+            int element_count;
+            ASTExpr** elements;
+            VarType element_type;
+        } array_literal;
+        struct {
+            ASTExpr* start;
+            ASTExpr* end;
+            int is_inclusive;
+        } range;
     } as;
 };
 
@@ -98,6 +115,7 @@ typedef enum {
     AST_STMT_IF,
     AST_STMT_WHILE,
     AST_STMT_FOR,
+    AST_STMT_FOR_IN,
     AST_STMT_BREAK,
     AST_STMT_CONTINUE,
     AST_STMT_FUNC_DECL,
@@ -143,6 +161,12 @@ typedef struct {
 } ASTStmtFor;
 
 typedef struct {
+    char* var_name;
+    ASTExpr* iterable;  // Array or range expression
+    ASTStmtList* body;
+} ASTStmtForIn;
+
+typedef struct {
     char* name;
     int param_count;
     char** param_names;
@@ -167,6 +191,7 @@ struct ASTStmt {
         ASTStmtIf if_stmt;
         ASTStmtWhile while_stmt;
         ASTStmtFor for_stmt;
+        ASTStmtForIn for_in_stmt;
         ASTStmtFuncDecl func_decl;
         ASTStmtReturn ret;
     } as;
@@ -178,24 +203,9 @@ struct ASTStmtList {
     ASTStmt* tail;
 };
 
-typedef enum {
-    AST_EXEC_SIGNAL_NONE,
-    AST_EXEC_SIGNAL_BREAK,
-    AST_EXEC_SIGNAL_CONTINUE,
-    AST_EXEC_SIGNAL_RETURN
-} ASTExecSignal;
-
-void bread_set_trace(int enabled);
-int bread_get_trace(void);
-
+// Core AST parsing and dumping functions
 ASTStmtList* ast_parse_program(const char* code);
 void ast_free_stmt_list(ASTStmtList* stmts);
-
 void ast_dump_stmt_list(const ASTStmtList* stmts, FILE* out);
-
-void ast_runtime_init(void);
-void ast_runtime_cleanup(void);
-
-ASTExecSignal ast_execute_stmt_list(ASTStmtList* stmts, ExprResult* out_return);
 
 #endif

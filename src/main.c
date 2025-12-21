@@ -23,7 +23,6 @@ char* trim_main(char* str) {
 
 int main(int argc, char* argv[]) {
     int dump_ast = 0;
-    int trace = 0;
     int emit_llvm = 0;
     int emit_obj = 0;
     int emit_exe = 0;
@@ -33,10 +32,6 @@ int main(int argc, char* argv[]) {
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--dump-ast") == 0) {
             dump_ast = 1;
-            continue;
-        }
-        if (strcmp(argv[i], "--trace") == 0) {
-            trace = 1;
             continue;
         }
          if (strcmp(argv[i], "--emit-llvm") == 0) {
@@ -53,7 +48,7 @@ int main(int argc, char* argv[]) {
          }
          if (strcmp(argv[i], "-o") == 0) {
              if (i + 1 >= argc) {
-                 printf("Usage: %s [--dump-ast] [--trace] [--emit-llvm|--emit-obj|--emit-exe] [-o out] <filename>\n", argv[0]);
+                 printf("Usage: %s [--dump-ast] [--emit-llvm|--emit-obj|--emit-exe] [-o out] <filename>\n", argv[0]);
                  return 1;
              }
              out_path = argv[i + 1];
@@ -65,12 +60,12 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
-        printf("Usage: %s [--dump-ast] [--trace] [--emit-llvm|--emit-obj|--emit-exe] [-o out] <filename>\n", argv[0]);
+        printf("Usage: %s [--dump-ast] [--emit-llvm|--emit-obj|--emit-exe] [-o out] <filename>\n", argv[0]);
         return 1;
     }
 
     if (!filename) {
-        printf("Usage: %s [--dump-ast] [--trace] [--emit-llvm|--emit-obj|--emit-exe] [-o out] <filename>\n", argv[0]);
+        printf("Usage: %s [--dump-ast] [--emit-llvm|--emit-obj|--emit-exe] [-o out] <filename>\n", argv[0]);
         return 1;
     }
 
@@ -93,9 +88,6 @@ int main(int argc, char* argv[]) {
     
     init_variables();
     init_functions();
-
-    bread_set_trace(trace);
-    ast_runtime_init();
      
     ASTStmtList* program = ast_parse_program(code);
     if (program) {
@@ -130,7 +122,6 @@ int main(int argc, char* argv[]) {
     }
      
     free(code);
-    ast_runtime_cleanup();
     cleanup_functions();
     cleanup_variables();
     return 0;

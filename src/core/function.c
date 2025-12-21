@@ -158,120 +158,26 @@ VarValue coerce_value(VarType target, ExprResult val) {
     return out;
 }
 
-static ASTExecSignal exec_ast_body(const Function* fn, ExprResult* out) {
-    // AST execution removed - now using LLVM JIT only
-    (void)fn;
-    (void)out;
-    printf("Error: AST function execution is no longer supported. Use LLVM JIT compilation instead.\n");
-    return AST_EXEC_SIGNAL_NONE;
-}
+// AST function execution removed - LLVM JIT only
 
 ExprResult call_function_values(const char* name, int arg_count, ExprResult* arg_vals) {
-    const Function* fn = get_function(name);
-    if (!fn) {
-        printf("Error: Unknown function '%s'\n", name ? name : "");
-        ExprResult err;
-        err.is_error = 1;
-        return err;
-    }
-
-    if (arg_count != fn->param_count) {
-        printf("Error: Function '%s' expected %d args but got %d\n", fn->name, fn->param_count, arg_count);
-        ExprResult err;
-        err.is_error = 1;
-        return err;
-    }
-
-    push_scope();
-
-    for (int i = 0; i < fn->param_count; i++) {
-        ExprResult arg_val = arg_vals[i];
-
-        if (!type_compatible(fn->param_types[i], arg_val.type)) {
-            printf("Error: Type mismatch for parameter '%s' in call to '%s'\n", fn->param_names[i], fn->name);
-            ExprResult err;
-            err.is_error = 1;
-            pop_scope();
-            return err;
-        }
-
-        VarValue v = coerce_value(fn->param_types[i], arg_val);
-        if (!declare_variable_raw(fn->param_names[i], fn->param_types[i], v, 1)) {
-            ExprResult err;
-            err.is_error = 1;
-            pop_scope();
-            return err;
-        }
-
-        if (fn->param_types[i] == TYPE_OPTIONAL && arg_val.type != TYPE_OPTIONAL) {
-            if (v.optional_val) bread_optional_release(v.optional_val);
-        }
-    }
-
-    ExprResult body_val;
-    memset(&body_val, 0, sizeof(body_val));
-    body_val.is_error = 0;
-    body_val.type = fn->return_type;
-
-    ASTExecSignal sig = exec_ast_body(fn, &body_val);
-    if (sig != AST_EXEC_SIGNAL_RETURN) {
-        printf("Error: Function '%s' ended without return\n", fn->name);
-        body_val.is_error = 1;
-        pop_scope();
-        return body_val;
-    }
-
-    pop_scope();
-    return body_val;
+    (void)arg_count;
+    (void)arg_vals;
+    
+    printf("Error: Function '%s' calls are only supported through LLVM JIT compilation\n", name ? name : "unknown");
+    ExprResult err;
+    memset(&err, 0, sizeof(err));
+    err.is_error = 1;
+    return err;
 }
 
 ExprResult call_function(const char* name, int arg_count, const char** arg_exprs) {
-    const Function* fn = get_function(name);
-    if (!fn) {
-        printf("Error: Unknown function '%s'\n", name ? name : "");
-        ExprResult err;
-        err.is_error = 1;
-        return err;
-    }
-
-    if (arg_count != fn->param_count) {
-        printf("Error: Function '%s' expected %d args but got %d\n", fn->name, fn->param_count, arg_count);
-        ExprResult err;
-        err.is_error = 1;
-        return err;
-    }
-
-    ExprResult* arg_vals = NULL;
-    if (arg_count > 0) {
-        arg_vals = malloc(sizeof(ExprResult) * (size_t)arg_count);
-        if (!arg_vals) {
-            printf("Error: Out of memory\n");
-            ExprResult err;
-            err.is_error = 1;
-            return err;
-        }
-    }
-
-    for (int i = 0; i < arg_count; i++) {
-        arg_vals[i] = evaluate_expression(arg_exprs[i]);
-        if (arg_vals[i].is_error) {
-            for (int j = 0; j < i; j++) {
-                BreadValue tmp = bread_value_from_expr_result(arg_vals[j]);
-                bread_value_release(&tmp);
-            }
-            ExprResult err = arg_vals[i];
-            free(arg_vals);
-            return err;
-        }
-    }
-
-    ExprResult out = call_function_values(name, arg_count, arg_vals);
-
-    for (int i = 0; i < arg_count; i++) {
-        BreadValue tmp = bread_value_from_expr_result(arg_vals[i]);
-        bread_value_release(&tmp);
-    }
-    free(arg_vals);
-
-    return out;
+    (void)arg_count;
+    (void)arg_exprs;
+    
+    printf("Error: Function '%s' calls are only supported through LLVM JIT compilation\n", name ? name : "unknown");
+    ExprResult err;
+    memset(&err, 0, sizeof(err));
+    err.is_error = 1;
+    return err;
 }

@@ -173,6 +173,9 @@ static void sem_visit_expr(SemCtx* ctx, ASTExpr* e) {
         case AST_EXPR_STRING:
             sem_tag(e, TYPE_STRING);
             break;
+        case AST_EXPR_STRING_LITERAL:
+            sem_tag(e, TYPE_STRING);
+            break;
         case AST_EXPR_VAR: {
             SemSymbol* v = sem_find(ctx, SEM_SYM_VAR, e->as.var_name);
             if (!v) {
@@ -226,6 +229,15 @@ static void sem_visit_expr(SemCtx* ctx, ASTExpr* e) {
         case AST_EXPR_ARRAY:
             for (int i = 0; i < e->as.array.item_count; i++) sem_visit_expr(ctx, e->as.array.items[i]);
             sem_tag(e, TYPE_ARRAY);
+            break;
+        case AST_EXPR_ARRAY_LITERAL:
+            for (int i = 0; i < e->as.array_literal.element_count; i++) sem_visit_expr(ctx, e->as.array_literal.elements[i]);
+            sem_tag(e, TYPE_ARRAY);
+            break;
+        case AST_EXPR_RANGE:
+            sem_visit_expr(ctx, e->as.range.start);
+            sem_visit_expr(ctx, e->as.range.end);
+            sem_tag(e, TYPE_ARRAY); // Ranges are treated as arrays for iteration
             break;
         case AST_EXPR_DICT:
             for (int i = 0; i < e->as.dict.entry_count; i++) {

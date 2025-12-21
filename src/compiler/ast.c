@@ -13,15 +13,7 @@
 
 #define MAX_TOKEN_LEN 1024
 
-static int g_trace_enabled = 0;
-
-void bread_set_trace(int enabled) {
-    g_trace_enabled = enabled ? 1 : 0;
-}
-
-int bread_get_trace(void) {
-    return g_trace_enabled;
-}
+// Trace functionality removed - LLVM JIT only
 
 static void skip_whitespace(const char** code);
 static ASTStmt* parse_stmt(const char** code);
@@ -112,6 +104,9 @@ static void ast_free_expr(ASTExpr* e) {
         case AST_EXPR_STRING:
             free(e->as.string_val);
             break;
+        case AST_EXPR_STRING_LITERAL:
+            free(e->as.string_literal.value);
+            break;
         case AST_EXPR_VAR:
             free(e->as.var_name);
             break;
@@ -128,6 +123,13 @@ static void ast_free_expr(ASTExpr* e) {
             break;
         case AST_EXPR_ARRAY:
             ast_free_expr_list(e->as.array.items, e->as.array.item_count);
+            break;
+        case AST_EXPR_ARRAY_LITERAL:
+            ast_free_expr_list(e->as.array_literal.elements, e->as.array_literal.element_count);
+            break;
+        case AST_EXPR_RANGE:
+            ast_free_expr(e->as.range.start);
+            ast_free_expr(e->as.range.end);
             break;
         case AST_EXPR_DICT:
             for (int i = 0; i < e->as.dict.entry_count; i++) {
@@ -190,6 +192,11 @@ void ast_free_stmt_list(ASTStmtList* stmts) {
                 free(cur->as.for_stmt.var_name);
                 ast_free_expr(cur->as.for_stmt.range_expr);
                 ast_free_stmt_list(cur->as.for_stmt.body);
+                break;
+            case AST_STMT_FOR_IN:
+                free(cur->as.for_in_stmt.var_name);
+                ast_free_expr(cur->as.for_in_stmt.iterable);
+                ast_free_stmt_list(cur->as.for_in_stmt.body);
                 break;
             case AST_STMT_FUNC_DECL:
                 free(cur->as.func_decl.name);
@@ -811,16 +818,16 @@ static ASTStmt* parse_stmt(const char** code) {
         }
         (*code)++;
 
-        ASTStmt* s = ast_stmt_new(AST_STMT_FOR);
+        ASTStmt* s = ast_stmt_new(AST_STMT_FOR_IN);
         if (!s) {
             free(var_name);
             ast_free_expr(range_expr);
             ast_free_stmt_list(body);
             return NULL;
         }
-        s->as.for_stmt.var_name = var_name;
-        s->as.for_stmt.range_expr = range_expr;
-        s->as.for_stmt.body = body;
+        s->as.for_in_stmt.var_name = var_name;
+        s->as.for_in_stmt.iterable = range_expr;
+        s->as.for_in_stmt.body = body;
         return s;
     }
 
@@ -1059,11 +1066,47 @@ static ASTExpr* parse_comparison(const char** expr) {
     return left;
 }
 
+
+
 static ASTExpr* parse_term(const char** expr) {
     ASTExpr* left = parse_factor(expr);
     if (!left) return NULL;
 
     skip_whitespace(expr);
+    
+    // Check for range operator first
+    if (**expr == '.' && *(*expr + 1) == '.') {
+        *expr += 2;
+        int is_inclusive = 1; // Default to inclusive
+        
+        // Check for exclusive range (..<)
+        if (**expr == '<') {
+            (*expr)++;
+            is_inclusive = 0;
+        }
+        
+        ASTExpr* right = parse_factor(expr);
+        if (!right) {
+            ast_free_expr(left);
+            return NULL;
+        }
+        
+        ASTExpr* range = ast_expr_new(AST_EXPR_RANGE);
+        if (!range) {
+            ast_free_expr(left);
+            ast_free_expr(right);
+            return NULL;
+        }
+        
+        range->as.range.start = left;
+        range->as.range.end = right;
+        range->as.range.is_inclusive = is_inclusive;
+        range->tag.is_known = 1;
+        range->tag.type = TYPE_ARRAY; // Ranges are treated as arrays for iteration
+        return range;
+    }
+    
+    // Handle arithmetic operators
     while (**expr == '+' || **expr == '-') {
         char op = **expr;
         (*expr)++;
@@ -1182,26 +1225,72 @@ static ASTExpr* parse_primary(const char** expr) {
 
     if (**expr == '"') {
         (*expr)++;
-        const char* start = *expr;
+        
+        // Parse string with escape sequence handling
+        char* buffer = malloc(1024); // Initial buffer size
+        if (!buffer) return NULL;
+        size_t capacity = 1024;
+        size_t length = 0;
+        
         while (**expr && **expr != '"') {
-            if (**expr == '\\' && *(*expr + 1)) {
-                (*expr)++;
+            char c = **expr;
+            
+            if (c == '\\' && *(*expr + 1)) {
+                (*expr)++; // Skip backslash
+                char escaped = **expr;
+                
+                switch (escaped) {
+                    case 'n': c = '\n'; break;
+                    case 't': c = '\t'; break;
+                    case '"': c = '"'; break;
+                    case '\\': c = '\\'; break;
+                    default:
+                        // Unknown escape sequence, treat as literal
+                        if (length + 1 >= capacity) {
+                            capacity *= 2;
+                            char* new_buffer = realloc(buffer, capacity);
+                            if (!new_buffer) {
+                                free(buffer);
+                                return NULL;
+                            }
+                            buffer = new_buffer;
+                        }
+                        buffer[length++] = '\\';
+                        c = escaped;
+                        break;
+                }
             }
+            
+            // Add character to buffer
+            if (length + 1 >= capacity) {
+                capacity *= 2;
+                char* new_buffer = realloc(buffer, capacity);
+                if (!new_buffer) {
+                    free(buffer);
+                    return NULL;
+                }
+                buffer = new_buffer;
+            }
+            buffer[length++] = c;
             (*expr)++;
         }
+        
         if (**expr != '"') {
             printf("Error: Unterminated string literal\n");
+            free(buffer);
             return NULL;
         }
-        char* s = dup_range(start, *expr);
-        if (!s) return NULL;
         (*expr)++;
-        ASTExpr* e = ast_expr_new(AST_EXPR_STRING);
+        
+        buffer[length] = '\0';
+        
+        ASTExpr* e = ast_expr_new(AST_EXPR_STRING_LITERAL);
         if (!e) {
-            free(s);
+            free(buffer);
             return NULL;
         }
-        e->as.string_val = s;
+        e->as.string_literal.value = buffer;
+        e->as.string_literal.length = length;
         e->tag.is_known = 1;
         e->tag.type = TYPE_STRING;
         return e;
@@ -1252,10 +1341,11 @@ static ASTExpr* parse_primary(const char** expr) {
 
         if (**expr == ']') {
             (*expr)++;
-            ASTExpr* e = ast_expr_new(AST_EXPR_ARRAY);
+            ASTExpr* e = ast_expr_new(AST_EXPR_ARRAY_LITERAL);
             if (!e) return NULL;
-            e->as.array.item_count = 0;
-            e->as.array.items = NULL;
+            e->as.array_literal.element_count = 0;
+            e->as.array_literal.elements = NULL;
+            e->as.array_literal.element_type = TYPE_NIL;
             e->tag.is_known = 1;
             e->tag.type = TYPE_ARRAY;
             return e;
@@ -1387,7 +1477,7 @@ static ASTExpr* parse_primary(const char** expr) {
             return e;
         }
 
-        ASTExpr* e = ast_expr_new(AST_EXPR_ARRAY);
+        ASTExpr* e = ast_expr_new(AST_EXPR_ARRAY_LITERAL);
         if (!e) return NULL;
         e->tag.is_known = 1;
         e->tag.type = TYPE_ARRAY;
@@ -1395,6 +1485,7 @@ static ASTExpr* parse_primary(const char** expr) {
         int cap = 0;
         int count = 0;
         ASTExpr** items = NULL;
+        VarType element_type = TYPE_NIL; // Will be inferred from first element
 
         while (**expr) {
             ASTExpr* item = parse_expression(expr);
@@ -1402,6 +1493,11 @@ static ASTExpr* parse_primary(const char** expr) {
                 ast_free_expr_list(items, count);
                 ast_free_expr(e);
                 return NULL;
+            }
+
+            // Type inference: use the type of the first element
+            if (count == 0 && item->tag.is_known) {
+                element_type = item->tag.type;
             }
 
             if (count >= cap) {
@@ -1437,8 +1533,9 @@ static ASTExpr* parse_primary(const char** expr) {
         }
         (*expr)++;
 
-        e->as.array.item_count = count;
-        e->as.array.items = items;
+        e->as.array_literal.element_count = count;
+        e->as.array_literal.elements = items;
+        e->as.array_literal.element_type = element_type;
         return e;
     }
 
@@ -1566,6 +1663,10 @@ static ASTExpr* parse_postfix(const char** expr, ASTExpr* base) {
             is_optional_chain = 1;
             *expr += 2;
         } else if (**expr == '.') {
+            // Check if this is a range operator (..)
+            if (*(*expr + 1) == '.') {
+                break; // Don't consume, let range parsing handle it
+            }
             (*expr)++;
         } else {
             break;
@@ -1673,20 +1774,7 @@ static ASTExpr* parse_postfix(const char** expr, ASTExpr* base) {
     return base;
 }
 
-ASTExecSignal ast_execute_stmt_list(ASTStmtList* stmts, ExprResult* out_return) {
-    (void)stmts;
-    (void)out_return;
-    printf("Error: AST execution is no longer supported. Use LLVM JIT compilation instead.\n");
-    return AST_EXEC_SIGNAL_NONE;
-}
-
-void ast_runtime_init(void) {
-    g_trace_enabled = bread_get_trace();
-}
-
-void ast_runtime_cleanup(void) {
-    (void)0;
-}
+// AST execution removed - LLVM JIT only
 
 static void dump_indent(FILE* out, int indent) {
     if (!out) return;
@@ -1718,6 +1806,9 @@ static void ast_dump_expr(const ASTExpr* e, FILE* out) {
         case AST_EXPR_STRING:
             fprintf(out, "\"%s\"", e->as.string_val ? e->as.string_val : "");
             break;
+        case AST_EXPR_STRING_LITERAL:
+            fprintf(out, "\"%s\"", e->as.string_literal.value ? e->as.string_literal.value : "");
+            break;
         case AST_EXPR_VAR:
             fprintf(out, "%s", e->as.var_name ? e->as.var_name : "");
             break;
@@ -1748,6 +1839,20 @@ static void ast_dump_expr(const ASTExpr* e, FILE* out) {
                 ast_dump_expr(e->as.array.items[i], out);
             }
             fprintf(out, "]");
+            break;
+        case AST_EXPR_ARRAY_LITERAL:
+            fprintf(out, "[");
+            for (int i = 0; i < e->as.array_literal.element_count; i++) {
+                if (i > 0) fprintf(out, ", ");
+                ast_dump_expr(e->as.array_literal.elements[i], out);
+            }
+            fprintf(out, "]");
+            break;
+        case AST_EXPR_RANGE:
+            ast_dump_expr(e->as.range.start, out);
+            fprintf(out, "..");
+            if (!e->as.range.is_inclusive) fprintf(out, "<");
+            ast_dump_expr(e->as.range.end, out);
             break;
         case AST_EXPR_DICT:
             fprintf(out, "[");

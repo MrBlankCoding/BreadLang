@@ -264,6 +264,28 @@ static void analyze_expr_stability(ASTExpr* expr) {
             }
             info->stability = STABILITY_UNSTABLE;
             break;
+        case AST_EXPR_STRING_LITERAL:
+            // String literals are stable
+            info->stability = STABILITY_STABLE;
+            info->is_constant = 1;
+            break;
+        case AST_EXPR_ARRAY_LITERAL:
+            // Analyze array elements
+            for (int i = 0; i < expr->as.array_literal.element_count; i++) {
+                analyze_expr_stability(expr->as.array_literal.elements[i]);
+            }
+            info->stability = STABILITY_UNSTABLE; // Arrays are mutable
+            break;
+        case AST_EXPR_RANGE:
+            // Analyze range bounds
+            if (expr->as.range.start) {
+                analyze_expr_stability(expr->as.range.start);
+            }
+            if (expr->as.range.end) {
+                analyze_expr_stability(expr->as.range.end);
+            }
+            info->stability = STABILITY_STABLE; // Ranges are immutable
+            break;
     }
 }
 
@@ -330,6 +352,23 @@ static void analyze_stmt_stability(ASTStmt* stmt) {
                 // Track the loop variable
                 track_var_declaration(stmt->as.for_stmt.var_name, 0, 1);
                 for (ASTStmt* s = stmt->as.for_stmt.body->head; s; s = s->next) {
+                    analyze_stmt_stability(s);
+                }
+                leave_var_scope();
+            }
+            g_stability_ctx->in_loop--;
+            break;
+            
+        case AST_STMT_FOR_IN:
+            g_stability_ctx->in_loop++;
+            if (stmt->as.for_in_stmt.iterable) {
+                analyze_expr_stability(stmt->as.for_in_stmt.iterable);
+            }
+            if (stmt->as.for_in_stmt.body) {
+                enter_var_scope();
+                // Track the loop variable
+                track_var_declaration(stmt->as.for_in_stmt.var_name, 0, 1);
+                for (ASTStmt* s = stmt->as.for_in_stmt.body->head; s; s = s->next) {
                     analyze_stmt_stability(s);
                 }
                 leave_var_scope();

@@ -166,6 +166,25 @@ static void analyze_expr_escape(ASTExpr* expr, int is_assignment_target) {
                 }
             }
             break;
+        case AST_EXPR_STRING_LITERAL:
+            // String literals don't escape
+            break;
+        case AST_EXPR_ARRAY_LITERAL:
+            // Array literals may escape, analyze elements
+            mark_escape(info, ESCAPE_HEAP);
+            for (int i = 0; i < expr->as.array_literal.element_count; i++) {
+                analyze_expr_escape(expr->as.array_literal.elements[i], 0);
+            }
+            break;
+        case AST_EXPR_RANGE:
+            // Analyze range bounds
+            if (expr->as.range.start) {
+                analyze_expr_escape(expr->as.range.start, 0);
+            }
+            if (expr->as.range.end) {
+                analyze_expr_escape(expr->as.range.end, 0);
+            }
+            break;
     }
 }
 
@@ -244,6 +263,15 @@ static void analyze_stmt_escape(ASTStmt* stmt) {
             analyze_expr_escape(stmt->as.for_stmt.range_expr, 0);
             if (stmt->as.for_stmt.body) {
                 for (ASTStmt* s = stmt->as.for_stmt.body->head; s; s = s->next) {
+                    analyze_stmt_escape(s);
+                }
+            }
+            break;
+            
+        case AST_STMT_FOR_IN:
+            analyze_expr_escape(stmt->as.for_in_stmt.iterable, 0);
+            if (stmt->as.for_in_stmt.body) {
+                for (ASTStmt* s = stmt->as.for_in_stmt.body->head; s; s = s->next) {
                     analyze_stmt_escape(s);
                 }
             }

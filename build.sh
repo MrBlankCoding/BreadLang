@@ -41,7 +41,6 @@ LLVM_DEFS="-DBREAD_HAVE_LLVM=1"
   "$ROOT_DIR/src/compiler/type_stability.c" \
   "$ROOT_DIR/src/compiler/escape_analysis.c" \
   "$ROOT_DIR/src/compiler/optimization.c" \
-  "$ROOT_DIR/src/ir/bread_ir.c" \
   "$ROOT_DIR/src/backends/llvm_backend.c" \
   "$ROOT_DIR/src/codegen/codegen.c" \
   "$ROOT_DIR/src/codegen/optimized_codegen.c" \

@@ -90,6 +90,8 @@ static void cg_init(Cg* cg, LLVMModuleRef mod, LLVMBuilderRef builder) {
     cg->void_ty = LLVMVoidType();
     cg->loop_depth = 0;
     cg->tmp_counter = 0;
+    cg->current_loop_end = NULL;
+    cg->current_loop_continue = NULL;
     cg->value_type = LLVMArrayType(cg->i8, 128);
     cg->value_ptr_type = LLVMPointerType(cg->value_type, 0);
 
@@ -159,6 +161,34 @@ static void cg_init(Cg* cg, LLVMModuleRef mod, LLVMBuilderRef builder) {
     cg->fn_dict_new = cg_declare_fn(cg, "bread_dict_new", cg->ty_dict_new);
     cg->ty_dict_release = LLVMFunctionType(cg->void_ty, (LLVMTypeRef[]){cg->i8_ptr}, 1, 0);
     cg->fn_dict_release = cg_declare_fn(cg, "bread_dict_release", cg->ty_dict_release);
+    
+    // String operations
+    cg->ty_string_create = LLVMFunctionType(cg->i8_ptr, (LLVMTypeRef[]){cg->i8_ptr, cg->i64}, 2, 0);
+    cg->fn_string_create = cg_declare_fn(cg, "bread_string_create", cg->ty_string_create);
+    cg->ty_string_concat = LLVMFunctionType(cg->i8_ptr, (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr}, 2, 0);
+    cg->fn_string_concat = cg_declare_fn(cg, "bread_string_concat", cg->ty_string_concat);
+    cg->ty_string_get_char = LLVMFunctionType(cg->i8, (LLVMTypeRef[]){cg->i8_ptr, cg->i64}, 2, 0);
+    cg->fn_string_get_char = cg_declare_fn(cg, "bread_string_get_char", cg->ty_string_get_char);
+    
+    // Array operations
+    cg->ty_array_create = LLVMFunctionType(cg->i8_ptr, (LLVMTypeRef[]){cg->i32, cg->i64}, 2, 0);
+    cg->fn_array_create = cg_declare_fn(cg, "bread_array_create", cg->ty_array_create);
+    cg->ty_array_get = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr, cg->i32, cg->i8_ptr}, 3, 0);
+    cg->fn_array_get = cg_declare_fn(cg, "bread_value_array_get", cg->ty_array_get);
+    cg->ty_array_set = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr, cg->i64, cg->i8_ptr}, 3, 0);
+    cg->fn_array_set = cg_declare_fn(cg, "bread_array_set", cg->ty_array_set);
+    cg->ty_array_length = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr}, 1, 0);
+    cg->fn_array_length = cg_declare_fn(cg, "bread_value_array_length", cg->ty_array_length);
+    
+    // Range operations
+    cg->ty_range_create = LLVMFunctionType(cg->i8_ptr, (LLVMTypeRef[]){cg->i32, cg->i32, cg->i32}, 3, 0);
+    cg->fn_range_create = cg_declare_fn(cg, "bread_range_create", cg->ty_range_create);
+    cg->ty_range_simple = LLVMFunctionType(cg->i8_ptr, (LLVMTypeRef[]){cg->i32}, 1, 0);
+    cg->fn_range_simple = cg_declare_fn(cg, "bread_range", cg->ty_range_simple);
+    
+    // Value getter functions
+    cg->ty_value_get_int = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr}, 1, 0);
+    cg->fn_value_get_int = cg_declare_fn(cg, "bread_value_get_int", cg->ty_value_get_int);
     
     cg_define_functions(cg);
 }
