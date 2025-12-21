@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "core/forward_decls.h"
 #include "core/var.h"
 
 typedef enum {
@@ -17,12 +18,15 @@ typedef struct {
     uint32_t refcount;
 } BreadObjHeader;
 
-typedef struct BreadString {
+#ifndef BREAD_STRING_DEFINED
+#define BREAD_STRING_DEFINED
+struct BreadString {
     BreadObjHeader header;
-    uint32_t len;
-    uint32_t flags;
-    char data[];
-} BreadString;
+    size_t len;           // Length of the string
+    uint32_t flags;       // String flags (e.g., BREAD_STRING_INTERNED, BREAD_STRING_SMALL)
+    char data[];          // Flexible array member for string data
+};
+#endif // BREAD_STRING_DEFINED
 
 #define BREAD_STRING_INTERNED   0x01
 #define BREAD_STRING_SMALL      0x02
@@ -48,12 +52,14 @@ char bread_string_get_char(const BreadString* s, size_t index);  // For string i
 void bread_string_intern_init(void);
 void bread_string_intern_cleanup(void);
 
-struct BreadValue;
 struct BreadArray;
 struct BreadDict;
 struct BreadOptional;
 
-typedef struct BreadValue BreadValue;
+typedef struct BreadValue {
+    VarType type;
+    VarValue value;
+} BreadValue;
 
 int bread_add(const struct BreadValue* left, const struct BreadValue* right, struct BreadValue* out);
 int bread_eq(const struct BreadValue* left, const struct BreadValue* right, int* out_bool);

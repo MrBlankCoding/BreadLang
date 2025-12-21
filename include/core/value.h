@@ -1,14 +1,10 @@
 #ifndef VALUE_H
 #define VALUE_H
 
-#include "compiler/expr.h"
+#include "core/forward_decls.h"
 #include "core/var.h"
 #include "runtime/runtime.h"
-
-typedef struct BreadValue {
-    VarType type;
-    VarValue value;
-} BreadValue;
+#include "compiler/expr.h"
 
 struct BreadArray {
     BreadObjHeader header;
