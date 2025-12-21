@@ -152,15 +152,24 @@ static Stmt* parse_statement(const char** code) {
 
                 if (param_count >= param_cap) {
                     int new_cap = param_cap == 0 ? 4 : param_cap * 2;
-                    char** new_names = realloc(param_names, sizeof(char*) * (size_t)new_cap);
-                    VarType* new_types = realloc(param_types, sizeof(VarType) * (size_t)new_cap);
+                    char** new_names = malloc(sizeof(char*) * (size_t)new_cap);
+                    VarType* new_types = malloc(sizeof(VarType) * (size_t)new_cap);
                     if (!new_names || !new_types) {
+                        free(new_names);
+                        free(new_types);
                         free(p_name);
                         free(fn_name);
+                        for (int i = 0; i < param_count; i++) free(param_names[i]);
                         free(param_names);
                         free(param_types);
                         return NULL;
                     }
+                    if (param_count > 0) {
+                        memcpy(new_names, param_names, sizeof(char*) * (size_t)param_count);
+                        memcpy(new_types, param_types, sizeof(VarType) * (size_t)param_count);
+                    }
+                    free(param_names);
+                    free(param_types);
                     param_names = new_names;
                     param_types = new_types;
                     param_cap = new_cap;
