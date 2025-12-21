@@ -1,0 +1,26 @@
+func compute(n: Int) -> Int {
+    let result: Int = 0
+    let temp: Int = n
+    
+    if temp > 0 {
+        result = temp * 2
+    } else {
+        result = 1
+    }
+    
+    return result
+}
+
+let val1: Int = compute(5)
+let val2: Int = compute(10)
+let val3: Int = compute(0)
+
+print(val1)
+print(val2)
+print(val3)
+
+let sum: Int = 0
+for i in range(10) {
+    sum = sum + i
+}
+print(sum)

@@ -1,0 +1,15 @@
+let const1: Int = 5 + 3
+print(const1)
+
+let const2: Int = 10 * 2
+print(const2)
+
+let const3: Int = 100 / 4
+print(const3)
+
+func getConstant() -> Int {
+    return 42
+}
+
+let funcResult: Int = getConstant()
+print(funcResult)

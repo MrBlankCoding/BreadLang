@@ -1,29 +1,28 @@
 # BreadLang
 
-BreadLang is a custom programming language implemented in C. It features a complete pipeline from parsing to execution, supporting both a bytecode virtual machine and an experimental LLVM native code backend.
+BreadLang is a custom programming language implemented in C with LLVM JIT compilation. It features a complete pipeline from parsing to native code execution using LLVM's Just-In-Time compiler.
 
 ## Features
 
-- **Dual Execution Engines**:
-  - **Bytecode VM**: Stack-based virtual machine for portable execution (default).
-  - **LLVM Backend**: Compiles BreadLang code to optimized native executables (experimental).
+- **LLVM JIT Compilation**: Direct compilation to native code using LLVM's JIT engine for optimal performance
 - **Core Language Support**:
-  - Arithmetic operations and expressions.
-  - Variable declarations and assignments.
-  - Control flow (`if`/`else`, `while` loops).
-  - Function definitions and calls.
-  - Standard output via `print`.
+  - Arithmetic operations and expressions
+  - Variable declarations and assignments
+  - Control flow (`if`/`else`, `while` loops, `for` loops)
+  - Function definitions and calls
+  - Arrays and dictionaries
+  - Standard output via `print`
 - **Developer Tools**:
-  - AST Dumper for debugging parsing.
-  - Execution tracer for the VM.
+  - AST Dumper for debugging parsing
+  - LLVM IR emission for inspection
+  - Native executable generation
 
 ## Build
 
 ### Prerequisites
 
-- A C compiler (GCC/Clang) supporting C11.
-- `make` (optional, for manual build steps).
-- **LLVM** (optional): Required only for the LLVM backend features (`llvm-config` must be in your PATH).
+- A C compiler (GCC/Clang) supporting C11
+- **LLVM**: Required for JIT compilation (`llvm-config` must be in your PATH)
 
 ### Building
 
@@ -37,7 +36,7 @@ This will produce the `breadlang` executable in the project root.
 
 ## Usage
 
-Run a BreadLang program using the bytecode VM:
+Run a BreadLang program using LLVM JIT compilation:
 
 ```sh
 ./breadlang examples/hello.bread
@@ -47,57 +46,72 @@ Run a BreadLang program using the bytecode VM:
 
 | Flag | Description |
 |------|-------------|
-| `--dump-ast` | Parses the code and prints the Abstract Syntax Tree structure. |
-| `--trace` | Runs the program with instruction-level execution tracing. |
-| `--use-ast` | Uses the legacy AST interpreter instead of the bytecode VM. |
-| `--emit-exe` | Compiles the program to a native executable using LLVM. |
+| `--dump-ast` | Parses the code and prints the Abstract Syntax Tree structure |
+| `--trace` | Runs the program with execution tracing |
+| `--emit-llvm` | Emits LLVM IR to a `.ll` file instead of executing |
+| `--emit-obj` | Compiles to an object file |
+| `--emit-exe` | Compiles to a native executable |
+| `-o <file>` | Specifies output file for emit operations |
 
 ## Language Syntax
 
-BreadLang supports a C-like syntax.
+BreadLang supports a modern, expressive syntax.
 
 **Variables and Math:**
 ```bread
-var x = 10;
-var y = 20;
-print x + y;
+let x: Int = 10
+let y: Int = 20
+print(x + y)
 ```
 
 **Control Flow:**
 ```bread
-var a = 5;
-if (a > 3) {
-    print 1;
+let a: Int = 5
+if a > 3 {
+    print(1)
 } else {
-    print 0;
+    print(0)
 }
 
-var i = 0;
-while (i < 5) {
-    print i;
-    i = i + 1;
+let i: Int = 0
+while i < 5 {
+    print(i)
+    i = i + 1
+}
+
+for i in range(5) {
+    print(i)
 }
 ```
 
 **Functions:**
 ```bread
-func add(a, b) {
-    return a + b;
+func add(a: Int, b: Int) -> Int {
+    return a + b
 }
 
-print add(10, 5);
+print(add(10, 5))
+```
+
+**Arrays and Dictionaries:**
+```bread
+let arr: [Int] = [1, 2, 3, 4, 5]
+print(arr[0])
+
+let dict: [String: Int] = ["hello": 1, "world": 2]
+print(dict["hello"])
 ```
 
 ## Testing
 
-The project maintains a robust test suite to ensure stability across both execution engines.
+The project maintains a comprehensive test suite to ensure stability.
 
 ### Running Tests
 
 Use the unified test runner script:
 
 ```sh
-# Run all tests (Integration + LLVM)
+# Run all tests
 ./scripts/tests.sh
 
 # Run only integration tests
@@ -109,15 +123,26 @@ Use the unified test runner script:
 
 ### Test Categories
 
-- **Integration Tests** (`tests/integration/`): Verifies core language features (math, variables, control flow, functions) running on the Bytecode VM.
-- **LLVM Backend Tests** (`tests/llvm_backend/`): Verifies that code compiles correctly to native executables and produces expected output.
+- **Integration Tests** (`tests/integration/`): Verifies core language features using JIT compilation
+- **LLVM Backend Tests** (`tests/llvm_backend/`): Verifies native code generation and execution
 
 ## Project Structure
 
-- `src/`: Source code.
-  - `compiler/`: Lexer, parser, and bytecode compiler.
-  - `vm/`: Stack-based virtual machine implementation.
-  - `backends/`: LLVM code generation logic.
-- `include/`: Header files.
-- `tests/`: Test cases (`.bread` source and `.expected` output).
-- `scripts/`: Build and test automation scripts.
+- `src/`: Source code
+  - `compiler/`: Lexer, parser, and semantic analysis
+  - `backends/`: LLVM JIT compilation logic
+  - `codegen/`: LLVM IR code generation
+  - `runtime/`: Runtime support functions
+- `include/`: Header files
+- `tests/`: Test cases (`.bread` source and `.expected` output)
+- `scripts/`: Build and test automation scripts
+
+## Architecture
+
+BreadLang uses a modern compilation pipeline:
+
+1. **Parsing**: Source code → Abstract Syntax Tree (AST)
+2. **Semantic Analysis**: Type checking and validation
+3. **Code Generation**: AST → LLVM IR
+4. **JIT Compilation**: LLVM IR → Native machine code
+5. **Execution**: Direct native code execution

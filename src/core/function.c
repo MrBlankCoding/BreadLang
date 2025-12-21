@@ -159,8 +159,11 @@ VarValue coerce_value(VarType target, ExprResult val) {
 }
 
 static ASTExecSignal exec_ast_body(const Function* fn, ExprResult* out) {
-    if (!fn || !fn->body) return AST_EXEC_SIGNAL_NONE;
-    return ast_execute_stmt_list((ASTStmtList*)fn->body, out);
+    // AST execution removed - now using LLVM JIT only
+    (void)fn;
+    (void)out;
+    printf("Error: AST function execution is no longer supported. Use LLVM JIT compilation instead.\n");
+    return AST_EXEC_SIGNAL_NONE;
 }
 
 ExprResult call_function_values(const char* name, int arg_count, ExprResult* arg_vals) {

@@ -91,6 +91,19 @@ BreadArray* bread_array_new(void) {
     a->header.refcount = 1;
     a->count = 0;
     a->capacity = 0;
+    a->element_type = TYPE_NIL;  // No type constraint by default
+    a->items = NULL;
+    return a;
+}
+
+BreadArray* bread_array_new_typed(VarType element_type) {
+    BreadArray* a = malloc(sizeof(BreadArray));
+    if (!a) return NULL;
+    a->header.kind = BREAD_OBJ_ARRAY;
+    a->header.refcount = 1;
+    a->count = 0;
+    a->capacity = 0;
+    a->element_type = element_type;  // Set type constraint
     a->items = NULL;
     return a;
 }
@@ -115,6 +128,17 @@ void bread_array_release(BreadArray* a) {
 
 int bread_array_append(BreadArray* a, BreadValue v) {
     if (!a) return 0;
+    
+    // Type constraint checking
+    if (a->element_type != TYPE_NIL && a->element_type != v.type) {
+        return 0;  // Type mismatch
+    }
+    
+    // Set element type from first element if not already set
+    if (a->element_type == TYPE_NIL && a->count == 0) {
+        a->element_type = v.type;
+    }
+    
     if (a->count >= a->capacity) {
         int new_cap = a->capacity == 0 ? 8 : a->capacity * 2;
         BreadValue* new_items = realloc(a->items, sizeof(BreadValue) * new_cap);
@@ -122,13 +146,32 @@ int bread_array_append(BreadArray* a, BreadValue v) {
         a->items = new_items;
         a->capacity = new_cap;
     }
-    a->items[a->count++] = v;
+    a->items[a->count++] = bread_value_clone(v);
     return 1;
 }
 
 BreadValue* bread_array_get(BreadArray* a, int idx) {
     if (!a || idx < 0 || idx >= a->count) return NULL;
     return &a->items[idx];
+}
+
+int bread_array_set(BreadArray* a, int idx, BreadValue v) {
+    if (!a || idx < 0 || idx >= a->count) return 0;
+    
+    // Type constraint checking
+    if (a->element_type != TYPE_NIL && a->element_type != v.type) {
+        return 0;  // Type mismatch
+    }
+    
+    // Release old value and set new one
+    bread_value_release(&a->items[idx]);
+    a->items[idx] = bread_value_clone(v);
+    return 1;
+}
+
+int bread_array_length(BreadArray* a) {
+    if (!a) return 0;
+    return a->count;
 }
 
 BreadDict* bread_dict_new(void) {

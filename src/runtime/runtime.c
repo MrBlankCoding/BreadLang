@@ -7,6 +7,11 @@
 #include "core/var.h"
 #include "compiler/expr.h"
 
+// String interning table
+#define INTERN_TABLE_SIZE 256
+static BreadString* intern_table[INTERN_TABLE_SIZE];
+static int intern_initialized = 0;
+
 void* bread_alloc(size_t size) {
     return malloc(size);
 }
@@ -26,8 +31,39 @@ static BreadString* bread_string_alloc(size_t len) {
     s->header.kind = BREAD_OBJ_STRING;
     s->header.refcount = 1;
     s->len = (uint32_t)len;
+    s->flags = (len <= BREAD_STRING_SMALL_MAX) ? BREAD_STRING_SMALL : 0;
     s->data[len] = '\0';
     return s;
+}
+
+// Hash function for string interning
+static unsigned int bread_string_hash(const char* str, size_t len) {
+    unsigned int hash = 5381;
+    for (size_t i = 0; i < len; i++) {
+        hash = ((hash << 5) + hash) + (unsigned char)str[i];
+    }
+    return hash % INTERN_TABLE_SIZE;
+}
+
+void bread_string_intern_init(void) {
+    if (intern_initialized) return;
+    memset(intern_table, 0, sizeof(intern_table));
+    intern_initialized = 1;
+}
+
+void bread_string_intern_cleanup(void) {
+    if (!intern_initialized) return;
+    for (int i = 0; i < INTERN_TABLE_SIZE; i++) {
+        BreadString* s = intern_table[i];
+        while (s) {
+            BreadString* next = (BreadString*)s->header.refcount; // Temporarily store next in refcount
+            s->header.refcount = 1; // Reset refcount for proper cleanup
+            bread_string_release(s);
+            s = next;
+        }
+        intern_table[i] = NULL;
+    }
+    intern_initialized = 0;
 }
 
 BreadString* bread_string_new_len(const char* data, size_t len) {
@@ -43,6 +79,43 @@ BreadString* bread_string_new_len(const char* data, size_t len) {
 BreadString* bread_string_new(const char* cstr) {
     if (!cstr) cstr = "";
     return bread_string_new_len(cstr, strlen(cstr));
+}
+
+BreadString* bread_string_new_literal(const char* cstr) {
+    if (!cstr) cstr = "";
+    size_t len = strlen(cstr);
+    
+    // Initialize intern table if needed
+    if (!intern_initialized) {
+        bread_string_intern_init();
+    }
+    
+    // Check if already interned
+    unsigned int hash = bread_string_hash(cstr, len);
+    BreadString* s = intern_table[hash];
+    while (s) {
+        if (s->len == len && memcmp(s->data, cstr, len) == 0) {
+            bread_string_retain(s);
+            return s;
+        }
+        // Use a proper linked list traversal (this is simplified)
+        break; // For now, just handle single entry per bucket
+    }
+    
+    // Create new interned string
+    s = bread_string_new_len(cstr, len);
+    if (!s) return NULL;
+    
+    s->flags |= BREAD_STRING_INTERNED;
+    
+    // Add to intern table (simplified - just replace existing)
+    if (intern_table[hash]) {
+        bread_string_release(intern_table[hash]);
+    }
+    intern_table[hash] = s;
+    bread_string_retain(s); // Extra reference for intern table
+    
+    return s;
 }
 
 const char* bread_string_cstr(const BreadString* s) {
@@ -86,6 +159,13 @@ int bread_string_eq(const BreadString* a, const BreadString* b) {
 
 int bread_string_cmp(const BreadString* a, const BreadString* b) {
     return strcmp(bread_string_cstr(a), bread_string_cstr(b));
+}
+
+char bread_string_get_char(const BreadString* s, size_t index) {
+    if (!s || index >= s->len) {
+        return '\0'; // Return null character for out of bounds
+    }
+    return s->data[index];
 }
 
 static int bread_value_is_number(VarType t) {
@@ -212,6 +292,35 @@ static void bread_print_value_inner(const BreadValue* v) {
                 bread_print_value_inner(&inner);
                 bread_value_release(&inner);
             }
+            break;
+        }
+        case TYPE_ARRAY: {
+            BreadArray* a = v->value.array_val;
+            printf("[");
+            if (a && a->count > 0) {
+                for (int i = 0; i < a->count; i++) {
+                    if (i > 0) printf(", ");
+                    bread_print_value_inner(&a->items[i]);
+                }
+            }
+            printf("]");
+            break;
+        }
+        case TYPE_DICT: {
+            BreadDict* d = v->value.dict_val;
+            printf("{");
+            if (d && d->count > 0) {
+                int first = 1;
+                for (int i = 0; i < d->capacity; i++) {
+                    if (d->entries[i].key) {
+                        if (!first) printf(", ");
+                        first = 0;
+                        printf("%s: ", bread_string_cstr(d->entries[i].key));
+                        bread_print_value_inner(&d->entries[i].value);
+                    }
+                }
+            }
+            printf("}");
             break;
         }
         default:
@@ -549,13 +658,56 @@ int bread_index_op(const BreadValue* target, const BreadValue* idx, BreadValue* 
 
     bread_value_set_nil(out);
 
+    if (real_target.type == TYPE_STRING) {
+        if (idx->type != TYPE_INT) {
+            printf("Error: String index must be Int\n");
+            if (target_owned) bread_value_release(&real_target);
+            return 0;
+        }
+        
+        int index = idx->value.int_val;
+        size_t len = bread_string_len(real_target.value.string_val);
+        
+        // Handle negative indices (Python-style)
+        if (index < 0) {
+            index = (int)len + index;
+        }
+        
+        if (index < 0 || index >= (int)len) {
+            printf("Error: String index %d out of bounds (length %zu)\n", idx->value.int_val, len);
+            if (target_owned) bread_value_release(&real_target);
+            return 0;
+        }
+        
+        char ch = bread_string_get_char(real_target.value.string_val, (size_t)index);
+        char ch_str[2] = {ch, '\0'};
+        bread_value_set_string(out, ch_str);
+        if (target_owned) bread_value_release(&real_target);
+        return 1;
+    }
+
     if (real_target.type == TYPE_ARRAY) {
         if (idx->type != TYPE_INT) {
             printf("Error: Array index must be Int\n");
             if (target_owned) bread_value_release(&real_target);
             return 0;
         }
-        BreadValue* at = bread_array_get(real_target.value.array_val, idx->value.int_val);
+        
+        int index = idx->value.int_val;
+        int length = bread_array_length(real_target.value.array_val);
+        
+        // Handle negative indices (Python-style)
+        if (index < 0) {
+            index = length + index;
+        }
+        
+        if (index < 0 || index >= length) {
+            printf("Error: Array index %d out of bounds (length %d)\n", idx->value.int_val, length);
+            if (target_owned) bread_value_release(&real_target);
+            return 0;
+        }
+        
+        BreadValue* at = bread_array_get(real_target.value.array_val, index);
         if (at) *out = bread_value_clone(*at);
         if (target_owned) bread_value_release(&real_target);
         return 1;
@@ -704,6 +856,24 @@ int bread_dict_set_value(struct BreadDict* d, const BreadValue* key, const Bread
 int bread_array_append_value(struct BreadArray* a, const BreadValue* v) {
     if (!a || !v) return 0;
     return bread_array_append((BreadArray*)a, *v);
+}
+
+int bread_array_set_value(struct BreadArray* a, int index, const BreadValue* v) {
+    if (!a || !v) return 0;
+    
+    int length = bread_array_length((BreadArray*)a);
+    
+    // Handle negative indices (Python-style)
+    if (index < 0) {
+        index = length + index;
+    }
+    
+    if (index < 0 || index >= length) {
+        printf("Error: Array index %d out of bounds (length %d)\n", index, length);
+        return 0;
+    }
+    
+    return bread_array_set((BreadArray*)a, index, *v);
 }
 
 int bread_var_decl(const char* name, VarType type, int is_const, const BreadValue* init) {

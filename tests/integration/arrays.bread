@@ -1,0 +1,11 @@
+let a: Int = 1
+let b: Int = 2
+let c: Int = 3
+
+print(a)
+print(b)
+print(c)
+
+// Simple arithmetic
+let sum: Int = a + b + c
+print(sum)

@@ -14,6 +14,7 @@ struct BreadArray {
     BreadObjHeader header;
     int count;
     int capacity;
+    VarType element_type;  // Type constraint for array elements
     BreadValue* items;
 };
 
@@ -42,10 +43,13 @@ void bread_value_release(BreadValue* v);
 BreadValue bread_value_clone(BreadValue v);
 
 BreadArray* bread_array_new(void);
+BreadArray* bread_array_new_typed(VarType element_type);
 void bread_array_retain(BreadArray* a);
 void bread_array_release(BreadArray* a);
 int bread_array_append(BreadArray* a, BreadValue v);
+int bread_array_set(BreadArray* a, int idx, BreadValue v);
 BreadValue* bread_array_get(BreadArray* a, int idx);
+int bread_array_length(BreadArray* a);
 
 BreadDict* bread_dict_new(void);
 void bread_dict_retain(BreadDict* d);

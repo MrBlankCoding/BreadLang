@@ -1,0 +1,22 @@
+func fibonacci(n: Int) -> Int {
+    if n <= 1 {
+        return n
+    } else {
+        return fibonacci(n - 1) + fibonacci(n - 2)
+    }
+}
+
+print(fibonacci(10))
+
+let sum: Int = 0
+for i in range(100) {
+    sum = sum + i
+}
+print(sum)
+
+func simpleAdd(a: Int, b: Int) -> Int {
+    return a + b
+}
+
+let result: Int = simpleAdd(5, 3)
+print(result)

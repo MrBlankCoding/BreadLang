@@ -568,7 +568,44 @@ static ExprResult parse_postfix(const char** expr, ExprResult base) {
             out.is_error = 0;
             out.type = TYPE_NIL;
 
-            if (target.type == TYPE_ARRAY) {
+            if (target.type == TYPE_STRING) {
+                if (idx_r.type != TYPE_INT) {
+                    printf("Error: String index must be Int\n");
+                    release_expr_result(&idx_r);
+                    if (target_owned) release_expr_result(&target);
+                    else release_expr_result(&base);
+                    return create_error_result();
+                }
+                
+                int index = idx_r.value.int_val;
+                size_t len = bread_string_len(target.value.string_val);
+                
+                // Handle negative indices (Python-style)
+                if (index < 0) {
+                    index = (int)len + index;
+                }
+                
+                if (index < 0 || index >= (int)len) {
+                    printf("Error: String index %d out of bounds (length %zu)\n", idx_r.value.int_val, len);
+                    release_expr_result(&idx_r);
+                    if (target_owned) release_expr_result(&target);
+                    else release_expr_result(&base);
+                    return create_error_result();
+                }
+                
+                char ch = bread_string_get_char(target.value.string_val, (size_t)index);
+                char ch_str[2] = {ch, '\0'};
+                BreadString* result_str = bread_string_new(ch_str);
+                if (!result_str) {
+                    printf("Error: Out of memory\n");
+                    release_expr_result(&idx_r);
+                    if (target_owned) release_expr_result(&target);
+                    else release_expr_result(&base);
+                    return create_error_result();
+                }
+                out.type = TYPE_STRING;
+                out.value.string_val = result_str;
+            } else if (target.type == TYPE_ARRAY) {
                 if (idx_r.type != TYPE_INT) {
                     printf("Error: Array index must be Int\n");
                     release_expr_result(&idx_r);

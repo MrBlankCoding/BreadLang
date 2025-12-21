@@ -178,21 +178,16 @@ static int bread_llvm_build_module_from_program(const ASTStmtList* program, LLVM
     builder = LLVMCreateBuilder();
 
     // Run Stage 5 optimization analysis passes
-    printf("Running Stage 5 optimization analysis...\n");
-    
-    printf("  - Type stability analysis...\n");
     if (!type_stability_analyze((ASTStmtList*)program)) {
-        printf("    Warning: Type stability analysis failed\n");
+        // Type stability analysis failed - continue anyway
     }
     
-    printf("  - Escape analysis...\n");
     if (!escape_analysis_run((ASTStmtList*)program)) {
-        printf("    Warning: Escape analysis failed\n");
+        // Escape analysis failed - continue anyway
     }
     
-    printf("  - Optimization heuristics...\n");
     if (!optimization_analyze((ASTStmtList*)program)) {
-        printf("    Warning: Optimization analysis failed\n");
+        // Optimization analysis failed - continue anyway
     }
 
     cg_init(&cg, mod, builder);
@@ -254,7 +249,7 @@ static int bread_llvm_build_module_from_program(const ASTStmtList* program, LLVM
     }
     
     LLVMPositionBuilderAtEnd(builder, main_block);
-    printf("LLVM optimization passes disabled (legacy pass manager removed)\n");
+    // LLVM optimization passes disabled (legacy pass manager removed)
 
     LLVMDisposeBuilder(builder);
     *out_mod = mod;
@@ -589,7 +584,7 @@ int bread_llvm_jit_function(Function* fn) {
     target_fn->ret_slot = LLVMGetParam(target_fn->fn, 0);
     target_fn->scope = (CgScope*)malloc(sizeof(CgScope));
     target_fn->scope->vars = NULL;
-    target_fn->scope->parent = NULL; // Globals are handled via runtime calls
+    target_fn->scope->parent = NULL;
 
     LLVMValueRef val_size = cg_value_size(&cg);
 

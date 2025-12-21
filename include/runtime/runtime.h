@@ -20,8 +20,13 @@ typedef struct {
 typedef struct BreadString {
     BreadObjHeader header;
     uint32_t len;
+    uint32_t flags;
     char data[];
 } BreadString;
+
+#define BREAD_STRING_INTERNED   0x01
+#define BREAD_STRING_SMALL      0x02
+#define BREAD_STRING_SMALL_MAX  15
 
 void* bread_alloc(size_t size);
 void* bread_realloc(void* ptr, size_t new_size);
@@ -29,6 +34,7 @@ void bread_free(void* ptr);
 
 BreadString* bread_string_new(const char* cstr);
 BreadString* bread_string_new_len(const char* data, size_t len);
+BreadString* bread_string_new_literal(const char* cstr);  // For string literals (interned)
 const char* bread_string_cstr(const BreadString* s);
 size_t bread_string_len(const BreadString* s);
 
@@ -38,6 +44,9 @@ void bread_string_release(BreadString* s);
 BreadString* bread_string_concat(const BreadString* a, const BreadString* b);
 int bread_string_eq(const BreadString* a, const BreadString* b);
 int bread_string_cmp(const BreadString* a, const BreadString* b);
+char bread_string_get_char(const BreadString* s, size_t index);  // For string indexing
+void bread_string_intern_init(void);
+void bread_string_intern_cleanup(void);
 
 struct BreadValue;
 struct BreadArray;
@@ -78,6 +87,7 @@ int bread_method_call_op(const BreadValue* target, const char* name, int argc, c
 
 int bread_dict_set_value(struct BreadDict* d, const BreadValue* key, const BreadValue* val);
 int bread_array_append_value(struct BreadArray* a, const BreadValue* v);
+int bread_array_set_value(struct BreadArray* a, int index, const BreadValue* v);
 
 int bread_var_decl(const char* name, VarType type, int is_const, const BreadValue* init);
 int bread_var_decl_if_missing(const char* name, VarType type, int is_const, const BreadValue* init);

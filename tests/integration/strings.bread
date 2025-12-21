@@ -1,0 +1,11 @@
+// Basic string variables
+let str1: String = "Hello"
+let str2: String = "World"
+print(str1)
+print(str2)
+
+// More strings
+let greeting: String = "Hi"
+let name: String = "BreadLang"
+print(greeting)
+print(name)
