@@ -38,14 +38,10 @@ void bread_string_intern_init(void) {
 void bread_string_intern_cleanup(void) {
     if (!intern_initialized) return;
     for (int i = 0; i < INTERN_TABLE_SIZE; i++) {
-        BreadString* s = intern_table[i];
-        while (s) {
-            BreadString* next = (BreadString*)(uintptr_t)s->header.refcount;
-            s->header.refcount = 1;
-            bread_string_release(s);
-            s = next;
+        if (intern_table[i]) {
+            bread_string_release(intern_table[i]);
+            intern_table[i] = NULL;
         }
-        intern_table[i] = NULL;
     }
     intern_initialized = 0;
 }

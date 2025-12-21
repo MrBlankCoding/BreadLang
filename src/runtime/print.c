@@ -38,10 +38,9 @@ void execute_print(char* line) {
     
     char* trimmed = trim(content);
     
-    // Evaluate the expression
     ExprResult result = evaluate_expression(trimmed);
     if (result.is_error) {
-        return; // Error already printed by evaluate_expression
+        return;
     }
     
     // Print the result
@@ -140,14 +139,20 @@ void execute_print(char* line) {
             BreadDict* d = result.value.dict_val;
             printf("[");
             int n = d ? d->count : 0;
-            for (int i = 0; i < n; i++) {
-                if (i > 0) printf(", ");
-                printf("\"%s\": ", bread_string_cstr(d->entries[i].key));
-                BreadValue item = bread_value_clone(d->entries[i].value);
-                ExprResult inner = bread_expr_result_from_value(item);
-                switch (inner.type) {
-                    case TYPE_STRING:
-                        printf("\"%s\"", bread_string_cstr(inner.value.string_val));
+            int printed = 0;
+            for (int i = 0; i < d->capacity && printed < n; i++) {
+                if (d->entries[i].is_occupied && !d->entries[i].is_deleted) {
+                    if (printed > 0) printf(", ");
+                    if (d->entries[i].key.type == TYPE_STRING) {
+                        printf("\"%s\": ", bread_string_cstr(d->entries[i].key.value.string_val));
+                    } else {
+                        printf("key: ");
+                    }
+                    BreadValue item = bread_value_clone(d->entries[i].value);
+                    ExprResult inner = bread_expr_result_from_value(item);
+                    switch (inner.type) {
+                        case TYPE_STRING:
+                            printf("\"%s\"", bread_string_cstr(inner.value.string_val));
                         break;
                     case TYPE_INT:
                         printf("%d", inner.value.int_val);
@@ -170,6 +175,8 @@ void execute_print(char* line) {
                 }
                 BreadValue iv = bread_value_from_expr_result(inner);
                 bread_value_release(&iv);
+                printed++;
+                }
             }
             printf("]\n");
             break;
@@ -178,7 +185,6 @@ void execute_print(char* line) {
             printf("Error: Unsupported type for print\n");
     }
 
-    // Release owned memory in ExprResult for non-primitive types
     BreadValue v = bread_value_from_expr_result(result);
     bread_value_release(&v);
 }

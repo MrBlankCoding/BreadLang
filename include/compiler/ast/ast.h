@@ -110,6 +110,7 @@ struct ASTExpr {
 typedef enum {
     AST_STMT_VAR_DECL,
     AST_STMT_VAR_ASSIGN,
+    AST_STMT_INDEX_ASSIGN,
     AST_STMT_PRINT,
     AST_STMT_EXPR,
     AST_STMT_IF,
@@ -134,6 +135,12 @@ typedef struct {
     char* var_name;
     ASTExpr* value;
 } ASTStmtVarAssign;
+
+typedef struct {
+    ASTExpr* target;
+    ASTExpr* index;
+    ASTExpr* value;
+} ASTStmtIndexAssign;
 
 typedef struct {
     ASTExpr* expr;
@@ -187,6 +194,7 @@ struct ASTStmt {
     union {
         ASTStmtVarDecl var_decl;
         ASTStmtVarAssign var_assign;
+        ASTStmtIndexAssign index_assign;
         ASTStmtPrint print;
         ASTStmtExpr expr;
         ASTStmtIf if_stmt;

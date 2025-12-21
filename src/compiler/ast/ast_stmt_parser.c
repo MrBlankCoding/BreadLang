@@ -582,12 +582,47 @@ ASTStmt* parse_stmt(const char** code) {
         char* var_name = dup_range(start, start + name_len);
         if (!var_name) return NULL;
 
+        ASTExpr* lhs_index_target = NULL;
+        ASTExpr* lhs_index_expr = NULL;
+        if (strchr(var_name, '[')) {
+            const char* lhs_src = var_name;
+            const char* lhs_ptr = lhs_src;
+            ASTExpr* lhs = parse_expression_str_as_ast(&lhs_ptr);
+            if (lhs && lhs->kind == AST_EXPR_INDEX) {
+                lhs_index_target = lhs->as.index.target;
+                lhs_index_expr = lhs->as.index.index;
+                lhs->as.index.target = NULL;
+                lhs->as.index.index = NULL;
+                ast_free_expr(lhs);
+            } else if (lhs) {
+                ast_free_expr(lhs);
+            }
+        }
+
         (*code)++;
         skip_whitespace(code);
         ASTExpr* rhs = parse_expression_str_as_ast(code);
         if (!rhs) {
+            ast_free_expr(lhs_index_target);
+            ast_free_expr(lhs_index_expr);
             free(var_name);
             return NULL;
+        }
+
+        if (lhs_index_target && lhs_index_expr) {
+            ASTStmt* s = ast_stmt_new(AST_STMT_INDEX_ASSIGN);
+            if (!s) {
+                ast_free_expr(lhs_index_target);
+                ast_free_expr(lhs_index_expr);
+                ast_free_expr(rhs);
+                free(var_name);
+                return NULL;
+            }
+            s->as.index_assign.target = lhs_index_target;
+            s->as.index_assign.index = lhs_index_expr;
+            s->as.index_assign.value = rhs;
+            free(var_name);
+            return s;
         }
 
         ASTStmt* s = ast_stmt_new(AST_STMT_VAR_ASSIGN);

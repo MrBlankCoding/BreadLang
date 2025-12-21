@@ -64,6 +64,7 @@ typedef struct BreadValue {
 int bread_add(const struct BreadValue* left, const struct BreadValue* right, struct BreadValue* out);
 int bread_eq(const struct BreadValue* left, const struct BreadValue* right, int* out_bool);
 void bread_print(const struct BreadValue* v);
+void bread_print_compact(const struct BreadValue* v);
 void bread_value_set_nil(struct BreadValue* out);
 void bread_value_set_bool(struct BreadValue* out, int v);
 void bread_value_set_int(struct BreadValue* out, int v);
@@ -82,6 +83,7 @@ int bread_unary_not(const BreadValue* in, BreadValue* out);
 int bread_binary_op(char op, const BreadValue* left, const BreadValue* right, BreadValue* out);
 int bread_coerce_value(VarType target, const BreadValue* in, BreadValue* out);
 int bread_index_op(const BreadValue* target, const BreadValue* idx, BreadValue* out);
+int bread_index_set_op(BreadValue* target, const BreadValue* idx, const BreadValue* value);
 int bread_member_op(const BreadValue* target, const char* member, int is_opt, BreadValue* out);
 int bread_method_call_op(const BreadValue* target, const char* name, int argc, const BreadValue* args, int is_opt, BreadValue* out);
 int bread_dict_set_value(struct BreadDict* d, const BreadValue* key, const BreadValue* val);

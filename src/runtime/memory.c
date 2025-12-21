@@ -8,6 +8,7 @@
 #include "core/value.h"
 
 static BreadMemoryManager g_memory_manager = {0};
+static int g_memory_cleanup_in_progress = 0;
 
 void bread_memory_init(void) {
     memset(&g_memory_manager, 0, sizeof(BreadMemoryManager));
@@ -48,7 +49,7 @@ void* bread_memory_alloc(size_t size, BreadObjKind kind) {
     g_memory_manager.allocations_since_gc++;
     if (g_memory_manager.cycle_collection_enabled && 
         g_memory_manager.allocations_since_gc >= g_memory_manager.cycle_collection_threshold &&
-        g_memory_manager.stats.current_objects > 50) {  // Only collect if we have enough objects
+        g_memory_manager.stats.current_objects > 50) {  
         bread_memory_collect_cycles();
         g_memory_manager.allocations_since_gc = 0;
     }
@@ -58,7 +59,7 @@ void* bread_memory_alloc(size_t size, BreadObjKind kind) {
 
 void* bread_memory_realloc(void* ptr, size_t new_size) {
     if (!ptr) {
-        return bread_memory_alloc(new_size, BREAD_OBJ_STRING);  // Default to string for realloc
+        return bread_memory_alloc(new_size, BREAD_OBJ_STRING); 
     }
     
     void* new_ptr = realloc(ptr, new_size);
@@ -78,8 +79,10 @@ void* bread_memory_realloc(void* ptr, size_t new_size) {
 
 void bread_memory_free(void* ptr) {
     if (!ptr) return;
-    
-    bread_memory_untrack_object(ptr);
+
+    if (!g_memory_cleanup_in_progress) {
+        bread_memory_untrack_object(ptr);
+    }
     g_memory_manager.stats.total_deallocations++;
     g_memory_manager.stats.current_objects--;
     
@@ -150,8 +153,8 @@ void bread_object_release(void* object) {
                 BreadDict* dict = (BreadDict*)object;
                 if (dict->entries) {
                     for (int i = 0; i < dict->capacity; i++) {
-                        if (dict->entries[i].key) {
-                            bread_object_release(dict->entries[i].key);
+                        if (dict->entries[i].is_occupied && !dict->entries[i].is_deleted) {
+                            bread_value_release(&dict->entries[i].key);
                             bread_value_release(&dict->entries[i].value);
                         }
                     }
@@ -250,9 +253,12 @@ void bread_memory_mark_reachable(void* root) {
                 }
                 case BREAD_OBJ_DICT: {
                     BreadDict* dict = (BreadDict*)root;
-                    for (int i = 0; i < dict->count; i++) {
-                        if (dict->entries[i].key) {
-                            bread_memory_mark_reachable(dict->entries[i].key);
+                    for (int i = 0; i < dict->capacity; i++) {
+                        if (dict->entries[i].is_occupied && !dict->entries[i].is_deleted) {
+                            BreadValue* key = &dict->entries[i].key;
+                            if (key->type == TYPE_STRING) {
+                                bread_memory_mark_reachable(key->value.string_val);
+                            }
                             BreadValue* value = &dict->entries[i].value;
                             switch (value->type) {
                                 case TYPE_STRING:
@@ -341,22 +347,19 @@ int bread_memory_check_leaks(void) {
 void bread_memory_cleanup_all(void) {
     int old_cycle_enabled = g_memory_manager.cycle_collection_enabled;
     g_memory_manager.cycle_collection_enabled = 0;
+
+    g_memory_cleanup_in_progress = 1;
     
     BreadObjectNode* node = g_memory_manager.all_objects;
     while (node) {
         BreadObjectNode* next = node->next;
-        BreadObjHeader* header = (BreadObjHeader*)node->object;
-        if (header->refcount > 0) {
-            header->refcount = 1;
-            bread_object_release(node->object);
-        }
-        
         free(node);
         node = next;
     }
     
     g_memory_manager.all_objects = NULL;
     g_memory_manager.stats.current_objects = 0;
+    g_memory_cleanup_in_progress = 0;
     g_memory_manager.cycle_collection_enabled = old_cycle_enabled;
 }
 void bread_memory_print_leak_report(void) {

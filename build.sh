@@ -5,18 +5,13 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BREADLANG="$ROOT_DIR/breadlang"
 
-# Check if we're on Windows (WSL or similar)
-if [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "win32" ]]; then
-    echo "Warning: Building on Windows. Some features may not work as expected." >&2
-fi
-
 CC=clang
 if ! command -v "$CC" >/dev/null 2>&1; then
   echo "Error: clang not found. Please install clang." >&2
+  echo "BreadLang requires clang for optimal LLVM integration." >&2
   exit 1
 fi
 
-# Check if LLVM is available (required for JIT)
 if command -v llvm-config >/dev/null 2>&1; then
   echo "LLVM found, building with JIT support"
 else

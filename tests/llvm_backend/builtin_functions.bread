@@ -1,0 +1,28 @@
+// Test built-in functions compilation
+let str: String = "Hello World"
+print(str.length)
+
+let numbers: [Int] = [1, 2, 3]
+print(numbers.length)
+
+numbers.append(4)
+print(numbers.length)
+print(numbers[3])
+
+let dict: [String: Int] = ["a": 1, "b": 2]
+print(dict["a"])
+
+// String operations
+let greeting: String = "Hello" + " " + "World"
+print(greeting)
+print(greeting[0])
+print(greeting[6])
+
+// Math operations
+let x: Int = 10
+let y: Int = 3
+print(x + y)
+print(x - y)
+print(x * y)
+print(x / y)
+print(x % y)

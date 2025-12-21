@@ -8,6 +8,7 @@ int bread_eq(const BreadValue* left, const BreadValue* right, int* out_bool);
 int bread_binary_op(char op, const BreadValue* left, const BreadValue* right, BreadValue* out);
 int bread_unary_not(const BreadValue* in, BreadValue* out);
 void bread_print(const BreadValue* v);
+void bread_print_compact(const BreadValue* v);
 void bread_value_set_nil(BreadValue* out);
 void bread_value_set_bool(BreadValue* out, int v);
 void bread_value_set_int(BreadValue* out, int v);

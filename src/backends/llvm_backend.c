@@ -27,6 +27,8 @@
 #elif defined(__linux__)
 #endif
 
+static int g_use_compact_print = 0;
+
 static int write_text_file(const char* path, const char* data) {
     if (!path || !data) return 0;
     FILE* f = fopen(path, "w");
@@ -117,7 +119,7 @@ static void cg_init(Cg* cg, LLVMModuleRef mod, LLVMBuilderRef builder) {
     cg->ty_value_release = LLVMFunctionType(cg->void_ty, (LLVMTypeRef[]){cg->i8_ptr}, 1, 0);
     cg->fn_value_release = cg_declare_fn(cg, "bread_value_release_value", cg->ty_value_release);
     cg->ty_print = LLVMFunctionType(cg->void_ty, (LLVMTypeRef[]){cg->i8_ptr}, 1, 0);
-    cg->fn_print = cg_declare_fn(cg, "bread_print", cg->ty_print);
+    cg->fn_print = cg_declare_fn(cg, g_use_compact_print ? "bread_print_compact" : "bread_print", cg->ty_print);
     cg->ty_is_truthy = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr}, 1, 0);
     cg->fn_is_truthy = cg_declare_fn(cg, "bread_is_truthy", cg->ty_is_truthy);
     cg->ty_unary_not = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr}, 2, 0);
@@ -126,6 +128,8 @@ static void cg_init(Cg* cg, LLVMModuleRef mod, LLVMBuilderRef builder) {
     cg->fn_binary_op = cg_declare_fn(cg, "bread_binary_op", cg->ty_binary_op);
     cg->ty_index_op = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr, cg->i8_ptr}, 3, 0);
     cg->fn_index_op = cg_declare_fn(cg, "bread_index_op", cg->ty_index_op);
+    cg->ty_index_set_op = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr, cg->i8_ptr}, 3, 0);
+    cg->fn_index_set_op = cg_declare_fn(cg, "bread_index_set_op", cg->ty_index_set_op);
     cg->ty_member_op = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr, cg->i32, cg->i8_ptr}, 4, 0);
     cg->fn_member_op = cg_declare_fn(cg, "bread_member_op", cg->ty_member_op);
     cg->ty_method_call_op = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr, cg->i32, cg->i8_ptr, cg->i32, cg->i8_ptr}, 6, 0);
@@ -367,7 +371,6 @@ int bread_llvm_emit_ll(const ASTStmtList* program, const char* out_path) {
 int bread_llvm_emit_obj(const ASTStmtList* program, const char* out_path) {
     if (!program || !out_path) return 0;
     
-    // Check for compilation errors before proceeding
     if (bread_error_has_compilation_errors()) {
         return 0;
     }
@@ -434,21 +437,29 @@ static int bread_llvm_link_executable_with_clang(const char* obj_path, const cha
     }
 
     char rt_path[PATH_MAX];
+    char memory_path[PATH_MAX];
     char print_path[PATH_MAX];
+    char string_ops_path[PATH_MAX];
+    char operators_path[PATH_MAX];
+    char array_utils_path[PATH_MAX];
+    char value_ops_path[PATH_MAX];
+    char builtins_path[PATH_MAX];
+    char error_path[PATH_MAX];
     char value_path[PATH_MAX];
     char var_path[PATH_MAX];
     char function_path[PATH_MAX];
     char ast_path[PATH_MAX];
     char expr_path[PATH_MAX];
     char expr_ops_path[PATH_MAX];
-    char string_ops_path[PATH_MAX];
-    char operators_path[PATH_MAX];
-    char array_utils_path[PATH_MAX];
-    char value_ops_path[PATH_MAX];
-    char builtins_path[PATH_MAX];
+    char ast_memory_path[PATH_MAX];
+    char ast_types_path[PATH_MAX];
+    char ast_expr_parser_path[PATH_MAX];
+    char ast_stmt_parser_path[PATH_MAX];
+    char ast_dump_path[PATH_MAX];
     char inc_path[PATH_MAX];
     // Core runtime and utilities
     snprintf(rt_path, sizeof(rt_path), "%s/src/runtime/runtime.c", root_dir);
+    snprintf(memory_path, sizeof(memory_path), "%s/src/runtime/memory.c", root_dir);
     snprintf(print_path, sizeof(print_path), "%s/src/runtime/print.c", root_dir);
     snprintf(string_ops_path, sizeof(string_ops_path), "%s/src/runtime/string_ops.c", root_dir);
     snprintf(operators_path, sizeof(operators_path), "%s/src/runtime/operators.c", root_dir);
@@ -457,7 +468,6 @@ static int bread_llvm_link_executable_with_clang(const char* obj_path, const cha
     snprintf(builtins_path, sizeof(builtins_path), "%s/src/runtime/builtins.c", root_dir);
     
     // Error handling
-    char error_path[PATH_MAX];
     snprintf(error_path, sizeof(error_path), "%s/src/runtime/error.c", root_dir);
     
     // Core types and variables
@@ -470,24 +480,12 @@ static int bread_llvm_link_executable_with_clang(const char* obj_path, const cha
     snprintf(expr_path, sizeof(expr_path), "%s/src/compiler/parser/expr.c", root_dir);
     snprintf(expr_ops_path, sizeof(expr_ops_path), "%s/src/compiler/parser/expr_ops.c", root_dir);
     
-    // AST memory management
-    char ast_memory_path[PATH_MAX];
     snprintf(ast_memory_path, sizeof(ast_memory_path), "%s/src/compiler/ast/ast_memory.c", root_dir);
-    
-    // AST types
-    char ast_types_path[PATH_MAX];
     snprintf(ast_types_path, sizeof(ast_types_path), "%s/src/compiler/ast/ast_types.c", root_dir);
-    
-    // AST expression parser
-    char ast_expr_parser_path[PATH_MAX];
     snprintf(ast_expr_parser_path, sizeof(ast_expr_parser_path), "%s/src/compiler/ast/ast_expr_parser.c", root_dir);
-    
-    // AST statement parser
-    char ast_stmt_parser_path[PATH_MAX];
     snprintf(ast_stmt_parser_path, sizeof(ast_stmt_parser_path), "%s/src/compiler/ast/ast_stmt_parser.c", root_dir);
     
     // AST dump
-    char ast_dump_path[PATH_MAX];
     snprintf(ast_dump_path, sizeof(ast_dump_path), "%s/src/compiler/ast/ast_dump.c", root_dir);
     
     // Include path
@@ -495,7 +493,7 @@ static int bread_llvm_link_executable_with_clang(const char* obj_path, const cha
 
     // Calculate required buffer size for the command
     size_t cap = strlen(obj_path) + strlen(out_path) + 
-                strlen(rt_path) + strlen(print_path) + 
+                strlen(rt_path) + strlen(memory_path) + strlen(print_path) + 
                 strlen(string_ops_path) + strlen(operators_path) + 
                 strlen(array_utils_path) + strlen(value_ops_path) + 
                 strlen(builtins_path) + strlen(error_path) + 
@@ -515,7 +513,7 @@ static int bread_llvm_link_executable_with_clang(const char* obj_path, const cha
         cap,
         "clang -std=c11 -I'%s' -o '%s' "
         "'%s' "  // obj_path
-        "'%s' '%s' "  // rt_path, print_path
+        "'%s' '%s' '%s' "  // rt_path, memory_path, print_path
         "'%s' '%s' '%s' "  // string_ops_path, operators_path, array_utils_path
         "'%s' '%s' "  // value_ops_path, builtins_path
         "'%s' '%s' '%s' "  // error_path, value_path, var_path
@@ -526,7 +524,7 @@ static int bread_llvm_link_executable_with_clang(const char* obj_path, const cha
         inc_path,          // Include path
         out_path,          // Output file
         obj_path,          // Input object file
-        rt_path, print_path,  // Runtime
+        rt_path, memory_path, print_path,  // Runtime
         string_ops_path, operators_path, array_utils_path,  // Runtime utilities
         value_ops_path, builtins_path,  // Core runtime
         error_path, value_path, var_path,  // Error handling and core types
@@ -548,6 +546,8 @@ static int bread_llvm_link_executable_with_clang(const char* obj_path, const cha
 int bread_llvm_emit_exe(const ASTStmtList* program, const char* out_path) {
     if (!program || !out_path) return 0;
 
+    g_use_compact_print = 1;
+
     size_t obj_len = strlen(out_path) + 3;
     char* obj_path = (char*)malloc(obj_len);
     if (!obj_path) return 0;
@@ -563,6 +563,8 @@ int bread_llvm_emit_exe(const ASTStmtList* program, const char* out_path) {
     if (!ok) {
         printf("Error: clang failed to link executable\n");
     }
+
+    g_use_compact_print = 0;
 
     free(obj_path);
     return ok;
@@ -699,9 +701,6 @@ int bread_llvm_jit_function(Function* fn) {
     LLVMBuildCall2(builder, fn_type, target_fn->fn, call_args, (unsigned)param_total, "");
     free(call_args);
     LLVMBuildRetVoid(builder);
-
-    // Now compile the target function body
-    // Reuse logic from bread_llvm_build_module_from_program
     
     LLVMBasicBlockRef fn_entry = LLVMAppendBasicBlock(target_fn->fn, "entry");
     LLVMPositionBuilderAtEnd(builder, fn_entry);

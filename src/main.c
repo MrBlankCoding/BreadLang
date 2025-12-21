@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <unistd.h>
+#include <libgen.h>
 #include "runtime/print.h"
 #include "runtime/runtime.h"
 #include "runtime/memory.h"
@@ -12,21 +14,34 @@
 #include "compiler/analysis/semantic.h"
 #include "backends/llvm_backend.h"
 
-#define MAX_FILE_SIZE 65536
+#define MAX_FILE_SIZE 1048576  // 1MB max file size
+#define VERSION "1.0.0"
 
 static void print_usage(const char* prog) {
+    printf("BreadLang v%s - A modern programming language with LLVM JIT compilation\n\n", VERSION);
     printf("Usage: %s [options] <file>\n", prog);
     printf("Options:\n");
     printf("  -h, --help            Show this help message\n");
+    printf("  -v, --version         Show version information\n");
     printf("  -c, --eval <code>     Execute BreadLang code from command line\n");
     printf("  --dump-ast            Print the parsed AST\n");
     printf("  --emit-llvm           Emit LLVM IR to a .ll file\n");
     printf("  --emit-obj            Emit an object file\n");
     printf("  --emit-exe            Emit a native executable\n");
     printf("  -o <file>             Output path for emit operations\n");
-    printf("Examples:\n");
-    printf("  %s -c 'print(1 + 2)'\n", prog);
-    printf("  %s --emit-llvm -o out.ll program.bread\n", prog);
+    printf("  --verbose             Enable verbose output\n");
+    printf("\nExamples:\n");
+    printf("  %s -c 'print(1 + 2)'                    # Execute inline code\n", prog);
+    printf("  %s program.bread                         # Run a BreadLang program\n", prog);
+    printf("  %s --emit-llvm -o out.ll program.bread   # Emit LLVM IR\n", prog);
+    printf("  %s --emit-exe -o myapp program.bread     # Create standalone executable\n", prog);
+    printf("\nFor more information, visit: https://github.com/breadlang/breadlang\n");
+}
+
+static void print_version(void) {
+    printf("BreadLang %s\n", VERSION);
+    printf("Built with LLVM JIT compilation support\n");
+    printf("Copyright (c) 2024 BreadLang Contributors\n");
 }
 
 char* trim_main(char* str) {
@@ -44,17 +59,27 @@ int main(int argc, char* argv[]) {
     int emit_llvm = 0;
     int emit_obj = 0;
     int emit_exe = 0;
+    int verbose = 0;
     const char* filename = NULL;
     const char* out_path = NULL;
     const char* inline_code = NULL;
 
+    // Parse command line arguments
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
             print_usage(argv[0]);
             return 0;
         }
+        if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--version") == 0) {
+            print_version();
+            return 0;
+        }
         if (strcmp(argv[i], "--dump-ast") == 0) {
             dump_ast = 1;
+            continue;
+        }
+        if (strcmp(argv[i], "--verbose") == 0) {
+            verbose = 1;
             continue;
         }
          if (strcmp(argv[i], "--emit-llvm") == 0) {
@@ -71,6 +96,7 @@ int main(int argc, char* argv[]) {
          }
          if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--eval") == 0) {
              if (i + 1 >= argc) {
+                 fprintf(stderr, "Error: -c/--eval requires a code argument\n");
                  print_usage(argv[0]);
                  return 1;
              }
@@ -80,6 +106,7 @@ int main(int argc, char* argv[]) {
          }
          if (strcmp(argv[i], "-o") == 0) {
              if (i + 1 >= argc) {
+                fprintf(stderr, "Error: -o requires an output file argument\n");
                 print_usage(argv[0]);
                  return 1;
              }
@@ -87,44 +114,89 @@ int main(int argc, char* argv[]) {
              i++;
              continue;
          }
+        if (argv[i][0] == '-') {
+            fprintf(stderr, "Error: Unknown option '%s'\n", argv[i]);
+            print_usage(argv[0]);
+            return 1;
+        }
         if (!filename) {
             filename = argv[i];
             continue;
         }
 
+        fprintf(stderr, "Error: Too many arguments\n");
         print_usage(argv[0]);
         return 1;
     }
 
     if (!filename && !inline_code) {
+        fprintf(stderr, "Error: No input file or code specified\n");
         print_usage(argv[0]);
         return 1;
     }
 
+    if (verbose) {
+        printf("BreadLang v%s starting...\n", VERSION);
+        if (filename) {
+            printf("Processing file: %s\n", filename);
+        } else {
+            printf("Processing inline code\n");
+        }
+    }
+
+    // Read input code
     char* code = NULL;
     if (inline_code) {
         size_t n = strlen(inline_code);
         code = malloc(n + 1);
         if (!code) {
-            printf("Error: Out of memory\n");
+            fprintf(stderr, "Error: Out of memory\n");
             return 1;
         }
         memcpy(code, inline_code, n + 1);
     } else {
-        FILE* file = fopen(filename, "r");
-        if (!file) {
-            printf("Error: Could not open file '%s'\n", filename);
+        // Check if file exists and is readable
+        if (access(filename, R_OK) != 0) {
+            fprintf(stderr, "Error: Cannot read file '%s'\n", filename);
             return 1;
         }
-        code = malloc(MAX_FILE_SIZE);
-        if (!code) {
-            printf("Error: Out of memory\n");
+        
+        FILE* file = fopen(filename, "r");
+        if (!file) {
+            fprintf(stderr, "Error: Could not open file '%s'\n", filename);
+            return 1;
+        }
+        
+        // Get file size
+        fseek(file, 0, SEEK_END);
+        long file_size = ftell(file);
+        fseek(file, 0, SEEK_SET);
+        
+        if (file_size > MAX_FILE_SIZE) {
+            fprintf(stderr, "Error: File '%s' is too large (max %d bytes)\n", filename, MAX_FILE_SIZE);
             fclose(file);
             return 1;
         }
-        size_t bytes_read = fread(code, 1, MAX_FILE_SIZE - 1, file);
+        
+        code = malloc(file_size + 1);
+        if (!code) {
+            fprintf(stderr, "Error: Out of memory\n");
+            fclose(file);
+            return 1;
+        }
+        
+        size_t bytes_read = fread(code, 1, file_size, file);
         code[bytes_read] = '\0';
         fclose(file);
+        
+        if (verbose) {
+            printf("Read %zu bytes from %s\n", bytes_read, filename);
+        }
+    }
+    
+    // Initialize runtime systems
+    if (verbose) {
+        printf("Initializing runtime systems...\n");
     }
     
     init_variables();
@@ -134,6 +206,11 @@ int main(int argc, char* argv[]) {
     bread_builtin_init();
     bread_error_init();
      
+    // Parse the program
+    if (verbose) {
+        printf("Parsing program...\n");
+    }
+    
     ASTStmtList* program = ast_parse_program(code);
     
     // Check for parsing errors

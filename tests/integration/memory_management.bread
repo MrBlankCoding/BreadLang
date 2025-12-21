@@ -1,0 +1,38 @@
+// Test memory management and garbage collection
+func create_large_array() -> [Int] {
+    let arr: [Int] = []
+    for i in range(1000) {
+        arr.append(i)
+    }
+    return arr
+}
+
+func process_strings() -> String {
+    let result: String = ""
+    for i in range(100) {
+        result = result + "test" + i.toString()
+    }
+    return result
+}
+
+// Create and process large data structures
+let big_array: [Int] = create_large_array()
+print(big_array.length)
+print(big_array[999])
+
+let long_string: String = process_strings()
+print(long_string.length)
+
+// Nested function calls with memory allocation
+func recursive_append(arr: [String], depth: Int) -> [String] {
+    if depth <= 0 {
+        return arr
+    }
+    arr.append("level" + depth.toString())
+    return recursive_append(arr, depth - 1)
+}
+
+let nested_result: [String] = recursive_append([], 10)
+print(nested_result.length)
+print(nested_result[0])
+print(nested_result[9])

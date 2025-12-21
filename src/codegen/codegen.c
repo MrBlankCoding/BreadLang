@@ -178,6 +178,124 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
             (void)LLVMBuildCall2(cg->builder, cg->ty_binary_op, cg->fn_binary_op, args, 4, "");
             return tmp;
         }
+
+        case AST_EXPR_UNARY: {
+            LLVMValueRef operand = cg_build_expr(cg, cg_fn, val_size, expr->as.unary.operand);
+            if (!operand) return NULL;
+
+            tmp = cg_alloc_value(cg, "unarytmp");
+
+            if (expr->as.unary.op == '!') {
+                LLVMValueRef args[] = {cg_value_to_i8_ptr(cg, operand), cg_value_to_i8_ptr(cg, tmp)};
+                (void)LLVMBuildCall2(cg->builder, cg->ty_unary_not, cg->fn_unary_not, args, 2, "");
+                return tmp;
+            }
+
+            if (expr->as.unary.op == '-') {
+                // Implement unary minus as (0 - operand)
+                LLVMValueRef zero = cg_alloc_value(cg, "zerotmp");
+                LLVMValueRef zero_i = LLVMConstInt(cg->i32, 0, 0);
+                LLVMValueRef zargs[] = {cg_value_to_i8_ptr(cg, zero), zero_i};
+                (void)LLVMBuildCall2(cg->builder, cg->ty_value_set_int, cg->fn_value_set_int, zargs, 2, "");
+
+                LLVMValueRef op = LLVMConstInt(cg->i8, '-', 0);
+                LLVMValueRef args[] = {
+                    op,
+                    cg_value_to_i8_ptr(cg, zero),
+                    cg_value_to_i8_ptr(cg, operand),
+                    cg_value_to_i8_ptr(cg, tmp)
+                };
+                (void)LLVMBuildCall2(cg->builder, cg->ty_binary_op, cg->fn_binary_op, args, 4, "");
+                return tmp;
+            }
+
+            fprintf(stderr, "Codegen not implemented for unary op '%c'\n", expr->as.unary.op);
+            return NULL;
+        }
+
+        case AST_EXPR_INDEX: {
+            LLVMValueRef target = cg_build_expr(cg, cg_fn, val_size, expr->as.index.target);
+            if (!target) return NULL;
+            LLVMValueRef index = cg_build_expr(cg, cg_fn, val_size, expr->as.index.index);
+            if (!index) return NULL;
+
+            tmp = cg_alloc_value(cg, "idxtmp");
+            LLVMValueRef args[] = {
+                cg_value_to_i8_ptr(cg, target),
+                cg_value_to_i8_ptr(cg, index),
+                cg_value_to_i8_ptr(cg, tmp)
+            };
+            (void)LLVMBuildCall2(cg->builder, cg->ty_index_op, cg->fn_index_op, args, 3, "");
+            return tmp;
+        }
+
+        case AST_EXPR_MEMBER: {
+            LLVMValueRef target = cg_build_expr(cg, cg_fn, val_size, expr->as.member.target);
+            if (!target) return NULL;
+
+            tmp = cg_alloc_value(cg, "membertmp");
+            const char* member = expr->as.member.member ? expr->as.member.member : "";
+            LLVMValueRef member_glob = cg_get_string_global(cg, member);
+            LLVMValueRef member_ptr = LLVMBuildBitCast(cg->builder, member_glob, cg->i8_ptr, "");
+            LLVMValueRef is_opt = LLVMConstInt(cg->i32, expr->as.member.is_optional_chain ? 1 : 0, 0);
+
+            LLVMValueRef args[] = {
+                cg_value_to_i8_ptr(cg, target),
+                member_ptr,
+                is_opt,
+                cg_value_to_i8_ptr(cg, tmp)
+            };
+            (void)LLVMBuildCall2(cg->builder, cg->ty_member_op, cg->fn_member_op, args, 4, "");
+            return tmp;
+        }
+
+        case AST_EXPR_METHOD_CALL: {
+            LLVMValueRef target = cg_build_expr(cg, cg_fn, val_size, expr->as.method_call.target);
+            if (!target) return NULL;
+
+            tmp = cg_alloc_value(cg, "methodtmp");
+
+            const char* name = expr->as.method_call.name ? expr->as.method_call.name : "";
+            LLVMValueRef name_glob = cg_get_string_global(cg, name);
+            LLVMValueRef name_ptr = LLVMBuildBitCast(cg->builder, name_glob, cg->i8_ptr, "");
+            LLVMValueRef is_opt = LLVMConstInt(cg->i32, expr->as.method_call.is_optional_chain ? 1 : 0, 0);
+            LLVMValueRef argc = LLVMConstInt(cg->i32, expr->as.method_call.arg_count, 0);
+
+            LLVMValueRef args_ptr = LLVMConstNull(cg->i8_ptr);
+            if (expr->as.method_call.arg_count > 0) {
+                LLVMTypeRef args_arr_ty = LLVMArrayType(cg->value_type, (unsigned)expr->as.method_call.arg_count);
+                LLVMValueRef args_alloca = LLVMBuildAlloca(cg->builder, args_arr_ty, "method_args");
+                LLVMSetAlignment(args_alloca, 16);
+
+                for (int i = 0; i < expr->as.method_call.arg_count; i++) {
+                    LLVMValueRef arg_val = cg_build_expr(cg, cg_fn, val_size, expr->as.method_call.args[i]);
+                    if (!arg_val) return NULL;
+
+                    LLVMValueRef slot = LLVMBuildGEP2(
+                        cg->builder,
+                        args_arr_ty,
+                        args_alloca,
+                        (LLVMValueRef[]){LLVMConstInt(cg->i32, 0, 0), LLVMConstInt(cg->i32, i, 0)},
+                        2,
+                        "method_arg_slot");
+                    cg_copy_value_into(cg, slot, arg_val);
+                }
+
+                args_ptr = LLVMBuildBitCast(cg->builder, args_alloca, cg->i8_ptr, "");
+            }
+
+            LLVMValueRef args[] = {
+                cg_value_to_i8_ptr(cg, target),
+                name_ptr,
+                argc,
+                args_ptr,
+                is_opt,
+                cg_value_to_i8_ptr(cg, tmp)
+            };
+            (void)LLVMBuildCall2(cg->builder, cg->ty_method_call_op, cg->fn_method_call_op, args, 6, "");
+            return tmp;
+        }
+
         case AST_EXPR_CALL: {
             // Handle built-in range function
             if (expr->as.call.name && strcmp(expr->as.call.name, "range") == 0) {
@@ -304,12 +422,43 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
             
             // Create empty array using existing runtime function
             LLVMValueRef array_ptr = LLVMBuildCall2(cg->builder, cg->ty_array_new, cg->fn_array_new, NULL, 0, "");
-            
-            // For now, just create empty arrays - element addition will be implemented later
-            // TODO: Add elements to array when bread_array_append_value is working
-            
+
+            // Append each element into the array
+            for (int i = 0; i < expr->as.array_literal.element_count; i++) {
+                LLVMValueRef elem_val = cg_build_expr(cg, cg_fn, val_size, expr->as.array_literal.elements[i]);
+                if (!elem_val) return NULL;
+                LLVMValueRef append_args[] = {array_ptr, cg_value_to_i8_ptr(cg, elem_val)};
+                (void)LLVMBuildCall2(cg->builder, cg->ty_array_append_value, cg->fn_array_append_value, append_args, 2, "");
+            }
+
             LLVMValueRef array_args[] = {cg_value_to_i8_ptr(cg, tmp), array_ptr};
             (void)LLVMBuildCall2(cg->builder, cg->ty_value_set_array, cg->fn_value_set_array, array_args, 2, "");
+            return tmp;
+        }
+        case AST_EXPR_DICT: {
+            tmp = cg_alloc_value(cg, "dicttmp");
+
+            LLVMValueRef dict_ptr = LLVMBuildCall2(cg->builder, cg->ty_dict_new, cg->fn_dict_new, NULL, 0, "");
+
+            for (int i = 0; i < expr->as.dict.entry_count; i++) {
+                ASTDictEntry* entry = &expr->as.dict.entries[i];
+                if (!entry->key || !entry->value) return NULL;
+
+                LLVMValueRef key_val = cg_build_expr(cg, cg_fn, val_size, entry->key);
+                if (!key_val) return NULL;
+                LLVMValueRef value_val = cg_build_expr(cg, cg_fn, val_size, entry->value);
+                if (!value_val) return NULL;
+
+                LLVMValueRef set_args[] = {
+                    dict_ptr,
+                    cg_value_to_i8_ptr(cg, key_val),
+                    cg_value_to_i8_ptr(cg, value_val)
+                };
+                (void)LLVMBuildCall2(cg->builder, cg->ty_dict_set_value, cg->fn_dict_set_value, set_args, 3, "");
+            }
+
+            LLVMValueRef dict_args[] = {cg_value_to_i8_ptr(cg, tmp), dict_ptr};
+            (void)LLVMBuildCall2(cg->builder, cg->ty_value_set_dict, cg->fn_value_set_dict, dict_args, 2, "");
             return tmp;
         }
         case AST_EXPR_RANGE: {
@@ -379,6 +528,36 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
             LLVMValueRef name_ptr = LLVMBuildBitCast(cg->builder, name_str, cg->i8_ptr, "");
             LLVMValueRef args[] = {name_ptr, cg_value_to_i8_ptr(cg, value)};
             (void)LLVMBuildCall2(cg->builder, cg->ty_var_assign, cg->fn_var_assign, args, 2, "");
+            return 1;
+        }
+
+        case AST_STMT_INDEX_ASSIGN: {
+            LLVMValueRef idx = cg_build_expr(cg, cg_fn, val_size, stmt->as.index_assign.index);
+            if (!idx) return 0;
+            LLVMValueRef value = cg_build_expr(cg, cg_fn, val_size, stmt->as.index_assign.value);
+            if (!value) return 0;
+
+            LLVMValueRef target_ptr = NULL;
+
+            if (stmt->as.index_assign.target && stmt->as.index_assign.target->kind == AST_EXPR_VAR && cg_fn) {
+                CgVar* var = cg_scope_find_var(cg_fn->scope, stmt->as.index_assign.target->as.var_name);
+                if (var) {
+                    target_ptr = var->alloca;
+                }
+            }
+
+            // Fallback: evaluate target as an rvalue. This may not persist mutations, but still provides defined behavior.
+            if (!target_ptr) {
+                target_ptr = cg_build_expr(cg, cg_fn, val_size, stmt->as.index_assign.target);
+                if (!target_ptr) return 0;
+            }
+
+            LLVMValueRef args[] = {
+                cg_value_to_i8_ptr(cg, target_ptr),
+                cg_value_to_i8_ptr(cg, idx),
+                cg_value_to_i8_ptr(cg, value)
+            };
+            (void)LLVMBuildCall2(cg->builder, cg->ty_index_set_op, cg->fn_index_set_op, args, 3, "");
             return 1;
         }
         case AST_STMT_PRINT: {
@@ -601,9 +780,9 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
             LLVMValueRef name_str = cg_get_string_global(cg, stmt->as.for_in_stmt.var_name);
             LLVMValueRef name_ptr = LLVMBuildBitCast(cg->builder, name_str, cg->i8_ptr, "");
             LLVMValueRef init_tmp = cg_alloc_value(cg, "forin.init");
-            LLVMValueRef set_args[] = {cg_value_to_i8_ptr(cg, init_tmp), LLVMConstInt(cg->i32, 0, 0)};
-            (void)LLVMBuildCall2(cg->builder, cg->ty_value_set_int, cg->fn_value_set_int, set_args, 2, "");
-            LLVMValueRef decl_type = LLVMConstInt(cg->i32, TYPE_INT, 0);
+            LLVMValueRef nil_args[] = {cg_value_to_i8_ptr(cg, init_tmp)};
+            (void)LLVMBuildCall2(cg->builder, cg->ty_value_set_nil, cg->fn_value_set_nil, nil_args, 1, "");
+            LLVMValueRef decl_type = LLVMConstInt(cg->i32, TYPE_NIL, 0);
             LLVMValueRef decl_const = LLVMConstInt(cg->i32, 0, 0);
             LLVMValueRef decl_args[] = {name_ptr, decl_type, decl_const, cg_value_to_i8_ptr(cg, init_tmp)};
             (void)LLVMBuildCall2(cg->builder, cg->ty_var_decl_if_missing, cg->fn_var_decl_if_missing, decl_args, 4, "");

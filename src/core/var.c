@@ -214,7 +214,11 @@ static int set_variable_value_from_expr_result(Variable* target, const ExprResul
     VarValue coerced_value;
     memset(&coerced_value, 0, sizeof(coerced_value));
 
-    if (target->type == expr_result->type) {
+    if (target->type == TYPE_NIL) {
+        can_assign = 1;
+        coerced_value = expr_result->value;
+        target->type = expr_result->type;
+    } else if (target->type == expr_result->type) {
         can_assign = 1;
         coerced_value = expr_result->value;
     } else if (target->type == TYPE_OPTIONAL && expr_result->type == TYPE_NIL) {
@@ -314,7 +318,11 @@ static int set_variable_value(Variable* target, char* raw_value) {
         VarValue coerced_value;
 
         // Handle type coercion
-        if (target->type == expr_result.type) {
+        if (target->type == TYPE_NIL) {
+            can_assign = 1;
+            coerced_value = expr_result.value;
+            target->type = expr_result.type;
+        } else if (target->type == expr_result.type) {
             // Same type, direct assignment
             can_assign = 1;
             coerced_value = expr_result.value;

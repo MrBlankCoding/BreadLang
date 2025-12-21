@@ -146,6 +146,11 @@ void ast_free_stmt_list(ASTStmtList* stmts) {
                 free(cur->as.var_assign.var_name);
                 ast_free_expr(cur->as.var_assign.value);
                 break;
+            case AST_STMT_INDEX_ASSIGN:
+                ast_free_expr(cur->as.index_assign.target);
+                ast_free_expr(cur->as.index_assign.index);
+                ast_free_expr(cur->as.index_assign.value);
+                break;
             case AST_STMT_PRINT:
                 ast_free_expr(cur->as.print.expr);
                 break;

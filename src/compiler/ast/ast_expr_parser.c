@@ -319,6 +319,20 @@ static ASTExpr* parse_unary(const char** expr) {
         return out;
     }
 
+    if (**expr == '-') {
+        (*expr)++;
+        ASTExpr* operand = parse_unary(expr);
+        if (!operand) return NULL;
+        ASTExpr* out = ast_expr_new(AST_EXPR_UNARY);
+        if (!out) {
+            ast_free_expr(operand);
+            return NULL;
+        }
+        out->as.unary.op = '-';
+        out->as.unary.operand = operand;
+        return out;
+    }
+
     ASTExpr* prim = parse_primary(expr);
     if (!prim) return NULL;
     return parse_postfix(expr, prim);

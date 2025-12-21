@@ -25,7 +25,7 @@ BreadLang is a modern programming language implemented in C with LLVM JIT compil
 
 ### Prerequisites
 
-- A C compiler (GCC/Clang) supporting C11
+- **Clang**: Required C compiler supporting C11 (GCC is not supported)
 - **LLVM**: Required for JIT compilation (`llvm-config` must be in your PATH)
   - Tested with LLVM 14+
   - On macOS: `brew install llvm`
@@ -33,13 +33,33 @@ BreadLang is a modern programming language implemented in C with LLVM JIT compil
 
 ### Building
 
-Use the provided build script to compile the project:
+BreadLang uses clang and LLVM for optimal performance. You can build using either the shell script or CMake:
+
+#### Using build.sh (Quick Build)
 
 ```sh
 ./build.sh
 ```
 
 This will produce the `breadlang` executable in the project root.
+
+#### Using CMake (Recommended for Development)
+
+```sh
+mkdir build
+cd build
+cmake ..
+make
+```
+
+The executable will be in `build/breadlang`. You can also run tests:
+
+```sh
+make test-all          # Run all tests
+make test-integration  # Run integration tests only
+make test-llvm         # Run LLVM backend tests only
+make test-property     # Run property-based tests only
+```
 
 ## Usage
 
@@ -153,33 +173,48 @@ print(greeting)          // Output: Hello, World
 
 ## Testing
 
-The project maintains a comprehensive test suite covering all language features.
-
-### Running Tests
-
-Use the unified test runner script:
-
-```sh
-# Run all tests
-./scripts/tests.sh
-
-# Run with verbose output
-./scripts/tests.sh --verbose
-
-# Run only integration tests
-./scripts/tests.sh -t integration
-
-# Run only LLVM backend tests
-./scripts/tests.sh -t llvm_backend
-```
+BreadLang maintains a comprehensive test suite covering all language features and implementation details.
 
 ### Test Categories
 
-- **Integration Tests** (`tests/integration/`): Core language features and syntax
-- **LLVM Backend Tests** (`tests/llvm_backend/`): Performance, optimization, and code generation
-- **Property-Based Tests** (`tests/property/`): Automated testing with random inputs
+- **Integration Tests** (`tests/integration/`): End-to-end language feature testing
+- **LLVM Backend Tests** (`tests/llvm_backend/`): Code generation, optimization, and performance
+- **Property-Based Tests** (`tests/property/`): Automated testing with systematic coverage
+  - `core/`: Core language features (values, types, variables)
+  - `runtime/`: Runtime systems (memory, strings, arrays, GC)
+  - `compiler/`: Compiler components (parser, semantic analysis)
+  - `integration/`: Cross-component property tests
 
-All tests use LLVM JIT compilation for execution, ensuring the test environment matches production.
+### Running Tests
+
+#### All Tests
+```sh
+./scripts/tests.sh
+```
+
+#### Specific Categories
+```sh
+# Integration tests only
+./scripts/tests.sh -t integration
+
+# LLVM backend tests only
+./scripts/tests.sh -t llvm_backend
+
+# Property-based tests
+cd tests/property
+make test
+```
+
+#### Using CMake
+```sh
+cd build
+make test-all          # All tests
+make test-integration  # Integration tests
+make test-llvm         # LLVM backend tests
+make test-property     # Property-based tests
+```
+
+All tests use LLVM JIT compilation, ensuring the test environment matches production behavior.
 
 ## Project Structure
 

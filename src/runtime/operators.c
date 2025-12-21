@@ -97,6 +97,29 @@ int bread_index_op(const BreadValue* target, const BreadValue* idx, BreadValue* 
     return 0;
 }
 
+int bread_index_set_op(BreadValue* target, const BreadValue* idx, const BreadValue* value) {
+    if (!target || !idx || !value) return 0;
+
+    if (target->type == TYPE_ARRAY) {
+        if (idx->type != TYPE_INT) {
+            printf("Error: Array index must be Int\n");
+            return 0;
+        }
+        return bread_array_set_value(target->value.array_val, idx->value.int_val, value);
+    }
+
+    if (target->type == TYPE_DICT) {
+        if (idx->type != TYPE_STRING) {
+            printf("Error: Dictionary key must be String\n");
+            return 0;
+        }
+        return bread_dict_set_value(target->value.dict_val, idx, value);
+    }
+
+    printf("Error: Type does not support indexing\n");
+    return 0;
+}
+
 int bread_member_op(const BreadValue* target, const char* member, int is_opt, BreadValue* out) {
     if (!target || !out) return 0;
 
@@ -184,6 +207,44 @@ int bread_method_call_op(const BreadValue* target, const char* name, int argc, c
     }
 
     bread_value_set_nil(out);
+
+    if (name && strcmp(name, "toString") == 0) {
+        if (argc != 0) {
+            printf("Error: toString() expects 0 arguments\n");
+            if (target_owned) bread_value_release(&real_target);
+            return 0;
+        }
+
+        char buf[128];
+        buf[0] = '\0';
+
+        switch (real_target.type) {
+            case TYPE_STRING:
+                bread_value_set_string(out, bread_string_cstr(real_target.value.string_val));
+                if (target_owned) bread_value_release(&real_target);
+                return 1;
+            case TYPE_INT:
+                snprintf(buf, sizeof(buf), "%d", real_target.value.int_val);
+                break;
+            case TYPE_BOOL:
+                snprintf(buf, sizeof(buf), "%s", real_target.value.bool_val ? "true" : "false");
+                break;
+            case TYPE_FLOAT:
+                snprintf(buf, sizeof(buf), "%f", real_target.value.float_val);
+                break;
+            case TYPE_DOUBLE:
+                snprintf(buf, sizeof(buf), "%lf", real_target.value.double_val);
+                break;
+            default:
+                printf("Error: toString() not supported for this type\n");
+                if (target_owned) bread_value_release(&real_target);
+                return 0;
+        }
+
+        bread_value_set_string(out, buf);
+        if (target_owned) bread_value_release(&real_target);
+        return 1;
+    }
 
     if (name && strcmp(name, "append") == 0) {
         if (real_target.type != TYPE_ARRAY) {

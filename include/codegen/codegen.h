@@ -57,6 +57,7 @@ typedef struct {
     LLVMValueRef fn_unary_not;
     LLVMValueRef fn_binary_op;
     LLVMValueRef fn_index_op;
+    LLVMValueRef fn_index_set_op;
     LLVMValueRef fn_member_op;
     LLVMValueRef fn_method_call_op;
     LLVMValueRef fn_dict_set_value;
@@ -101,6 +102,7 @@ typedef struct {
     LLVMTypeRef ty_unary_not;
     LLVMTypeRef ty_binary_op;
     LLVMTypeRef ty_index_op;
+    LLVMTypeRef ty_index_set_op;
     LLVMTypeRef ty_member_op;
     LLVMTypeRef ty_method_call_op;
     LLVMTypeRef ty_dict_set_value;

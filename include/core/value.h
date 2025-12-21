@@ -10,19 +10,23 @@ struct BreadArray {
     BreadObjHeader header;
     int count;
     int capacity;
-    VarType element_type;  // Type constraint for array elements
+    VarType element_type; 
     BreadValue* items;
 };
 
 typedef struct {
-    BreadString* key;
-    BreadValue value;
+    BreadValue key;        
+    BreadValue value;      
+    int is_occupied;       
+    int is_deleted;        
 } BreadDictEntry;
 
 struct BreadDict {
     BreadObjHeader header;
     int count;
     int capacity;
+    VarType key_type;      // Type constraint for keys
+    VarType value_type;    // Type constraint for values
     BreadDictEntry* entries;
 };
 
@@ -40,14 +44,25 @@ BreadValue bread_value_clone(BreadValue v);
 
 BreadArray* bread_array_new(void);
 BreadArray* bread_array_new_typed(VarType element_type);
+BreadArray* bread_array_new_with_capacity(int capacity, VarType element_type);
+BreadArray* bread_array_from_literal(BreadValue* elements, int count);
+BreadArray* bread_array_repeating(BreadValue value, int count);
 void bread_array_retain(BreadArray* a);
 void bread_array_release(BreadArray* a);
 int bread_array_append(BreadArray* a, BreadValue v);
+int bread_array_insert(BreadArray* array, BreadValue value, int index);
+BreadValue bread_array_remove_at(BreadArray* array, int index);
+int bread_array_contains(BreadArray* array, BreadValue value);
+int bread_array_index_of(BreadArray* array, BreadValue value);
 int bread_array_set(BreadArray* a, int idx, BreadValue v);
 BreadValue* bread_array_get(BreadArray* a, int idx);
+BreadValue* bread_array_get_safe(BreadArray* array, int index);
+int bread_array_set_safe(BreadArray* array, int index, BreadValue value);
+int bread_array_negative_index(BreadArray* array, int index);
 int bread_array_length(BreadArray* a);
 
 BreadDict* bread_dict_new(void);
+BreadDict* bread_dict_new_typed(VarType key_type, VarType value_type);
 void bread_dict_retain(BreadDict* d);
 void bread_dict_release(BreadDict* d);
 int bread_dict_set(BreadDict* d, const char* key, BreadValue v);

@@ -1,0 +1,38 @@
+// Test type system in LLVM backend
+func test_int(x: Int) -> Int {
+    return x * 2
+}
+
+func test_double(x: Double) -> Double {
+    return x * 2.5
+}
+
+func test_string(s: String) -> String {
+    return s + " processed"
+}
+
+func test_bool(b: Bool) -> Bool {
+    return !b
+}
+
+// Test different types
+let int_val: Int = 42
+let double_val: Double = 3.14
+let string_val: String = "test"
+let bool_val: Bool = true
+
+print(test_int(int_val))
+print(test_double(double_val))
+print(test_string(string_val))
+print(test_bool(bool_val))
+
+// Type conversions and operations
+let result1: Int = int_val + 8
+let result2: Double = double_val + 1.86
+let result3: String = string_val + "ing"
+let result4: Bool = bool_val && false
+
+print(result1)
+print(result2)
+print(result3)
+print(result4)

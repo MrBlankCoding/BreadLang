@@ -152,10 +152,14 @@ static void bread_print_value_inner(const BreadValue* v) {
             if (d && d->count > 0) {
                 int first = 1;
                 for (int i = 0; i < d->capacity; i++) {
-                    if (d->entries[i].key) {
+                    if (d->entries[i].is_occupied && !d->entries[i].is_deleted) {
                         if (!first) printf(", ");
                         first = 0;
-                        printf("%s: ", bread_string_cstr(d->entries[i].key));
+                        if (d->entries[i].key.type == TYPE_STRING) {
+                            printf("%s: ", bread_string_cstr(d->entries[i].key.value.string_val));
+                        } else {
+                            printf("key: ");
+                        }
                         bread_print_value_inner(&d->entries[i].value);
                     }
                 }
@@ -171,6 +175,98 @@ static void bread_print_value_inner(const BreadValue* v) {
 
 void bread_print(const BreadValue* v) {
     bread_print_value_inner(v);
+    printf("\n");
+}
+
+static void bread_print_value_inner_compact(const BreadValue* v) {
+    if (!v) {
+        printf("nil");
+        return;
+    }
+
+    switch (v->type) {
+        case TYPE_STRING:
+            printf("%s", bread_string_cstr(v->value.string_val));
+            break;
+        case TYPE_INT:
+            printf("%d", v->value.int_val);
+            break;
+        case TYPE_BOOL:
+            printf("%s", v->value.bool_val ? "true" : "false");
+            break;
+        case TYPE_FLOAT: {
+            char buf[64];
+            snprintf(buf, sizeof(buf), "%.15g", (double)v->value.float_val);
+            if (!strchr(buf, '.') && !strchr(buf, 'e') && !strchr(buf, 'E')) {
+                strncat(buf, ".0", sizeof(buf) - strlen(buf) - 1);
+            }
+            printf("%s", buf);
+            break;
+        }
+        case TYPE_DOUBLE: {
+            char buf[64];
+            snprintf(buf, sizeof(buf), "%.15g", v->value.double_val);
+            if (!strchr(buf, '.') && !strchr(buf, 'e') && !strchr(buf, 'E')) {
+                strncat(buf, ".0", sizeof(buf) - strlen(buf) - 1);
+            }
+            printf("%s", buf);
+            break;
+        }
+        case TYPE_NIL:
+            printf("nil");
+            break;
+        case TYPE_OPTIONAL: {
+            BreadOptional* o = v->value.optional_val;
+            if (!o || !o->is_some) {
+                printf("nil");
+            } else {
+                BreadValue inner = bread_value_clone(o->value);
+                bread_print_value_inner_compact(&inner);
+                bread_value_release(&inner);
+            }
+            break;
+        }
+        case TYPE_ARRAY: {
+            BreadArray* a = v->value.array_val;
+            printf("[");
+            if (a && a->count > 0) {
+                for (int i = 0; i < a->count; i++) {
+                    if (i > 0) printf(", ");
+                    bread_print_value_inner_compact(&a->items[i]);
+                }
+            }
+            printf("]");
+            break;
+        }
+        case TYPE_DICT: {
+            BreadDict* d = v->value.dict_val;
+            printf("{");
+            if (d && d->count > 0) {
+                int first = 1;
+                for (int i = 0; i < d->capacity; i++) {
+                    if (d->entries[i].is_occupied && !d->entries[i].is_deleted) {
+                        if (!first) printf(", ");
+                        first = 0;
+                        if (d->entries[i].key.type == TYPE_STRING) {
+                            printf("%s: ", bread_string_cstr(d->entries[i].key.value.string_val));
+                        } else {
+                            printf("key: ");
+                        }
+                        bread_print_value_inner_compact(&d->entries[i].value);
+                    }
+                }
+            }
+            printf("}");
+            break;
+        }
+        default:
+            printf("nil");
+            break;
+    }
+}
+
+void bread_print_compact(const BreadValue* v) {
+    bread_print_value_inner_compact(v);
     printf("\n");
 }
 
@@ -256,18 +352,12 @@ void bread_value_copy(const struct BreadValue* in, struct BreadValue* out) {
 void bread_value_release_value(struct BreadValue* v) {
     bread_value_release(v);
 }
-
-// Automatic assignment with reference counting
+// refrence counting
 int bread_value_assign(struct BreadValue* target, const struct BreadValue* source) {
     if (!target || !source) return 0;
-    
-    // Clone the source value (increments reference count)
     BreadValue new_value = bread_value_clone(*source);
-    
-    // Release the old value in target
     bread_value_release(target);
     
-    // Assign the new value
     *target = new_value;
     
     return 1;

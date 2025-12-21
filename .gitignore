@@ -26,9 +26,9 @@ breadlang
 *.la
 *.lo
 
-# Shared objects (inc. Windows DLLs)
-*.dll
+# Shared objects (inc. dynamic libraries)
 *.so
+*.dylib
 *.so.*
 *.dylib
 
