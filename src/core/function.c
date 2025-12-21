@@ -183,8 +183,6 @@ VarValue coerce_value(VarType target, ExprResult val) {
     return out;
 }
 
-// AST function execution removed - LLVM JIT only
-
 ExprResult call_function_values(const char* name, int arg_count, ExprResult* arg_vals) {
     (void)arg_count;
     (void)arg_vals;
@@ -207,7 +205,7 @@ ExprResult call_function(const char* name, int arg_count, const char** arg_exprs
     return err;
 }
 
-// Default parameter handling functions
+// default
 int function_get_required_params(const Function* fn) {
     if (!fn || !fn->parameters) return fn ? fn->param_count : 0;
     
@@ -216,7 +214,7 @@ int function_get_required_params(const Function* fn) {
         if (!fn->parameters[i].has_default) {
             required++;
         } else {
-            break; // All defaults must be at the end
+            break;
         }
     }
     return required;
@@ -238,22 +236,17 @@ int function_apply_defaults(const Function* fn, int provided_args, ExprResult* a
         return 0;
     }
     
-    // Allocate array for final arguments
     *final_args = malloc(sizeof(ExprResult) * fn->param_count);
     if (!*final_args) return 0;
     
-    // Copy provided arguments
     for (int i = 0; i < provided_args; i++) {
         (*final_args)[i] = args[i];
     }
     
-    // Fill in default values for missing arguments
     for (int i = provided_args; i < fn->param_count; i++) {
         if (fn->parameters && fn->parameters[i].has_default) {
-            // Convert BreadValue to ExprResult
             (*final_args)[i] = bread_expr_result_from_value(fn->parameters[i].default_value);
         } else {
-            // This shouldn't happen if validation is correct
             free(*final_args);
             *final_args = NULL;
             return 0;

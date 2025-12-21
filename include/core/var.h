@@ -15,6 +15,27 @@ typedef enum {
     TYPE_NIL
 } VarType;
 
+// Unboxed types
+typedef enum {
+    UNBOXED_NONE = 0,    // Defauly is boxed lmaooooooo
+    UNBOXED_INT = 1,     // i32
+    UNBOXED_BOOL = 2,    // i1 :0
+    UNBOXED_DOUBLE = 3   // DOUBLEEEEE
+} UnboxedType;
+
+static inline int var_type_can_unbox(VarType type) {
+    return type == TYPE_INT || type == TYPE_BOOL || type == TYPE_DOUBLE;
+}
+
+static inline UnboxedType var_type_to_unboxed(VarType type) {
+    switch (type) {
+        case TYPE_INT: return UNBOXED_INT;
+        case TYPE_BOOL: return UNBOXED_BOOL;
+        case TYPE_DOUBLE: return UNBOXED_DOUBLE;
+        default: return UNBOXED_NONE;
+    }
+}
+
 typedef union {
     BreadString* string_val;
     int int_val;

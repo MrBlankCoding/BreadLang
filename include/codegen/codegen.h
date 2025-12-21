@@ -11,6 +11,7 @@ typedef struct CgVar {
     char* name;
     LLVMValueRef alloca;
     VarType type;
+    UnboxedType unboxed_type;  // stored unboxed ???!
     int is_const;
     int is_initialized;
     struct CgVar* next;
@@ -72,6 +73,14 @@ typedef struct {
     LLVMValueRef fn_var_load;
     LLVMValueRef fn_push_scope;
     LLVMValueRef fn_pop_scope;
+    LLVMValueRef fn_bread_memory_init;
+    LLVMValueRef fn_bread_memory_cleanup;
+    LLVMValueRef fn_bread_string_intern_init;
+    LLVMValueRef fn_bread_string_intern_cleanup;
+    LLVMValueRef fn_bread_builtin_init;
+    LLVMValueRef fn_bread_builtin_cleanup;
+    LLVMValueRef fn_bread_error_init;
+    LLVMValueRef fn_bread_error_cleanup;
     LLVMValueRef fn_init_variables;
     LLVMValueRef fn_cleanup_variables;
     LLVMValueRef fn_init_functions;
@@ -90,6 +99,16 @@ typedef struct {
     LLVMValueRef fn_range_create;
     LLVMValueRef fn_range_simple;
     LLVMValueRef fn_value_get_int;
+    LLVMValueRef fn_value_get_double;
+    LLVMValueRef fn_value_get_bool;
+    
+    // Boxing/unboxing functions for unboxed primitives
+    LLVMValueRef fn_bread_box_int;
+    LLVMValueRef fn_bread_box_double;
+    LLVMValueRef fn_bread_box_bool;
+    LLVMValueRef fn_bread_unbox_int;
+    LLVMValueRef fn_bread_unbox_double;
+    LLVMValueRef fn_bread_unbox_bool;
 
     LLVMTypeRef ty_bread_value_size;
     LLVMTypeRef ty_value_set_nil;
@@ -117,6 +136,14 @@ typedef struct {
     LLVMTypeRef ty_var_load;
     LLVMTypeRef ty_push_scope;
     LLVMTypeRef ty_pop_scope;
+    LLVMTypeRef ty_bread_memory_init;
+    LLVMTypeRef ty_bread_memory_cleanup;
+    LLVMTypeRef ty_bread_string_intern_init;
+    LLVMTypeRef ty_bread_string_intern_cleanup;
+    LLVMTypeRef ty_bread_builtin_init;
+    LLVMTypeRef ty_bread_builtin_cleanup;
+    LLVMTypeRef ty_bread_error_init;
+    LLVMTypeRef ty_bread_error_cleanup;
     LLVMTypeRef ty_init_variables;
     LLVMTypeRef ty_cleanup_variables;
     LLVMTypeRef ty_init_functions;
@@ -135,11 +162,20 @@ typedef struct {
     LLVMTypeRef ty_range_create;
     LLVMTypeRef ty_range_simple;
     LLVMTypeRef ty_value_get_int;
+    LLVMTypeRef ty_value_get_double;
+    LLVMTypeRef ty_value_get_bool;
+    
+    // Boxing/unboxing function types
+    LLVMTypeRef ty_bread_box_int;
+    LLVMTypeRef ty_bread_box_double;
+    LLVMTypeRef ty_bread_box_bool;
+    LLVMTypeRef ty_bread_unbox_int;
+    LLVMTypeRef ty_bread_unbox_double;
+    LLVMTypeRef ty_bread_unbox_bool;
 
     int loop_depth;
     int tmp_counter;
     
-    // Loop context for break/continue
     LLVMBasicBlockRef current_loop_end;
     LLVMBasicBlockRef current_loop_continue;
 
@@ -147,7 +183,6 @@ typedef struct {
     LLVMTypeRef value_type;
     LLVMTypeRef value_ptr_type;
     
-    // Symbol management for semantic analysis replacement
     CgScope* global_scope;
     int scope_depth;
     int had_error;
@@ -162,7 +197,28 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
 CgVar* cg_scope_add_var(CgScope* scope, const char* name, LLVMValueRef alloca);
 CgVar* cg_scope_find_var(CgScope* scope, const char* name);
 
-// Semantic analysis functions integrated into codegen
+// support funcs
+typedef enum {
+    CG_VALUE_BOXED,        
+    CG_VALUE_UNBOXED_INT,  
+    CG_VALUE_UNBOXED_BOOL,
+    CG_VALUE_UNBOXED_DOUBLE 
+} CgValueType;
+
+typedef struct {
+    CgValueType type;
+    LLVMValueRef value;
+    LLVMTypeRef llvm_type;
+} CgValue;
+
+CgValue cg_create_value(CgValueType type, LLVMValueRef value, LLVMTypeRef llvm_type);
+CgValue cg_build_expr_unboxed(Cg* cg, CgFunction* cg_fn, ASTExpr* expr);
+LLVMValueRef cg_box_value(Cg* cg, CgValue val);
+CgValue cg_unbox_value(Cg* cg, LLVMValueRef boxed_val, VarType expected_type);
+int cg_can_unbox_expr(Cg* cg, ASTExpr* expr);
+CgValue cg_build_binary_unboxed(Cg* cg, CgFunction* cg_fn, ASTExpr* left, ASTExpr* right, char op);
+CgValue cg_build_unary_unboxed(Cg* cg, CgFunction* cg_fn, ASTExpr* operand, char op);
+
 int cg_semantic_analyze(Cg* cg, ASTStmtList* program);
 int cg_analyze_stmt(Cg* cg, ASTStmt* stmt);
 int cg_analyze_expr(Cg* cg, ASTExpr* expr);

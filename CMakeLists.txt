@@ -50,6 +50,12 @@ set(BREADLANG_SOURCES
     # Backend and codegen
     src/backends/llvm_backend.c
     src/codegen/codegen.c
+    src/codegen/codegen_helpers.c
+    src/codegen/codegen_scope.c
+    src/codegen/codegen_unboxing.c
+    src/codegen/codegen_expr.c
+    src/codegen/codegen_stmt.c
+    src/codegen/codegen_semantic.c
     src/codegen/optimized_codegen.c
     
     # Runtime source files

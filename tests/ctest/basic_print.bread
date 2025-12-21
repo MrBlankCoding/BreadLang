@@ -1,2 +1,8 @@
 print(42)
 print(10 + 5)
+
+print(len("abc"))
+print(int("123"))
+print(float("1.5"))
+print(str(42))
+print(type(42))

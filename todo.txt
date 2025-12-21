@@ -1,6 +1,0 @@
-1. Split file struct
-2. Make it compiled VIA llVM 
-3. Improve the test folder
-4. Add more language feautures
-5. Optamasations 
-7. Use LLVM for compilation 

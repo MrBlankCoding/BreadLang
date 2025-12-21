@@ -201,6 +201,26 @@ static void cg_init(Cg* cg, LLVMModuleRef mod, LLVMBuilderRef builder) {
     cg->fn_push_scope = cg_declare_fn(cg, "bread_push_scope", cg->ty_push_scope);
     cg->ty_pop_scope = LLVMFunctionType(cg->void_ty, NULL, 0, 0);
     cg->fn_pop_scope = cg_declare_fn(cg, "bread_pop_scope", cg->ty_pop_scope);
+
+    cg->ty_bread_memory_init = LLVMFunctionType(cg->void_ty, NULL, 0, 0);
+    cg->fn_bread_memory_init = cg_declare_fn(cg, "bread_memory_init", cg->ty_bread_memory_init);
+    cg->ty_bread_memory_cleanup = LLVMFunctionType(cg->void_ty, NULL, 0, 0);
+    cg->fn_bread_memory_cleanup = cg_declare_fn(cg, "bread_memory_cleanup", cg->ty_bread_memory_cleanup);
+
+    cg->ty_bread_string_intern_init = LLVMFunctionType(cg->void_ty, NULL, 0, 0);
+    cg->fn_bread_string_intern_init = cg_declare_fn(cg, "bread_string_intern_init", cg->ty_bread_string_intern_init);
+    cg->ty_bread_string_intern_cleanup = LLVMFunctionType(cg->void_ty, NULL, 0, 0);
+    cg->fn_bread_string_intern_cleanup = cg_declare_fn(cg, "bread_string_intern_cleanup", cg->ty_bread_string_intern_cleanup);
+
+    cg->ty_bread_builtin_init = LLVMFunctionType(cg->void_ty, NULL, 0, 0);
+    cg->fn_bread_builtin_init = cg_declare_fn(cg, "bread_builtin_init", cg->ty_bread_builtin_init);
+    cg->ty_bread_builtin_cleanup = LLVMFunctionType(cg->void_ty, NULL, 0, 0);
+    cg->fn_bread_builtin_cleanup = cg_declare_fn(cg, "bread_builtin_cleanup", cg->ty_bread_builtin_cleanup);
+
+    cg->ty_bread_error_init = LLVMFunctionType(cg->void_ty, NULL, 0, 0);
+    cg->fn_bread_error_init = cg_declare_fn(cg, "bread_error_init", cg->ty_bread_error_init);
+    cg->ty_bread_error_cleanup = LLVMFunctionType(cg->void_ty, NULL, 0, 0);
+    cg->fn_bread_error_cleanup = cg_declare_fn(cg, "bread_error_cleanup", cg->ty_bread_error_cleanup);
     cg->ty_init_variables = LLVMFunctionType(cg->void_ty, NULL, 0, 0);
     cg->fn_init_variables = cg_declare_fn(cg, "init_variables", cg->ty_init_variables);
     cg->ty_cleanup_variables = LLVMFunctionType(cg->void_ty, NULL, 0, 0);
@@ -245,6 +265,31 @@ static void cg_init(Cg* cg, LLVMModuleRef mod, LLVMBuilderRef builder) {
     // Value getter functions
     cg->ty_value_get_int = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr}, 1, 0);
     cg->fn_value_get_int = cg_declare_fn(cg, "bread_value_get_int", cg->ty_value_get_int);
+    
+    cg->ty_value_get_double = LLVMFunctionType(cg->f64, (LLVMTypeRef[]){cg->i8_ptr}, 1, 0);
+    cg->fn_value_get_double = cg_declare_fn(cg, "bread_value_get_double", cg->ty_value_get_double);
+    
+    cg->ty_value_get_bool = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr}, 1, 0);
+    cg->fn_value_get_bool = cg_declare_fn(cg, "bread_value_get_bool", cg->ty_value_get_bool);
+    
+    // Boxing/unboxing functions
+    cg->ty_bread_box_int = LLVMFunctionType(cg->value_type, (LLVMTypeRef[]){cg->i32}, 1, 0);
+    cg->fn_bread_box_int = cg_declare_fn(cg, "bread_box_int", cg->ty_bread_box_int);
+    
+    cg->ty_bread_box_double = LLVMFunctionType(cg->value_type, (LLVMTypeRef[]){cg->f64}, 1, 0);
+    cg->fn_bread_box_double = cg_declare_fn(cg, "bread_box_double", cg->ty_bread_box_double);
+    
+    cg->ty_bread_box_bool = LLVMFunctionType(cg->value_type, (LLVMTypeRef[]){cg->i32}, 1, 0);
+    cg->fn_bread_box_bool = cg_declare_fn(cg, "bread_box_bool", cg->ty_bread_box_bool);
+    
+    cg->ty_bread_unbox_int = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr}, 1, 0);
+    cg->fn_bread_unbox_int = cg_declare_fn(cg, "bread_unbox_int", cg->ty_bread_unbox_int);
+    
+    cg->ty_bread_unbox_double = LLVMFunctionType(cg->f64, (LLVMTypeRef[]){cg->i8_ptr}, 1, 0);
+    cg->fn_bread_unbox_double = cg_declare_fn(cg, "bread_unbox_double", cg->ty_bread_unbox_double);
+    
+    cg->ty_bread_unbox_bool = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr}, 1, 0);
+    cg->fn_bread_unbox_bool = cg_declare_fn(cg, "bread_unbox_bool", cg->ty_bread_unbox_bool);
     
     cg_define_functions(cg);
 }
@@ -292,6 +337,10 @@ static int bread_llvm_build_module_from_program(const ASTStmtList* program, LLVM
 
     (void)LLVMBuildCall2(builder, LLVMFunctionType(cg.void_ty, NULL, 0, 0), cg.fn_init_variables, NULL, 0, "");
     (void)LLVMBuildCall2(builder, LLVMFunctionType(cg.void_ty, NULL, 0, 0), cg.fn_init_functions, NULL, 0, "");
+    (void)LLVMBuildCall2(builder, LLVMFunctionType(cg.void_ty, NULL, 0, 0), cg.fn_bread_memory_init, NULL, 0, "");
+    (void)LLVMBuildCall2(builder, LLVMFunctionType(cg.void_ty, NULL, 0, 0), cg.fn_bread_string_intern_init, NULL, 0, "");
+    (void)LLVMBuildCall2(builder, LLVMFunctionType(cg.void_ty, NULL, 0, 0), cg.fn_bread_builtin_init, NULL, 0, "");
+    (void)LLVMBuildCall2(builder, LLVMFunctionType(cg.void_ty, NULL, 0, 0), cg.fn_bread_error_init, NULL, 0, "");
 
     val_size = cg_value_size(&cg);
 
@@ -301,6 +350,10 @@ static int bread_llvm_build_module_from_program(const ASTStmtList* program, LLVM
         return 0;
     }
 
+    (void)LLVMBuildCall2(builder, LLVMFunctionType(cg.void_ty, NULL, 0, 0), cg.fn_bread_error_cleanup, NULL, 0, "");
+    (void)LLVMBuildCall2(builder, LLVMFunctionType(cg.void_ty, NULL, 0, 0), cg.fn_bread_builtin_cleanup, NULL, 0, "");
+    (void)LLVMBuildCall2(builder, LLVMFunctionType(cg.void_ty, NULL, 0, 0), cg.fn_bread_string_intern_cleanup, NULL, 0, "");
+    (void)LLVMBuildCall2(builder, LLVMFunctionType(cg.void_ty, NULL, 0, 0), cg.fn_bread_memory_cleanup, NULL, 0, "");
     (void)LLVMBuildCall2(builder, LLVMFunctionType(cg.void_ty, NULL, 0, 0), cg.fn_cleanup_functions, NULL, 0, "");
     (void)LLVMBuildCall2(builder, LLVMFunctionType(cg.void_ty, NULL, 0, 0), cg.fn_cleanup_variables, NULL, 0, "");
 

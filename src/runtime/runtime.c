@@ -10,9 +10,8 @@
 #include "core/var.h"
 #include "compiler/parser/expr.h"
 
-// Memory management functions - now using enhanced memory manager
 void* bread_alloc(size_t size) {
-    return bread_memory_alloc(size, BREAD_OBJ_STRING);  // Default to string type
+    return bread_memory_alloc(size, BREAD_OBJ_STRING);
 }
 
 void* bread_realloc(void* ptr, size_t new_size) {
@@ -23,7 +22,7 @@ void bread_free(void* ptr) {
     bread_memory_free(ptr);
 }
 
-// Variable management functions
+// Manage vars
 int bread_var_decl(const char* name, VarType type, int is_const, const BreadValue* init) {
     if (!name) return 0;
     VarValue zero;
@@ -55,18 +54,16 @@ int bread_var_assign(const char* name, const BreadValue* value) {
     return bread_assign_variable_from_expr_result(name, &r);
 }
 
-// Helper function to calculate string similarity (Levenshtein distance)
+// String similarity
 static int levenshtein_distance(const char* s1, const char* s2) {
     int len1 = strlen(s1);
     int len2 = strlen(s2);
     
     if (len1 == 0) return len2;
     if (len2 == 0) return len1;
+    if (len1 > 20 || len2 > 20) return len1 + len2;
     
-    // Use a simple approach for small strings
-    if (len1 > 20 || len2 > 20) return len1 + len2; // Too different
-    
-    int matrix[21][21]; // Max 20 chars + 1
+    int matrix[21][21];
     
     for (int i = 0; i <= len1; i++) matrix[i][0] = i;
     for (int j = 0; j <= len2; j++) matrix[0][j] = j;
@@ -150,4 +147,53 @@ void bread_push_scope(void) {
 
 void bread_pop_scope(void) {
     pop_scope();
+}
+// convert unboxed primitives to bread value
+BreadValue bread_box_int(int value) {
+    BreadValue result;
+    result.type = TYPE_INT;
+    result.value.int_val = value;
+    return result;
+}
+
+BreadValue bread_box_double(double value) {
+    BreadValue result;
+    result.type = TYPE_DOUBLE;
+    result.value.double_val = value;
+    return result;
+}
+
+BreadValue bread_box_bool(int value) {
+    BreadValue result;
+    result.type = TYPE_BOOL;
+    result.value.bool_val = value ? 1 : 0;
+    return result;
+}
+
+// Extract primitives from bread value
+int bread_unbox_int(const BreadValue* v) {
+    if (!v) return 0;
+    if (v->type == TYPE_INT) return v->value.int_val;
+    if (v->type == TYPE_BOOL) return v->value.bool_val ? 1 : 0;
+    if (v->type == TYPE_DOUBLE) return (int)v->value.double_val;
+    if (v->type == TYPE_FLOAT) return (int)v->value.float_val;
+    return 0;
+}
+
+double bread_unbox_double(const BreadValue* v) {
+    if (!v) return 0.0;
+    if (v->type == TYPE_DOUBLE) return v->value.double_val;
+    if (v->type == TYPE_FLOAT) return (double)v->value.float_val;
+    if (v->type == TYPE_INT) return (double)v->value.int_val;
+    if (v->type == TYPE_BOOL) return v->value.bool_val ? 1.0 : 0.0;
+    return 0.0;
+}
+
+int bread_unbox_bool(const BreadValue* v) {
+    if (!v) return 0;
+    if (v->type == TYPE_BOOL) return v->value.bool_val;
+    if (v->type == TYPE_INT) return v->value.int_val != 0;
+    if (v->type == TYPE_DOUBLE) return v->value.double_val != 0.0;
+    if (v->type == TYPE_FLOAT) return v->value.float_val != 0.0f;
+    return 0;
 }

@@ -201,9 +201,6 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     
-    // Semantic analysis is now integrated into LLVM codegen
-    // No separate semantic_analyze() call needed
-    
     // Code generation and execution
     int result = 0;
     if (!emit_llvm && !emit_obj && !emit_exe) {

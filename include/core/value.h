@@ -25,8 +25,8 @@ struct BreadDict {
     BreadObjHeader header;
     int count;
     int capacity;
-    VarType key_type;      // Type constraint for keys
-    VarType value_type;    // Type constraint for values
+    VarType key_type;      
+    VarType value_type;    
     BreadDictEntry* entries;
 };
 
@@ -63,7 +63,6 @@ BreadValue* bread_array_get_safe(BreadArray* array, int index);
 int bread_array_set_safe(BreadArray* array, int index, BreadValue value);
 int bread_array_negative_index(BreadArray* array, int index);
 int bread_array_length(BreadArray* a);
-
 BreadDict* bread_dict_new(void);
 BreadDict* bread_dict_new_typed(VarType key_type, VarType value_type);
 BreadDict* bread_dict_new_with_capacity(int capacity, VarType key_type, VarType value_type);
@@ -92,5 +91,11 @@ int bread_value_get_int(BreadValue* v);
 double bread_value_get_double(BreadValue* v);
 int bread_value_get_bool(BreadValue* v);
 int bread_value_get_type(BreadValue* v);
+BreadValue bread_box_int(int value);
+BreadValue bread_box_double(double value);
+BreadValue bread_box_bool(int value);
+int bread_unbox_int(const BreadValue* v);
+double bread_unbox_double(const BreadValue* v);
+int bread_unbox_bool(const BreadValue* v);
 
 #endif

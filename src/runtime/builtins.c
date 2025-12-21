@@ -103,6 +103,13 @@ BreadValue bread_builtin_call(const char* name, BreadValue* args, int arg_count)
     return builtin->implementation(args, arg_count);
 }
 
+void bread_builtin_call_out(const char* name, BreadValue* args, int arg_count, BreadValue* out) {
+    if (!out) return;
+    BreadValue result = bread_builtin_call(name, args, arg_count);
+    bread_value_copy(&result, out);
+    bread_value_release_value(&result);
+}
+
 // Built-in function implementations
 
 // len() function - returns length of strings and arrays
@@ -152,34 +159,34 @@ BreadValue bread_builtin_type(BreadValue* args, int arg_count) {
     
     switch (arg->type) {
         case TYPE_NIL:
-            type_name = "nil";
+            type_name = "Nil";
             break;
         case TYPE_BOOL:
-            type_name = "bool";
+            type_name = "Bool";
             break;
         case TYPE_INT:
-            type_name = "int";
+            type_name = "Int";
             break;
         case TYPE_FLOAT:
-            type_name = "float";
+            type_name = "Float";
             break;
         case TYPE_DOUBLE:
-            type_name = "double";
+            type_name = "Double";
             break;
         case TYPE_STRING:
-            type_name = "string";
+            type_name = "String";
             break;
         case TYPE_ARRAY:
-            type_name = "array";
+            type_name = "Array";
             break;
         case TYPE_DICT:
-            type_name = "dict";
+            type_name = "Dict";
             break;
         case TYPE_OPTIONAL:
-            type_name = "optional";
+            type_name = "Optional";
             break;
         default:
-            type_name = "unknown";
+            type_name = "Unknown";
             break;
     }
     
