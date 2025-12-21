@@ -13,8 +13,6 @@
 
 #define MAX_TOKEN_LEN 1024
 
-// Trace functionality removed - LLVM JIT only
-
 static void skip_whitespace(const char** code);
 static ASTStmt* parse_stmt(const char** code);
 static ASTStmtList* parse_block(const char** code);

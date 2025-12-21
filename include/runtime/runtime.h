@@ -112,4 +112,26 @@ int bread_array_get_value(struct BreadArray* a, int idx, struct BreadValue* out)
 int bread_value_array_get(struct BreadValue* array_val, int idx, struct BreadValue* out);
 int bread_value_array_length(struct BreadValue* array_val);
 
+// Built-in function system
+typedef struct {
+    char* name;
+    int param_count;
+    VarType* param_types;
+    VarType return_type;
+    BreadValue (*implementation)(BreadValue* args, int arg_count);
+} BuiltinFunction;
+
+void bread_builtin_init(void);
+void bread_builtin_cleanup(void);
+int bread_builtin_register(const BuiltinFunction* builtin);
+const BuiltinFunction* bread_builtin_lookup(const char* name);
+BreadValue bread_builtin_call(const char* name, BreadValue* args, int arg_count);
+
+// Exposed built-in function implementations for testing
+BreadValue bread_builtin_len(BreadValue* args, int arg_count);
+BreadValue bread_builtin_type(BreadValue* args, int arg_count);
+BreadValue bread_builtin_str(BreadValue* args, int arg_count);
+BreadValue bread_builtin_int(BreadValue* args, int arg_count);
+BreadValue bread_builtin_float(BreadValue* args, int arg_count);
+
 #endif

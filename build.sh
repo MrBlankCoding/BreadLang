@@ -46,6 +46,11 @@ LLVM_DEFS="-DBREAD_HAVE_LLVM=1"
   "$ROOT_DIR/src/codegen/optimized_codegen.c" \
   "$ROOT_DIR/src/runtime/print.c" \
   "$ROOT_DIR/src/runtime/runtime.c" \
+  "$ROOT_DIR/src/runtime/string_ops.c" \
+  "$ROOT_DIR/src/runtime/value_ops.c" \
+  "$ROOT_DIR/src/runtime/operators.c" \
+  "$ROOT_DIR/src/runtime/builtins.c" \
+  "$ROOT_DIR/src/runtime/array_utils.c" \
   -o "$BREADLANG" $LLVM_LDFLAGS $LLVM_LIBS -lm
 
 echo "Build successful! Executable at $BREADLANG"

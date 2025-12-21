@@ -30,7 +30,7 @@ CORE_SOURCES = \
 	$(SRC_DIR)/runtime/print.c
 
 PBT_SOURCES = pbt_framework.c
-TESTS = type_properties string_properties array_properties parser_properties
+TESTS = type_properties string_properties array_properties parser_properties control_properties builtin_properties
 
 .PHONY: all clean run
 
@@ -46,6 +46,12 @@ array_properties: array_properties.c $(PBT_SOURCES) $(CORE_SOURCES)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 parser_properties: parser_properties.c $(PBT_SOURCES) $(CORE_SOURCES)
+	$(CC) $(CFLAGS) $(LLVM_CFLAGS) $(LLVM_DEFS) -o $@ $^ $(LDFLAGS) $(LLVM_LDFLAGS) $(LLVM_LIBS) -lm
+
+control_properties: control_properties.c $(PBT_SOURCES) $(CORE_SOURCES)
+	$(CC) $(CFLAGS) $(LLVM_CFLAGS) $(LLVM_DEFS) -o $@ $^ $(LDFLAGS) $(LLVM_LDFLAGS) $(LLVM_LIBS) -lm
+
+builtin_properties: builtin_properties.c $(PBT_SOURCES) $(CORE_SOURCES)
 	$(CC) $(CFLAGS) $(LLVM_CFLAGS) $(LLVM_DEFS) -o $@ $^ $(LDFLAGS) $(LLVM_LDFLAGS) $(LLVM_LIBS) -lm
 
 run: $(TESTS)
@@ -71,3 +77,9 @@ run-array: array_properties
 
 run-parser: parser_properties
 	./parser_properties
+
+run-control: control_properties
+	./control_properties
+
+run-builtin: builtin_properties
+	./builtin_properties

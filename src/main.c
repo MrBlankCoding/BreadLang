@@ -3,6 +3,7 @@
 #include <string.h>
 #include <ctype.h>
 #include "runtime/print.h"
+#include "runtime/runtime.h"
 #include "core/var.h"
 #include "compiler/ast.h"
 #include "core/function.h"
@@ -88,6 +89,7 @@ int main(int argc, char* argv[]) {
     
     init_variables();
     init_functions();
+    bread_builtin_init();
      
     ASTStmtList* program = ast_parse_program(code);
     if (program) {
@@ -122,6 +124,7 @@ int main(int argc, char* argv[]) {
     }
      
     free(code);
+    bread_builtin_cleanup();
     cleanup_functions();
     cleanup_variables();
     return 0;

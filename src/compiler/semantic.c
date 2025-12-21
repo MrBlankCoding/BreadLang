@@ -5,6 +5,7 @@
 
 #include "compiler/semantic.h"
 #include "core/function.h"
+#include "runtime/runtime.h"
 
 #define MAX_SEM_SYMBOLS 512
 
@@ -211,6 +212,23 @@ static void sem_visit_expr(SemCtx* ctx, ASTExpr* e) {
                 }
                 return;
             }
+            
+            // Check for built-in functions first
+            const BuiltinFunction* builtin = bread_builtin_lookup(e->as.call.name);
+            if (builtin) {
+                if (builtin->param_count != e->as.call.arg_count) {
+                    printf("Error: Built-in function '%s' expected %d args but got %d\n", 
+                           e->as.call.name, builtin->param_count, e->as.call.arg_count);
+                    ctx->had_error = 1;
+                    return;
+                }
+                for (int i = 0; i < e->as.call.arg_count; i++) {
+                    sem_visit_expr(ctx, e->as.call.args[i]);
+                }
+                sem_tag(e, builtin->return_type);
+                return;
+            }
+            
             SemSymbol* f = sem_find(ctx, SEM_SYM_FUNC, e->as.call.name);
             if (!f) {
                 sem_error(ctx, "Unknown function", e->as.call.name);

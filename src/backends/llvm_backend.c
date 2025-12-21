@@ -420,6 +420,11 @@ static int bread_llvm_link_executable_with_clang(const char* obj_path, const cha
     char ast_path[PATH_MAX];
     char expr_path[PATH_MAX];
     char expr_ops_path[PATH_MAX];
+    char string_ops_path[PATH_MAX];
+    char operators_path[PATH_MAX];
+    char array_utils_path[PATH_MAX];
+    char value_ops_path[PATH_MAX];
+    char builtins_path[PATH_MAX];
     char inc_path[PATH_MAX];
     snprintf(rt_path, sizeof(rt_path), "%s/src/runtime/runtime.c", root_dir);
     snprintf(print_path, sizeof(print_path), "%s/src/runtime/print.c", root_dir);
@@ -429,16 +434,21 @@ static int bread_llvm_link_executable_with_clang(const char* obj_path, const cha
     snprintf(ast_path, sizeof(ast_path), "%s/src/compiler/ast.c", root_dir);
     snprintf(expr_path, sizeof(expr_path), "%s/src/compiler/expr.c", root_dir);
     snprintf(expr_ops_path, sizeof(expr_ops_path), "%s/src/compiler/expr_ops.c", root_dir);
+    snprintf(string_ops_path, sizeof(string_ops_path), "%s/src/runtime/string_ops.c", root_dir);
+    snprintf(operators_path, sizeof(operators_path), "%s/src/runtime/operators.c", root_dir);
+    snprintf(array_utils_path, sizeof(array_utils_path), "%s/src/runtime/array_utils.c", root_dir);
+    snprintf(value_ops_path, sizeof(value_ops_path), "%s/src/runtime/value_ops.c", root_dir);
+    snprintf(builtins_path, sizeof(builtins_path), "%s/src/runtime/builtins.c", root_dir);
     snprintf(inc_path, sizeof(inc_path), "%s/include", root_dir);
 
-    size_t cap = strlen(obj_path) + strlen(out_path) + strlen(rt_path) + strlen(print_path) + strlen(value_path) + strlen(var_path) + strlen(function_path) + strlen(ast_path) + strlen(expr_path) + strlen(expr_ops_path) + strlen(inc_path) + 192;
+    size_t cap = strlen(obj_path) + strlen(out_path) + strlen(rt_path) + strlen(print_path) + strlen(value_path) + strlen(var_path) + strlen(function_path) + strlen(ast_path) + strlen(expr_path) + strlen(expr_ops_path) + strlen(string_ops_path) + strlen(operators_path) + strlen(array_utils_path) + strlen(value_ops_path) + strlen(builtins_path) + strlen(inc_path) + 256;
     char* cmd = (char*)malloc(cap);
     if (!cmd) return 0;
 
     snprintf(
         cmd,
         cap,
-        "clang -std=c11 -I'%s' -o '%s' '%s' '%s' '%s' '%s' '%s' '%s' '%s' '%s' '%s' -lm",
+        "clang -std=c11 -I'%s' -o '%s' '%s' '%s' '%s' '%s' '%s' '%s' '%s' '%s' '%s' '%s' '%s' '%s' '%s' '%s' -lm",
         inc_path,
         out_path,
         obj_path,
@@ -449,7 +459,12 @@ static int bread_llvm_link_executable_with_clang(const char* obj_path, const cha
         function_path,
         ast_path,
         expr_path,
-        expr_ops_path);
+        expr_ops_path,
+        string_ops_path,
+        operators_path,
+        array_utils_path,
+        value_ops_path,
+        builtins_path);
     int rc = system(cmd);
     free(cmd);
     return rc == 0;
