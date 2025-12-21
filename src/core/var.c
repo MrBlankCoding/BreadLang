@@ -61,8 +61,11 @@ void pop_scope() {
     scope_depth--;
 }
 
-Variable* get_variable(char* name) {
-    char* trimmed_name = trim_var(name);
+Variable* get_variable(const char* name) {
+    char buf[256];
+    strncpy(buf, name, 255);
+    buf[255] = '\0';
+    char* trimmed_name = trim_var(buf);
     for (int s = scope_depth - 1; s >= 0; s--) {
         for (int i = 0; i < scopes[s].count; i++) {
             if (strcmp(scopes[s].vars[i].name, trimmed_name) == 0) {
@@ -416,10 +419,8 @@ static int set_variable_value(Variable* target, char* raw_value) {
                     return 0;
             }
             if (target->type == TYPE_OPTIONAL && expr_result.type != TYPE_OPTIONAL) {
-                // We wrapped the value in a new optional; now release the original expr result.
                 release_expr_result(&expr_result);
             } else {
-                // Release any owned memory from the expression result.
                 release_expr_result(&expr_result);
             }
             return 1;
@@ -430,7 +431,6 @@ static int set_variable_value(Variable* target, char* raw_value) {
 }
 
 static int parse_type(char* type_str, VarType* out_type) {
-    // Optional types: T?
     size_t tlen = strlen(type_str);
     if (tlen > 0 && type_str[tlen - 1] == '?') {
         type_str[tlen - 1] = '\0';
@@ -443,14 +443,12 @@ static int parse_type(char* type_str, VarType* out_type) {
         return 1;
     }
 
-    // Array or dictionary: [T] or [K:V]
     if (type_str[0] == '[') {
         char* end = strrchr(type_str, ']');
         if (!end) {
             printf("Error: Unknown type '%s'\n", type_str);
             return 0;
         }
-        // If the top-level contents contain ':', treat as dict.
         int depth = 0;
         for (char* p = type_str + 1; p < end; p++) {
             if (*p == '[') depth++;
@@ -494,7 +492,6 @@ void execute_variable_declaration(char* line) {
     int is_const = 0;
     char* start;
     
-    // Check if it's let or const
     if (strncmp(trimmed, "let ", 4) == 0) {
         start = trimmed + 4;
         is_const = 0;
@@ -512,14 +509,11 @@ void execute_variable_declaration(char* line) {
         return;
     }
     
-    // Extract variable name
     char var_name[MAX_LINE];
     int name_len = colon - start;
     strncpy(var_name, start, name_len);
     var_name[name_len] = '\0';
     char* var_name_trimmed = trim_var(var_name);
-    
-    // Extract type
     char* type_start = colon + 1;
     char* equals = strchr(type_start, '=');
     if (!equals) {
@@ -532,8 +526,6 @@ void execute_variable_declaration(char* line) {
     strncpy(type_str, type_start, type_len);
     type_str[type_len] = '\0';
     char* type_trimmed = trim_var(type_str);
-    
-    // Extract value
     char* value_start = equals + 1;
     char* value_trimmed = trim_var(value_start);
     

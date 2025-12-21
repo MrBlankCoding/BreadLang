@@ -1,0 +1,11 @@
+Testing Stage 5 optimizations...
+add_ints(10, 20) = 
+30
+local_computation() = 
+200
+square(5) = 
+25
+sum_range(10) = 
+45
+constants() = 
+16

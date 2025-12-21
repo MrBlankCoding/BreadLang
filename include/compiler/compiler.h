@@ -7,3 +7,5 @@
 int compile_program(ASTStmtList* program, BytecodeChunk* out_chunk);
 
 #endif
+
+// Compile, compile, compile?

@@ -45,11 +45,15 @@ fi
   "$ROOT_DIR/src/compiler/expr.c" \
   "$ROOT_DIR/src/compiler/expr_ops.c" \
   "$ROOT_DIR/src/compiler/semantic.c" \
+  "$ROOT_DIR/src/compiler/type_stability.c" \
+  "$ROOT_DIR/src/compiler/escape_analysis.c" \
+  "$ROOT_DIR/src/compiler/optimization.c" \
   "$ROOT_DIR/src/vm/bytecode.c" \
   "$ROOT_DIR/src/vm/vm.c" \
   "$ROOT_DIR/src/ir/bread_ir.c" \
   "$ROOT_DIR/src/backends/llvm_backend.c" \
   "$ROOT_DIR/src/codegen/codegen.c" \
+  "$ROOT_DIR/src/codegen/optimized_codegen.c" \
   "$ROOT_DIR/src/runtime/print.c" \
   "$ROOT_DIR/src/runtime/runtime.c" \
   -o "$BREADLANG" $LLVM_LDFLAGS $LLVM_LIBS -lm

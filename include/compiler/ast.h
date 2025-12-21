@@ -40,6 +40,9 @@ typedef struct {
 struct ASTExpr {
     ASTExprKind kind;
     ASTTypeTag tag;
+    void* stability_info;  // TypeStabilityInfo*
+    void* escape_info;     // EscapeInfo*
+    void* opt_hints;       // OptimizationHints*
     union {
         int bool_val;
         int int_val;
@@ -146,6 +149,7 @@ typedef struct {
     VarType* param_types;
     VarType return_type;
     ASTStmtList* body;
+    void* opt_info;        // FunctionOptInfo*
 } ASTStmtFuncDecl;
 
 typedef struct {
@@ -154,6 +158,7 @@ typedef struct {
 
 struct ASTStmt {
     ASTStmtKind kind;
+    void* opt_hints;       // OptimizationHints*
     union {
         ASTStmtVarDecl var_decl;
         ASTStmtVarAssign var_assign;

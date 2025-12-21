@@ -5,11 +5,10 @@
 #include "core/value.h"
 #include "compiler/expr.h"
 
-static BreadValue bread_value_make_nil(void) {
-    BreadValue v;
-    memset(&v, 0, sizeof(v));
-    v.type = TYPE_NIL;
-    return v;
+static int bread_string_equals(const BreadString* bs, const char* str) {
+    if (!bs || !str) return 0;
+    const char* bs_str = ((const char*)bs) + sizeof(BreadObjHeader);
+    return strcmp(bs_str, str) == 0;
 }
 
 BreadValue bread_value_from_expr_result(ExprResult r) {
@@ -84,6 +83,7 @@ void bread_value_release(BreadValue* v) {
     v->type = TYPE_NIL;
 }
 
+
 BreadArray* bread_array_new(void) {
     BreadArray* a = malloc(sizeof(BreadArray));
     if (!a) return NULL;
@@ -102,38 +102,32 @@ void bread_array_retain(BreadArray* a) {
 void bread_array_release(BreadArray* a) {
     if (!a) return;
     a->header.refcount--;
-    if (a->header.refcount > 0) return;
-
-    for (int i = 0; i < a->count; i++) {
-        bread_value_release(&a->items[i]);
+    if (a->header.refcount <= 0) {
+        if (a->items) {
+            for (int i = 0; i < a->count; i++) {
+                bread_value_release(&a->items[i]);
+            }
+            free(a->items);
+        }
+        free(a);
     }
-    free(a->items);
-    free(a);
-}
-
-static int bread_array_ensure_cap(BreadArray* a, int need) {
-    if (!a) return 0;
-    if (a->capacity >= need) return 1;
-    int new_cap = a->capacity == 0 ? 4 : a->capacity;
-    while (new_cap < need) new_cap *= 2;
-    BreadValue* new_items = realloc(a->items, sizeof(BreadValue) * (size_t)new_cap);
-    if (!new_items) return 0;
-    a->items = new_items;
-    a->capacity = new_cap;
-    return 1;
 }
 
 int bread_array_append(BreadArray* a, BreadValue v) {
     if (!a) return 0;
-    if (!bread_array_ensure_cap(a, a->count + 1)) return 0;
-    BreadValue cloned = bread_value_clone(v);
-    a->items[a->count++] = cloned;
+    if (a->count >= a->capacity) {
+        int new_cap = a->capacity == 0 ? 8 : a->capacity * 2;
+        BreadValue* new_items = realloc(a->items, sizeof(BreadValue) * new_cap);
+        if (!new_items) return 0;
+        a->items = new_items;
+        a->capacity = new_cap;
+    }
+    a->items[a->count++] = v;
     return 1;
 }
 
 BreadValue* bread_array_get(BreadArray* a, int idx) {
-    if (!a) return NULL;
-    if (idx < 0 || idx >= a->count) return NULL;
+    if (!a || idx < 0 || idx >= a->count) return NULL;
     return &a->items[idx];
 }
 
@@ -155,55 +149,59 @@ void bread_dict_retain(BreadDict* d) {
 void bread_dict_release(BreadDict* d) {
     if (!d) return;
     d->header.refcount--;
-    if (d->header.refcount > 0) return;
-
-    for (int i = 0; i < d->count; i++) {
-        bread_string_release(d->entries[i].key);
-        bread_value_release(&d->entries[i].value);
+    if (d->header.refcount <= 0) {
+        if (d->entries) {
+            for (int i = 0; i < d->capacity; i++) {
+                if (d->entries[i].key) {
+                    bread_string_release(d->entries[i].key);
+                    bread_value_release(&d->entries[i].value);
+                }
+            }
+            free(d->entries);
+        }
+        free(d);
     }
-    free(d->entries);
-    free(d);
 }
 
-static int bread_dict_ensure_cap(BreadDict* d, int need) {
-    if (!d) return 0;
-    if (d->capacity >= need) return 1;
-    int new_cap = d->capacity == 0 ? 4 : d->capacity;
-    while (new_cap < need) new_cap *= 2;
-    BreadDictEntry* new_entries = realloc(d->entries, sizeof(BreadDictEntry) * (size_t)new_cap);
-    if (!new_entries) return 0;
-    d->entries = new_entries;
-    d->capacity = new_cap;
+int bread_dict_set(BreadDict* d, const char* key, BreadValue v) {
+    if (!d || !key) return 0;
+    
+    // Check if key already exists and update it
+    for (int i = 0; i < d->count; i++) {
+        if (bread_string_equals(d->entries[i].key, key)) {
+            bread_value_release(&d->entries[i].value);
+            d->entries[i].value = bread_value_clone(v);
+            return 1;
+        }
+    }
+    
+    // Resize if needed
+    if (d->count >= d->capacity) {
+        int new_capacity = d->capacity == 0 ? 8 : d->capacity * 2;
+        BreadDictEntry* new_entries = realloc(d->entries, new_capacity * sizeof(BreadDictEntry));
+        if (!new_entries) return 0;
+        d->entries = new_entries;
+        d->capacity = new_capacity;
+    }
+    
+    // Add new entry
+    d->entries[d->count].key = bread_string_new(key);
+    d->entries[d->count].value = bread_value_clone(v);
+    d->count++;
+    
     return 1;
 }
 
 BreadValue* bread_dict_get(BreadDict* d, const char* key) {
     if (!d || !key) return NULL;
+    
     for (int i = 0; i < d->count; i++) {
-        if (strcmp(bread_string_cstr(d->entries[i].key), key) == 0) {
+        if (bread_string_equals(d->entries[i].key, key)) {
             return &d->entries[i].value;
         }
     }
+    
     return NULL;
-}
-
-int bread_dict_set(BreadDict* d, const char* key, BreadValue v) {
-    if (!d || !key) return 0;
-
-    BreadValue* existing = bread_dict_get(d, key);
-    if (existing) {
-        bread_value_release(existing);
-        *existing = bread_value_clone(v);
-        return 1;
-    }
-
-    if (!bread_dict_ensure_cap(d, d->count + 1)) return 0;
-
-    d->entries[d->count].key = bread_string_new(key);
-    if (!d->entries[d->count].key) return 0;
-    d->entries[d->count].value = bread_value_clone(v);
-    d->count++;
-    return 1;
 }
 
 BreadOptional* bread_optional_new_none(void) {
@@ -212,7 +210,7 @@ BreadOptional* bread_optional_new_none(void) {
     o->header.kind = BREAD_OBJ_OPTIONAL;
     o->header.refcount = 1;
     o->is_some = 0;
-    o->value = bread_value_make_nil();
+    memset(&o->value, 0, sizeof(BreadValue));
     return o;
 }
 
@@ -222,7 +220,7 @@ BreadOptional* bread_optional_new_some(BreadValue v) {
     o->header.kind = BREAD_OBJ_OPTIONAL;
     o->header.refcount = 1;
     o->is_some = 1;
-    o->value = bread_value_clone(v);
+    o->value = v;
     return o;
 }
 
@@ -233,9 +231,32 @@ void bread_optional_retain(BreadOptional* o) {
 void bread_optional_release(BreadOptional* o) {
     if (!o) return;
     o->header.refcount--;
-    if (o->header.refcount > 0) return;
-    if (o->is_some) {
-        bread_value_release(&o->value);
+    if (o->header.refcount <= 0) {
+        if (o->is_some) {
+            bread_value_release(&o->value);
+        }
+        free(o);
     }
-    free(o);
+}
+
+int bread_value_get_int(BreadValue* v) {
+    if (!v || v->type != TYPE_INT) return 0;
+    return v->value.int_val;
+}
+
+double bread_value_get_double(BreadValue* v) {
+    if (!v) return 0.0;
+    if (v->type == TYPE_DOUBLE) return v->value.double_val;
+    if (v->type == TYPE_INT) return (double)v->value.int_val;
+    return 0.0;
+}
+
+int bread_value_get_bool(BreadValue* v) {
+    if (!v || v->type != TYPE_BOOL) return 0;
+    return v->value.bool_val;
+}
+
+int bread_value_get_type(BreadValue* v) {
+    if (!v) return TYPE_NIL;
+    return v->type;
 }

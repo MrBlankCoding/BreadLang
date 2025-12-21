@@ -133,7 +133,8 @@ ExprResult evaluate_binary_op(ExprResult left, ExprResult right, char op) {
     }
 
     // Comparison operations
-    if (op == '=' || op == '!' || op == '<' || op == '>') {
+    // Note: '<=' and '>=' are encoded as 'l' and 'g' respectively.
+    if (op == '=' || op == '!' || op == '<' || op == '>' || op == 'l' || op == 'g') {
         int result_val = 0;
         if (left.type == TYPE_DOUBLE && right.type == TYPE_DOUBLE) {
             switch (op) {
@@ -141,6 +142,8 @@ ExprResult evaluate_binary_op(ExprResult left, ExprResult right, char op) {
                 case '!': result_val = left.value.double_val != right.value.double_val; break;
                 case '<': result_val = left.value.double_val < right.value.double_val; break;
                 case '>': result_val = left.value.double_val > right.value.double_val; break;
+                case 'l': result_val = left.value.double_val <= right.value.double_val; break;
+                case 'g': result_val = left.value.double_val >= right.value.double_val; break;
             }
         } else if (left.type == TYPE_INT && right.type == TYPE_INT) {
             switch (op) {
@@ -148,6 +151,8 @@ ExprResult evaluate_binary_op(ExprResult left, ExprResult right, char op) {
                 case '!': result_val = left.value.int_val != right.value.int_val; break;
                 case '<': result_val = left.value.int_val < right.value.int_val; break;
                 case '>': result_val = left.value.int_val > right.value.int_val; break;
+                case 'l': result_val = left.value.int_val <= right.value.int_val; break;
+                case 'g': result_val = left.value.int_val >= right.value.int_val; break;
             }
         } else if (left.type == TYPE_BOOL && right.type == TYPE_BOOL) {
             switch (op) {
@@ -155,6 +160,8 @@ ExprResult evaluate_binary_op(ExprResult left, ExprResult right, char op) {
                 case '!': result_val = left.value.bool_val != right.value.bool_val; break;
                 case '<': result_val = left.value.bool_val < right.value.bool_val; break;
                 case '>': result_val = left.value.bool_val > right.value.bool_val; break;
+                case 'l': result_val = left.value.bool_val <= right.value.bool_val; break;
+                case 'g': result_val = left.value.bool_val >= right.value.bool_val; break;
             }
         } else if (left.type == TYPE_STRING && right.type == TYPE_STRING) {
             int cmp = bread_string_cmp(left.value.string_val, right.value.string_val);
@@ -163,6 +170,8 @@ ExprResult evaluate_binary_op(ExprResult left, ExprResult right, char op) {
                 case '!': result_val = cmp != 0; break;
                 case '<': result_val = cmp < 0; break;
                 case '>': result_val = cmp > 0; break;
+                case 'l': result_val = cmp <= 0; break;
+                case 'g': result_val = cmp >= 0; break;
             }
         } else {
             printf("Error: Cannot compare different types\n");

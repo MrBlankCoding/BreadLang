@@ -392,8 +392,9 @@ ASTStmtList* ast_parse_program(const char* code) {
 static ASTStmt* parse_stmt(const char** code) {
     skip_whitespace(code);
 
-    if (strncmp(*code, "func ", 5) == 0) {
-        *code += 5;
+    if (strncmp(*code, "func ", 5) == 0 || strncmp(*code, "fn ", 3) == 0) {
+        int is_short = strncmp(*code, "fn ", 3) == 0;
+        *code += is_short ? 3 : 5;
         skip_whitespace(code);
 
         const char* start = *code;
@@ -554,18 +555,29 @@ static ASTStmt* parse_stmt(const char** code) {
         *code += 6;
         skip_whitespace(code);
         ASTExpr* e = parse_expression_str_as_ast(code);
+        if (!e) return NULL;
         ASTStmt* s = ast_stmt_new(AST_STMT_RETURN);
         if (!s) {
             ast_free_expr(e);
             return NULL;
         }
         s->as.ret.expr = e;
+
+        const char* lookahead = *code;
+        while (*lookahead == ' ' || *lookahead == '\t' || *lookahead == '\r') {
+            lookahead++;
+        }
+        if (*lookahead == '\n' || *lookahead == '\0' || *lookahead == '}' || *lookahead == ';') {
+            *code = lookahead;
+            if (**code == '\n' || **code == ';') (*code)++;
+        }
+
         return s;
     }
 
-    if (strncmp(*code, "let ", 4) == 0 || strncmp(*code, "const ", 6) == 0) {
+    if (strncmp(*code, "var ", 4) == 0 || strncmp(*code, "let ", 4) == 0 || strncmp(*code, "const ", 6) == 0) {
         int is_const = strncmp(*code, "const ", 6) == 0;
-        *code += is_const ? 6 : 4;
+        *code += strncmp(*code, "const ", 6) == 0 ? 6 : 4;
         skip_whitespace(code);
 
         const char* start = *code;
@@ -575,20 +587,25 @@ static ASTStmt* parse_stmt(const char** code) {
         if (!var_name) return NULL;
 
         skip_whitespace(code);
-        if (**code != ':') {
-            free(var_name);
-            return NULL;
-        }
-        (*code)++;
-        skip_whitespace(code);
 
+        char* type_str = NULL;
+        VarType type = TYPE_INT; // default
         char type_buf[MAX_TOKEN_LEN];
-        if (!parse_type_string(code, type_buf, sizeof(type_buf))) {
-            free(var_name);
-            return NULL;
+
+        if (**code == ':') {
+            (*code)++;
+            skip_whitespace(code);
+
+            if (!parse_type_string(code, type_buf, sizeof(type_buf))) {
+                free(var_name);
+                return NULL;
+            }
+            type_str = strdup(type_buf);
+        } else {
+            strcpy(type_buf, "Int");
+            type_str = strdup("Int");
         }
 
-        VarType type;
         size_t tlen = strlen(type_buf);
         if (tlen > 0 && type_buf[tlen - 1] == '?') {
             type = TYPE_OPTIONAL;
@@ -602,6 +619,7 @@ static ASTStmt* parse_stmt(const char** code) {
             const char* end = strrchr(type_buf, ']');
             if (!end) {
                 free(var_name);
+                free(type_str);
                 return NULL;
             }
             int is_dict = 0;
@@ -616,6 +634,7 @@ static ASTStmt* parse_stmt(const char** code) {
             type = is_dict ? TYPE_DICT : TYPE_ARRAY;
         } else {
             free(var_name);
+            free(type_str);
             return NULL;
         }
 
@@ -997,6 +1016,8 @@ static ASTExpr* parse_comparison(const char** expr) {
         (**expr == '<' && *(*expr + 1) == '=') ||
         (**expr == '>' && *(*expr + 1) == '=')) {
         char op = **expr;
+        if (op == '<') op = 'l';
+        else if (op == '>') op = 'g';
         *expr += 2;
         ASTExpr* right = parse_term(expr);
         if (!right) {

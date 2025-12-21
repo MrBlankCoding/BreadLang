@@ -8,6 +8,7 @@
 #include "core/value.h"
 #include "compiler/ast.h"
 #include "runtime/runtime.h"
+#include "backends/llvm_backend.h"
 
 static void vm_stack_reset(VM* vm) {
     if (!vm) return;
@@ -228,7 +229,7 @@ static int vm_binary_op(char op, BreadValue left, BreadValue right, BreadValue* 
         return 0;
     }
 
-    if (op == '=' || op == '!' || op == '<' || op == '>') {
+    if (op == '=' || op == '!' || op == '<' || op == '>' || op == 'l' || op == 'g') {
         int result_val = 0;
         if (l.type == TYPE_DOUBLE && r.type == TYPE_DOUBLE) {
             switch (op) {
@@ -236,6 +237,8 @@ static int vm_binary_op(char op, BreadValue left, BreadValue right, BreadValue* 
                 case '!': result_val = (l.value.double_val != r.value.double_val); break;
                 case '<': result_val = (l.value.double_val < r.value.double_val); break;
                 case '>': result_val = (l.value.double_val > r.value.double_val); break;
+                case 'l': result_val = (l.value.double_val <= r.value.double_val); break;
+                case 'g': result_val = (l.value.double_val >= r.value.double_val); break;
             }
         } else if (l.type == TYPE_INT && r.type == TYPE_INT) {
             switch (op) {
@@ -243,6 +246,8 @@ static int vm_binary_op(char op, BreadValue left, BreadValue right, BreadValue* 
                 case '!': result_val = (l.value.int_val != r.value.int_val); break;
                 case '<': result_val = (l.value.int_val < r.value.int_val); break;
                 case '>': result_val = (l.value.int_val > r.value.int_val); break;
+                case 'l': result_val = (l.value.int_val <= r.value.int_val); break;
+                case 'g': result_val = (l.value.int_val >= r.value.int_val); break;
             }
         } else if (l.type == TYPE_BOOL && r.type == TYPE_BOOL) {
             switch (op) {
@@ -250,6 +255,8 @@ static int vm_binary_op(char op, BreadValue left, BreadValue right, BreadValue* 
                 case '!': result_val = (l.value.bool_val != r.value.bool_val); break;
                 case '<': result_val = (l.value.bool_val < r.value.bool_val); break;
                 case '>': result_val = (l.value.bool_val > r.value.bool_val); break;
+                case 'l': result_val = (l.value.bool_val <= r.value.bool_val); break;
+                case 'g': result_val = (l.value.bool_val >= r.value.bool_val); break;
             }
         } else if (l.type == TYPE_STRING && r.type == TYPE_STRING) {
             int cmp = bread_string_cmp(l.value.string_val, r.value.string_val);
@@ -258,6 +265,8 @@ static int vm_binary_op(char op, BreadValue left, BreadValue right, BreadValue* 
                 case '!': result_val = (cmp != 0); break;
                 case '<': result_val = (cmp < 0); break;
                 case '>': result_val = (cmp > 0); break;
+                case 'l': result_val = (cmp <= 0); break;
+                case 'g': result_val = (cmp >= 0); break;
             }
         } else {
             printf("Error: Cannot compare different types\n");
@@ -323,6 +332,63 @@ static int vm_call_function(VM* vm, const BytecodeChunk* chunk, const char* name
     for (int i = argc - 1; i >= 0; i--) {
         BreadValue v = vm_pop(vm);
         args[i] = bread_expr_result_from_value(v);
+    }
+
+    // JIT Logic
+    Function* fn = (Function*)get_function(name);
+    if (fn) {
+        fn->hot_count++;
+            if (!fn->is_jitted && fn->hot_count > 5) {
+                // Try to JIT
+                // printf("DEBUG: JIT compiling %s\n", fn->name);
+                bread_llvm_jit_function(fn);
+            }
+            
+            if (fn->is_jitted) {
+                // Type guards
+                int types_ok = 1;
+                if (argc != fn->param_count) types_ok = 0;
+                else {
+                    for (int i = 0; i < argc; i++) {
+                        if (!type_compatible(fn->param_types[i], args[i].type)) {
+                            types_ok = 0;
+                            break;
+                        }
+                    }
+                }
+                
+                if (types_ok) {
+                    // Prepare args
+                    BreadValue* jit_args = malloc(sizeof(BreadValue) * argc);
+                    BreadValue** jit_arg_ptrs = malloc(sizeof(BreadValue*) * argc);
+                    for (int i = 0; i < argc; i++) {
+                        VarValue val = coerce_value(fn->param_types[i], args[i]);
+                        jit_args[i].type = fn->param_types[i];
+                        jit_args[i].value = val;
+                        jit_arg_ptrs[i] = &jit_args[i];
+                    }
+                    
+                    BreadValue ret_val;
+                    memset(&ret_val, 0, sizeof(ret_val));
+                    ret_val.type = TYPE_NIL; // Default
+                    
+                    // printf("DEBUG: Calling JIT code for %s\n", fn->name);
+                    fn->jit_fn(&ret_val, (void**)jit_arg_ptrs);
+                    
+                    free(jit_args);
+                    free(jit_arg_ptrs);
+                    
+                    // Push return value
+                    for (int i = 0; i < argc; i++) {
+                        vm_expr_release(&args[i]);
+                    }
+                    free(args);
+                    
+                    return vm_push(vm, ret_val);
+                }
+                // Bailout to bytecode if types mismatch
+                // printf("DEBUG: Bailout to bytecode for %s due to type mismatch\n", fn->name);
+            }
     }
 
     ExprResult out;

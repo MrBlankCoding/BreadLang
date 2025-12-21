@@ -124,17 +124,25 @@ int main(int argc, char* argv[]) {
             if (semantic_analyze(program)) {
                 if (emit_llvm) {
                     const char* dst = out_path ? out_path : "out.ll";
-                    (void)bread_llvm_emit_ll(program, dst);
+                    if (!bread_llvm_emit_ll(program, dst)) {
+                        return 1;
+                    }
                 } else if (emit_obj) {
                     const char* dst = out_path ? out_path : "out.o";
-                    (void)bread_llvm_emit_obj(program, dst);
+                    if (!bread_llvm_emit_obj(program, dst)) {
+                        return 1;
+                    }
                 } else if (emit_exe) {
                     const char* dst = out_path ? out_path : "a.out";
-                    (void)bread_llvm_emit_exe(program, dst);
+                    if (!bread_llvm_emit_exe(program, dst)) {
+                        return 1;
+                    }
                 } else if (use_ast) {
                     (void)ast_execute_stmt_list(program, NULL);
                 } else if (use_jit) {
-                    (void)bread_llvm_jit_exec(program);
+                    if (bread_llvm_jit_exec(program) != 0) {
+                        return 1;
+                    }
                 } else if (no_jit) {
                     BytecodeChunk chunk;
                     bc_chunk_init(&chunk);

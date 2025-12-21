@@ -1,8 +1,0 @@
-let x: Int = 5
-let y: Int = 3
-print(5 + 3)
-print(x + y)
-print(x * 2 + y)
-print((x + y) * 2)
-print(x > y)
-print(x + y)

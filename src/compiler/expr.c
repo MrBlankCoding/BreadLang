@@ -10,7 +10,6 @@
 
 #define MAX_EXPR_LEN 1024
 
-// Forward declarations
 static ExprResult parse_expression(const char** expr);
 static ExprResult parse_logical_or(const char** expr);
 static ExprResult parse_logical_and(const char** expr);
@@ -128,6 +127,8 @@ static ExprResult parse_comparison(const char** expr) {
         (**expr == '<' && *(*expr + 1) == '=') ||
         (**expr == '>' && *(*expr + 1) == '=')) {
         char op = **expr;
+        if (op == '<') op = 'l';
+        else if (op == '>') op = 'g';
         *expr += 2;
         ExprResult right = parse_term(expr);
         if (right.is_error) return right;

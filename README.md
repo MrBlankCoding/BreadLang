@@ -1,77 +1,123 @@
 # BreadLang
 
-This repository contains a small C implementation of **BreadLang** with both:
-- an AST interpreter (debug/fallback)
-- a bytecode compiler + stack-based VM (default execution)
+BreadLang is a custom programming language implemented in C. It features a complete pipeline from parsing to execution, supporting both a bytecode virtual machine and an experimental LLVM native code backend.
+
+## Features
+
+- **Dual Execution Engines**:
+  - **Bytecode VM**: Stack-based virtual machine for portable execution (default).
+  - **LLVM Backend**: Compiles BreadLang code to optimized native executables (experimental).
+- **Core Language Support**:
+  - Arithmetic operations and expressions.
+  - Variable declarations and assignments.
+  - Control flow (`if`/`else`, `while` loops).
+  - Function definitions and calls.
+  - Standard output via `print`.
+- **Developer Tools**:
+  - AST Dumper for debugging parsing.
+  - Execution tracer for the VM.
 
 ## Build
 
-From the repo root:
+### Prerequisites
+
+- A C compiler (GCC/Clang) supporting C11.
+- `make` (optional, for manual build steps).
+- **LLVM** (optional): Required only for the LLVM backend features (`llvm-config` must be in your PATH).
+
+### Building
+
+Use the provided build script to compile the project:
 
 ```sh
-cc -std=c11 -Wall -Wextra -O0 -g src/*.c -o breadlang -lm
+./build.sh
 ```
 
-This produces a `./breadlang` binary.
+This will produce the `breadlang` executable in the project root.
 
-## Run
+## Usage
+
+Run a BreadLang program using the bytecode VM:
 
 ```sh
-./breadlang <file.bread>
+./breadlang examples/hello.bread
 ```
 
-By default, BreadLang runs the pipeline:
+### Command-Line Options
 
-- Parse program into AST
-- Semantic analysis
-- Compile AST to bytecode (`BytecodeChunk`)
-- Execute bytecode on the VM
+| Flag | Description |
+|------|-------------|
+| `--dump-ast` | Parses the code and prints the Abstract Syntax Tree structure. |
+| `--trace` | Runs the program with instruction-level execution tracing. |
+| `--use-ast` | Uses the legacy AST interpreter instead of the bytecode VM. |
+| `--emit-exe` | Compiles the program to a native executable using LLVM. |
 
-## Command-line flags
+## Language Syntax
+
+BreadLang supports a C-like syntax.
+
+**Variables and Math:**
+```bread
+var x = 10;
+var y = 20;
+print x + y;
+```
+
+**Control Flow:**
+```bread
+var a = 5;
+if (a > 3) {
+    print 1;
+} else {
+    print 0;
+}
+
+var i = 0;
+while (i < 5) {
+    print i;
+    i = i + 1;
+}
+```
+
+**Functions:**
+```bread
+func add(a, b) {
+    return a + b;
+}
+
+print add(10, 5);
+```
+
+## Testing
+
+The project maintains a robust test suite to ensure stability across both execution engines.
+
+### Running Tests
+
+Use the unified test runner script:
 
 ```sh
-./breadlang [--dump-ast] [--trace] [--use-ast] <file.bread>
+# Run all tests (Integration + LLVM)
+./scripts/tests.sh
+
+# Run only integration tests
+./scripts/tests.sh -t integration
+
+# Run only LLVM backend tests
+./scripts/tests.sh -t llvm_backend
 ```
 
-- **`--dump-ast`**
-  - Parses the input and prints a structured dump of the parsed statement list.
-  - Note: expressions are currently stored as strings, so the dump will show fields like `expr=...`.
-  - Does not execute the program.
+### Test Categories
 
-- **`--trace`**
-  - Executes the program but prints a simple step-by-step trace to `stderr`.
-  - Current trace format: `trace: <stmt_kind>` (example: `trace: var_decl`, `trace: print`).
+- **Integration Tests** (`tests/integration/`): Verifies core language features (math, variables, control flow, functions) running on the Bytecode VM.
+- **LLVM Backend Tests** (`tests/llvm_backend/`): Verifies that code compiles correctly to native executables and produces expected output.
 
-- **`--use-ast`**
-  - Runs the legacy AST interpreter instead of the bytecode VM.
-  - Useful as a correctness fallback while the VM/compiler evolves.
+## Project Structure
 
-## Tests
-
-There is a simple test runner script that builds and runs all `.bread` files under `tests/` and compares output against the matching `.expected` file.
-
-```sh
-./run_tests.sh
-```
-
-CLI flag tests:
-
-```sh
-bash scripts/cli_flags_tests.sh
-```
-
-## Repo layout
-
-- `src/`
-  - Parser + semantic analysis + AST interpreter
-  - Bytecode compiler (`compiler.c`) and VM runtime (`vm.c`)
-  - Entry point: `src/interpreter.c`
-- `include/`
-  - Public headers
-- `tests/`
-  - `.bread` programs and `.expected` outputs
-
-## Notes for extending
-
-- Expressions in the AST are stored as structured nodes (`ASTExpr`), and bytecode compilation walks the AST.
-- Function declarations are registered during compilation; user-defined function bodies are currently still executed via the AST interpreter when called.
+- `src/`: Source code.
+  - `compiler/`: Lexer, parser, and bytecode compiler.
+  - `vm/`: Stack-based virtual machine implementation.
+  - `backends/`: LLVM code generation logic.
+- `include/`: Header files.
+- `tests/`: Test cases (`.bread` source and `.expected` output).
+- `scripts/`: Build and test automation scripts.

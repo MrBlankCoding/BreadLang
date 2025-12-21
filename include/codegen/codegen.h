@@ -4,8 +4,31 @@
 #include <llvm-c/Core.h>
 #include "compiler/ast.h"
 
-// Forward declaration for CompCtx, if needed from other parts of the compiler
-// For now, let's keep it simple and define Cg directly.
+// Forward declaration
+// Define CG directly
+
+typedef struct CgVar {
+    char* name;
+    LLVMValueRef alloca;
+    struct CgVar* next;
+} CgVar;
+
+typedef struct CgScope {
+    CgVar* vars;
+    struct CgScope* parent;
+} CgScope;
+
+typedef struct CgFunction {
+    char* name;
+    LLVMValueRef fn;
+    LLVMTypeRef type;
+    ASTStmtList* body;
+    int param_count;
+    char** param_names;
+    struct CgFunction* next;
+    CgScope* scope;
+    LLVMValueRef ret_slot;
+} CgFunction;
 
 typedef struct {
     LLVMModuleRef mod;
@@ -53,14 +76,55 @@ typedef struct {
     LLVMValueRef fn_dict_new;
     LLVMValueRef fn_dict_release;
 
+    LLVMTypeRef ty_bread_value_size;
+    LLVMTypeRef ty_value_set_nil;
+    LLVMTypeRef ty_value_set_bool;
+    LLVMTypeRef ty_value_set_int;
+    LLVMTypeRef ty_value_set_double;
+    LLVMTypeRef ty_value_set_string;
+    LLVMTypeRef ty_value_set_array;
+    LLVMTypeRef ty_value_set_dict;
+    LLVMTypeRef ty_value_copy;
+    LLVMTypeRef ty_value_release;
+    LLVMTypeRef ty_print;
+    LLVMTypeRef ty_is_truthy;
+    LLVMTypeRef ty_unary_not;
+    LLVMTypeRef ty_binary_op;
+    LLVMTypeRef ty_index_op;
+    LLVMTypeRef ty_member_op;
+    LLVMTypeRef ty_method_call_op;
+    LLVMTypeRef ty_dict_set_value;
+    LLVMTypeRef ty_array_append_value;
+    LLVMTypeRef ty_var_decl;
+    LLVMTypeRef ty_var_decl_if_missing;
+    LLVMTypeRef ty_var_assign;
+    LLVMTypeRef ty_var_load;
+    LLVMTypeRef ty_push_scope;
+    LLVMTypeRef ty_pop_scope;
+    LLVMTypeRef ty_init_variables;
+    LLVMTypeRef ty_cleanup_variables;
+    LLVMTypeRef ty_init_functions;
+    LLVMTypeRef ty_cleanup_functions;
+    LLVMTypeRef ty_array_new;
+    LLVMTypeRef ty_array_release;
+    LLVMTypeRef ty_dict_new;
+    LLVMTypeRef ty_dict_release;
+
     int loop_depth;
     int tmp_counter;
+
+    CgFunction* functions;
+    LLVMTypeRef value_type;
+    LLVMTypeRef value_ptr_type;
 } Cg;
 
-// Function declarations used in llvm_backend.c
 LLVMValueRef cg_declare_fn(Cg* cg, const char* name, LLVMTypeRef fn_type);
 int cg_define_functions(Cg* cg);
 LLVMValueRef cg_value_size(Cg* cg);
-int cg_build_stmt_list(Cg* cg, LLVMValueRef val_size, ASTStmtList* program);
+int cg_build_stmt_list(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmtList* program);
+LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTExpr* expr);
+int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stmt);
+CgVar* cg_scope_add_var(CgScope* scope, const char* name, LLVMValueRef alloca);
+CgVar* cg_scope_find_var(CgScope* scope, const char* name);
 
-#endif // BREAD_CODEGEN_H
+#endif

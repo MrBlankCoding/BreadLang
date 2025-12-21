@@ -58,4 +58,9 @@ BreadOptional* bread_optional_new_some(BreadValue v);
 void bread_optional_retain(BreadOptional* o);
 void bread_optional_release(BreadOptional* o);
 
+int bread_value_get_int(BreadValue* v);
+double bread_value_get_double(BreadValue* v);
+int bread_value_get_bool(BreadValue* v);
+int bread_value_get_type(BreadValue* v);
+
 #endif

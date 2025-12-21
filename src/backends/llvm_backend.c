@@ -3,6 +3,10 @@
 #include <string.h>
 
 #include "backends/llvm_backend.h"
+#include "compiler/type_stability.h"
+#include "compiler/escape_analysis.h"
+#include "compiler/optimization.h"
+#include "codegen/optimized_codegen.h"
 #include <llvm-c/Core.h>
 #include <llvm-c/Analysis.h>
 #include <llvm-c/ExecutionEngine.h>
@@ -13,6 +17,7 @@
 #include <limits.h>
 
 #include "core/var.h"
+#include "core/function.h"
 #include "codegen/codegen.h"
 
 #if defined(__APPLE__)
@@ -72,6 +77,92 @@ static int bread_get_exe_dir(char* out_dir, size_t cap) {
 #endif
 }
 
+static void cg_init(Cg* cg, LLVMModuleRef mod, LLVMBuilderRef builder) {
+    memset(cg, 0, sizeof(*cg));
+    cg->mod = mod;
+    cg->builder = builder;
+    cg->i1 = LLVMInt1Type();
+    cg->i8 = LLVMInt8Type();
+    cg->i8_ptr = LLVMPointerType(cg->i8, 0);
+    cg->i32 = LLVMInt32Type();
+    cg->i64 = LLVMInt64Type();
+    cg->f64 = LLVMDoubleType();
+    cg->void_ty = LLVMVoidType();
+    cg->loop_depth = 0;
+    cg->tmp_counter = 0;
+    cg->value_type = LLVMArrayType(cg->i8, 128);
+    cg->value_ptr_type = LLVMPointerType(cg->value_type, 0);
+
+    cg->ty_bread_value_size = LLVMFunctionType(cg->i64, NULL, 0, 0);
+    cg->fn_bread_value_size = cg_declare_fn(cg, "bread_value_size", cg->ty_bread_value_size);
+    cg->ty_value_set_nil = LLVMFunctionType(cg->void_ty, (LLVMTypeRef[]){cg->i8_ptr}, 1, 0);
+    cg->fn_value_set_nil = cg_declare_fn(cg, "bread_value_set_nil", cg->ty_value_set_nil);
+    cg->ty_value_set_bool = LLVMFunctionType(cg->void_ty, (LLVMTypeRef[]){cg->i8_ptr, cg->i32}, 2, 0);
+    cg->fn_value_set_bool = cg_declare_fn(cg, "bread_value_set_bool", cg->ty_value_set_bool);
+    cg->ty_value_set_int = LLVMFunctionType(cg->void_ty, (LLVMTypeRef[]){cg->i8_ptr, cg->i32}, 2, 0);
+    cg->fn_value_set_int = cg_declare_fn(cg, "bread_value_set_int", cg->ty_value_set_int);
+    cg->ty_value_set_double = LLVMFunctionType(cg->void_ty, (LLVMTypeRef[]){cg->i8_ptr, cg->f64}, 2, 0);
+    cg->fn_value_set_double = cg_declare_fn(cg, "bread_value_set_double", cg->ty_value_set_double);
+    cg->ty_value_set_string = LLVMFunctionType(cg->void_ty, (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr}, 2, 0);
+    cg->fn_value_set_string = cg_declare_fn(cg, "bread_value_set_string", cg->ty_value_set_string);
+    cg->ty_value_set_array = LLVMFunctionType(cg->void_ty, (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr}, 2, 0);
+    cg->fn_value_set_array = cg_declare_fn(cg, "bread_value_set_array", cg->ty_value_set_array);
+    cg->ty_value_set_dict = LLVMFunctionType(cg->void_ty, (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr}, 2, 0);
+    cg->fn_value_set_dict = cg_declare_fn(cg, "bread_value_set_dict", cg->ty_value_set_dict);
+    cg->ty_value_copy = LLVMFunctionType(cg->void_ty, (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr}, 2, 0);
+    cg->fn_value_copy = cg_declare_fn(cg, "bread_value_copy", cg->ty_value_copy);
+    cg->ty_value_release = LLVMFunctionType(cg->void_ty, (LLVMTypeRef[]){cg->i8_ptr}, 1, 0);
+    cg->fn_value_release = cg_declare_fn(cg, "bread_value_release_value", cg->ty_value_release);
+    cg->ty_print = LLVMFunctionType(cg->void_ty, (LLVMTypeRef[]){cg->i8_ptr}, 1, 0);
+    cg->fn_print = cg_declare_fn(cg, "bread_print", cg->ty_print);
+    cg->ty_is_truthy = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr}, 1, 0);
+    cg->fn_is_truthy = cg_declare_fn(cg, "bread_is_truthy", cg->ty_is_truthy);
+    cg->ty_unary_not = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr}, 2, 0);
+    cg->fn_unary_not = cg_declare_fn(cg, "bread_unary_not", cg->ty_unary_not);
+    cg->ty_binary_op = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8, cg->i8_ptr, cg->i8_ptr, cg->i8_ptr}, 4, 0);
+    cg->fn_binary_op = cg_declare_fn(cg, "bread_binary_op", cg->ty_binary_op);
+    cg->ty_index_op = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr, cg->i8_ptr}, 3, 0);
+    cg->fn_index_op = cg_declare_fn(cg, "bread_index_op", cg->ty_index_op);
+    cg->ty_member_op = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr, cg->i32, cg->i8_ptr}, 4, 0);
+    cg->fn_member_op = cg_declare_fn(cg, "bread_member_op", cg->ty_member_op);
+    cg->ty_method_call_op = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr, cg->i32, cg->i8_ptr, cg->i32, cg->i8_ptr}, 6, 0);
+    cg->fn_method_call_op = cg_declare_fn(cg, "bread_method_call_op", cg->ty_method_call_op);
+    cg->ty_dict_set_value = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr, cg->i8_ptr}, 3, 0);
+    cg->fn_dict_set_value = cg_declare_fn(cg, "bread_dict_set_value", cg->ty_dict_set_value);
+    cg->ty_array_append_value = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr}, 2, 0);
+    cg->fn_array_append_value = cg_declare_fn(cg, "bread_array_append_value", cg->ty_array_append_value);
+    cg->ty_var_decl = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr, cg->i32, cg->i32, cg->i8_ptr}, 4, 0);
+    cg->fn_var_decl = cg_declare_fn(cg, "bread_var_decl", cg->ty_var_decl);
+    cg->ty_var_decl_if_missing = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr, cg->i32, cg->i32, cg->i8_ptr}, 4, 0);
+    cg->fn_var_decl_if_missing = cg_declare_fn(cg, "bread_var_decl_if_missing", cg->ty_var_decl_if_missing);
+    cg->ty_var_assign = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr}, 2, 0);
+    cg->fn_var_assign = cg_declare_fn(cg, "bread_var_assign", cg->ty_var_assign);
+    cg->ty_var_load = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr}, 2, 0);
+    cg->fn_var_load = cg_declare_fn(cg, "bread_var_load", cg->ty_var_load);
+    cg->ty_push_scope = LLVMFunctionType(cg->void_ty, NULL, 0, 0);
+    cg->fn_push_scope = cg_declare_fn(cg, "bread_push_scope", cg->ty_push_scope);
+    cg->ty_pop_scope = LLVMFunctionType(cg->void_ty, NULL, 0, 0);
+    cg->fn_pop_scope = cg_declare_fn(cg, "bread_pop_scope", cg->ty_pop_scope);
+    cg->ty_init_variables = LLVMFunctionType(cg->void_ty, NULL, 0, 0);
+    cg->fn_init_variables = cg_declare_fn(cg, "init_variables", cg->ty_init_variables);
+    cg->ty_cleanup_variables = LLVMFunctionType(cg->void_ty, NULL, 0, 0);
+    cg->fn_cleanup_variables = cg_declare_fn(cg, "cleanup_variables", cg->ty_cleanup_variables);
+    cg->ty_init_functions = LLVMFunctionType(cg->void_ty, NULL, 0, 0);
+    cg->fn_init_functions = cg_declare_fn(cg, "init_functions", cg->ty_init_functions);
+    cg->ty_cleanup_functions = LLVMFunctionType(cg->void_ty, NULL, 0, 0);
+    cg->fn_cleanup_functions = cg_declare_fn(cg, "cleanup_functions", cg->ty_cleanup_functions);
+    cg->ty_array_new = LLVMFunctionType(cg->i8_ptr, NULL, 0, 0);
+    cg->fn_array_new = cg_declare_fn(cg, "bread_array_new", cg->ty_array_new);
+    cg->ty_array_release = LLVMFunctionType(cg->void_ty, (LLVMTypeRef[]){cg->i8_ptr}, 1, 0);
+    cg->fn_array_release = cg_declare_fn(cg, "bread_array_release", cg->ty_array_release);
+    cg->ty_dict_new = LLVMFunctionType(cg->i8_ptr, NULL, 0, 0);
+    cg->fn_dict_new = cg_declare_fn(cg, "bread_dict_new", cg->ty_dict_new);
+    cg->ty_dict_release = LLVMFunctionType(cg->void_ty, (LLVMTypeRef[]){cg->i8_ptr}, 1, 0);
+    cg->fn_dict_release = cg_declare_fn(cg, "bread_dict_release", cg->ty_dict_release);
+    
+    cg_define_functions(cg);
+}
+
 static int bread_llvm_build_module_from_program(const ASTStmtList* program, LLVMModuleRef* out_mod) {
     LLVMModuleRef mod;
     LLVMBuilderRef builder;
@@ -86,58 +177,25 @@ static int bread_llvm_build_module_from_program(const ASTStmtList* program, LLVM
     mod = LLVMModuleCreateWithName("bread_module");
     builder = LLVMCreateBuilder();
 
-    memset(&cg, 0, sizeof(cg));
-    cg.mod = mod;
-    cg.builder = builder;
-    cg.i1 = LLVMInt1Type();
-    cg.i8 = LLVMInt8Type();
-    cg.i8_ptr = LLVMPointerType(cg.i8, 0);
-    cg.i32 = LLVMInt32Type();
-    cg.i64 = LLVMInt64Type();
-    cg.f64 = LLVMDoubleType();
-    cg.void_ty = LLVMVoidType();
-    cg.loop_depth = 0;
-    cg.tmp_counter = 0;
-
-    cg.fn_bread_value_size = cg_declare_fn(&cg, "bread_value_size", LLVMFunctionType(cg.i64, NULL, 0, 0));
-    cg.fn_value_set_nil = cg_declare_fn(&cg, "bread_value_set_nil", LLVMFunctionType(cg.void_ty, (LLVMTypeRef[]){cg.i8_ptr}, 1, 0));
-    cg.fn_value_set_bool = cg_declare_fn(&cg, "bread_value_set_bool", LLVMFunctionType(cg.void_ty, (LLVMTypeRef[]){cg.i8_ptr, cg.i32}, 2, 0));
-    cg.fn_value_set_int = cg_declare_fn(&cg, "bread_value_set_int", LLVMFunctionType(cg.void_ty, (LLVMTypeRef[]){cg.i8_ptr, cg.i32}, 2, 0));
-    cg.fn_value_set_double = cg_declare_fn(&cg, "bread_value_set_double", LLVMFunctionType(cg.void_ty, (LLVMTypeRef[]){cg.i8_ptr, cg.f64}, 2, 0));
-    cg.fn_value_set_string = cg_declare_fn(&cg, "bread_value_set_string", LLVMFunctionType(cg.void_ty, (LLVMTypeRef[]){cg.i8_ptr, cg.i8_ptr}, 2, 0));
-    cg.fn_value_set_array = cg_declare_fn(&cg, "bread_value_set_array", LLVMFunctionType(cg.void_ty, (LLVMTypeRef[]){cg.i8_ptr, cg.i8_ptr}, 2, 0));
-    cg.fn_value_set_dict = cg_declare_fn(&cg, "bread_value_set_dict", LLVMFunctionType(cg.void_ty, (LLVMTypeRef[]){cg.i8_ptr, cg.i8_ptr}, 2, 0));
-    cg.fn_value_copy = cg_declare_fn(&cg, "bread_value_copy", LLVMFunctionType(cg.void_ty, (LLVMTypeRef[]){cg.i8_ptr, cg.i8_ptr}, 2, 0));
-    cg.fn_value_release = cg_declare_fn(&cg, "bread_value_release_value", LLVMFunctionType(cg.void_ty, (LLVMTypeRef[]){cg.i8_ptr}, 1, 0));
-    cg.fn_print = cg_declare_fn(&cg, "bread_print", LLVMFunctionType(cg.void_ty, (LLVMTypeRef[]){cg.i8_ptr}, 1, 0));
-    cg.fn_is_truthy = cg_declare_fn(&cg, "bread_is_truthy", LLVMFunctionType(cg.i32, (LLVMTypeRef[]){cg.i8_ptr}, 1, 0));
-    cg.fn_unary_not = cg_declare_fn(&cg, "bread_unary_not", LLVMFunctionType(cg.i32, (LLVMTypeRef[]){cg.i8_ptr, cg.i8_ptr}, 2, 0));
-    cg.fn_binary_op = cg_declare_fn(&cg, "bread_binary_op", LLVMFunctionType(cg.i32, (LLVMTypeRef[]){cg.i8, cg.i8_ptr, cg.i8_ptr, cg.i8_ptr}, 4, 0));
-    cg.fn_index_op = cg_declare_fn(&cg, "bread_index_op", LLVMFunctionType(cg.i32, (LLVMTypeRef[]){cg.i8_ptr, cg.i8_ptr, cg.i8_ptr}, 3, 0));
-    cg.fn_member_op = cg_declare_fn(&cg, "bread_member_op", LLVMFunctionType(cg.i32, (LLVMTypeRef[]){cg.i8_ptr, cg.i8_ptr, cg.i32, cg.i8_ptr}, 4, 0));
-    cg.fn_method_call_op = cg_declare_fn(&cg, "bread_method_call_op", LLVMFunctionType(cg.i32, (LLVMTypeRef[]){cg.i8_ptr, cg.i8_ptr, cg.i32, cg.i8_ptr, cg.i32, cg.i8_ptr}, 6, 0));
-    cg.fn_dict_set_value = cg_declare_fn(&cg, "bread_dict_set_value", LLVMFunctionType(cg.i32, (LLVMTypeRef[]){cg.i8_ptr, cg.i8_ptr, cg.i8_ptr}, 3, 0));
-    cg.fn_array_append_value = cg_declare_fn(&cg, "bread_array_append_value", LLVMFunctionType(cg.i32, (LLVMTypeRef[]){cg.i8_ptr, cg.i8_ptr}, 2, 0));
-    cg.fn_var_decl = cg_declare_fn(&cg, "bread_var_decl", LLVMFunctionType(cg.i32, (LLVMTypeRef[]){cg.i8_ptr, cg.i32, cg.i32, cg.i8_ptr}, 4, 0));
-    cg.fn_var_decl_if_missing = cg_declare_fn(&cg, "bread_var_decl_if_missing", LLVMFunctionType(cg.i32, (LLVMTypeRef[]){cg.i8_ptr, cg.i32, cg.i32, cg.i8_ptr}, 4, 0));
-    cg.fn_var_assign = cg_declare_fn(&cg, "bread_var_assign", LLVMFunctionType(cg.i32, (LLVMTypeRef[]){cg.i8_ptr, cg.i8_ptr}, 2, 0));
-    cg.fn_var_load = cg_declare_fn(&cg, "bread_var_load", LLVMFunctionType(cg.i32, (LLVMTypeRef[]){cg.i8_ptr, cg.i8_ptr}, 2, 0));
-    cg.fn_push_scope = cg_declare_fn(&cg, "bread_push_scope", LLVMFunctionType(cg.void_ty, NULL, 0, 0));
-    cg.fn_pop_scope = cg_declare_fn(&cg, "bread_pop_scope", LLVMFunctionType(cg.void_ty, NULL, 0, 0));
-    cg.fn_init_variables = cg_declare_fn(&cg, "init_variables", LLVMFunctionType(cg.void_ty, NULL, 0, 0));
-    cg.fn_cleanup_variables = cg_declare_fn(&cg, "cleanup_variables", LLVMFunctionType(cg.void_ty, NULL, 0, 0));
-    cg.fn_init_functions = cg_declare_fn(&cg, "init_functions", LLVMFunctionType(cg.void_ty, NULL, 0, 0));
-    cg.fn_cleanup_functions = cg_declare_fn(&cg, "cleanup_functions", LLVMFunctionType(cg.void_ty, NULL, 0, 0));
-    cg.fn_array_new = cg_declare_fn(&cg, "bread_array_new", LLVMFunctionType(cg.i8_ptr, NULL, 0, 0));
-    cg.fn_array_release = cg_declare_fn(&cg, "bread_array_release", LLVMFunctionType(cg.void_ty, (LLVMTypeRef[]){cg.i8_ptr}, 1, 0));
-    cg.fn_dict_new = cg_declare_fn(&cg, "bread_dict_new", LLVMFunctionType(cg.i8_ptr, NULL, 0, 0));
-    cg.fn_dict_release = cg_declare_fn(&cg, "bread_dict_release", LLVMFunctionType(cg.void_ty, (LLVMTypeRef[]){cg.i8_ptr}, 1, 0));
-
-    if (!cg_define_functions(&cg)) {
-        LLVMDisposeBuilder(builder);
-        LLVMDisposeModule(mod);
-        return 0;
+    // Run Stage 5 optimization analysis passes
+    printf("Running Stage 5 optimization analysis...\n");
+    
+    printf("  - Type stability analysis...\n");
+    if (!type_stability_analyze((ASTStmtList*)program)) {
+        printf("    Warning: Type stability analysis failed\n");
     }
+    
+    printf("  - Escape analysis...\n");
+    if (!escape_analysis_run((ASTStmtList*)program)) {
+        printf("    Warning: Escape analysis failed\n");
+    }
+    
+    printf("  - Optimization heuristics...\n");
+    if (!optimization_analyze((ASTStmtList*)program)) {
+        printf("    Warning: Optimization analysis failed\n");
+    }
+
+    cg_init(&cg, mod, builder);
 
     main_ty = LLVMFunctionType(cg.i32, NULL, 0, 0);
     main_fn = LLVMAddFunction(mod, "main", main_ty);
@@ -149,7 +207,7 @@ static int bread_llvm_build_module_from_program(const ASTStmtList* program, LLVM
 
     val_size = cg_value_size(&cg);
 
-    if (!cg_build_stmt_list(&cg, val_size, (ASTStmtList*)program)) {
+    if (!cg_build_stmt_list(&cg, NULL, val_size, (ASTStmtList*)program)) {
         LLVMDisposeBuilder(builder);
         LLVMDisposeModule(mod);
         return 0;
@@ -158,9 +216,45 @@ static int bread_llvm_build_module_from_program(const ASTStmtList* program, LLVM
     (void)LLVMBuildCall2(builder, LLVMFunctionType(cg.void_ty, NULL, 0, 0), cg.fn_cleanup_functions, NULL, 0, "");
     (void)LLVMBuildCall2(builder, LLVMFunctionType(cg.void_ty, NULL, 0, 0), cg.fn_cleanup_variables, NULL, 0, "");
 
-    if (LLVMGetBasicBlockTerminator(entry) == NULL) {
+    LLVMBasicBlockRef final_block = LLVMGetInsertBlock(builder);
+    if (LLVMGetBasicBlockTerminator(final_block) == NULL) {
         LLVMBuildRet(builder, LLVMConstInt(cg.i32, 0, 0));
     }
+
+    LLVMBasicBlockRef main_block = LLVMGetInsertBlock(builder);
+
+    for (CgFunction* f = cg.functions; f; f = f->next) {
+        if (f->body && LLVMCountBasicBlocks(f->fn) == 0) {
+            LLVMBasicBlockRef fn_entry = LLVMAppendBasicBlock(f->fn, "entry");
+            LLVMPositionBuilderAtEnd(builder, fn_entry);
+
+            f->ret_slot = LLVMGetParam(f->fn, 0);
+
+            for (int i = 0; i < f->param_count; i++) {
+                LLVMValueRef param_val = LLVMGetParam(f->fn, (unsigned)(i + 1));
+                LLVMValueRef alloca = LLVMBuildAlloca(builder, cg.value_type, f->param_names[i]);
+                cg_scope_add_var(f->scope, f->param_names[i], alloca);
+
+                LLVMValueRef copy_args[] = {
+                    LLVMBuildBitCast(builder, param_val, cg.i8_ptr, ""),
+                    LLVMBuildBitCast(builder, alloca, cg.i8_ptr, "")
+                };
+                (void)LLVMBuildCall2(builder, cg.ty_value_copy, cg.fn_value_copy, copy_args, 2, "");
+            }
+
+            if (!cg_build_stmt_list(&cg, f, val_size, f->body)) {
+                LLVMDisposeBuilder(builder);
+                LLVMDisposeModule(mod);
+                return 0;
+            }
+            if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(builder)) == NULL) {
+                LLVMBuildRetVoid(builder);
+            }
+        }
+    }
+    
+    LLVMPositionBuilderAtEnd(builder, main_block);
+    printf("LLVM optimization passes disabled (legacy pass manager removed)\n");
 
     LLVMDisposeBuilder(builder);
     *out_mod = mod;
@@ -393,4 +487,163 @@ int bread_llvm_jit_exec(const ASTStmtList* program) {
 
     LLVMDisposeExecutionEngine(engine);
     return result;
+}
+
+int bread_llvm_jit_function(Function* fn) {
+    if (!fn || !fn->body) return 0;
+
+    LLVMInitializeNativeTarget();
+    LLVMInitializeNativeAsmPrinter();
+
+    LLVMModuleRef mod = LLVMModuleCreateWithName("jit_function_module");
+    LLVMBuilderRef builder = LLVMCreateBuilder();
+    Cg cg;
+    cg_init(&cg, mod, builder);
+
+    // DECLARE ALL FUNCTIONS AT ONCE YOUNG BLUD?
+    int fn_count = get_function_count();
+    for (int i = 0; i < fn_count; i++) {
+        const Function* other_fn = get_function_at(i);
+        if (!other_fn) continue;
+
+        // skip if compiling
+        if (strcmp(other_fn->name, fn->name) == 0) continue;
+
+        CgFunction* cg_fn = (CgFunction*)malloc(sizeof(CgFunction));
+        cg_fn->name = strdup(other_fn->name);
+        cg_fn->body = NULL; // Declaration only
+        cg_fn->param_count = other_fn->param_count;
+        cg_fn->param_names = other_fn->param_names;
+        cg_fn->scope = NULL;
+        cg_fn->ret_slot = NULL;
+        cg_fn->next = cg.functions;
+        cg.functions = cg_fn;
+
+        int param_total = other_fn->param_count + 1;
+        LLVMTypeRef* param_types = (LLVMTypeRef*)malloc(sizeof(LLVMTypeRef) * (size_t)param_total);
+        param_types[0] = cg.value_ptr_type;
+        for (int k = 0; k < other_fn->param_count; k++) {
+            param_types[k+1] = cg.value_ptr_type;
+        }
+        LLVMTypeRef fn_type = LLVMFunctionType(cg.void_ty, param_types, (unsigned)param_total, 0);
+        free(param_types);
+
+        cg_fn->type = fn_type;
+        cg_fn->fn = LLVMAddFunction(cg.mod, other_fn->name, fn_type);
+    }
+
+    // Define the function we are JITting
+    CgFunction* target_fn = (CgFunction*)malloc(sizeof(CgFunction));
+    target_fn->name = strdup(fn->name);
+    target_fn->body = (ASTStmtList*)fn->body;
+    target_fn->param_count = fn->param_count;
+    target_fn->param_names = fn->param_names;
+    target_fn->scope = NULL; // Will be created in loop below
+    target_fn->ret_slot = NULL;
+    target_fn->next = cg.functions;
+    cg.functions = target_fn;
+
+    int param_total = fn->param_count + 1;
+    LLVMTypeRef* param_types = (LLVMTypeRef*)malloc(sizeof(LLVMTypeRef) * (size_t)param_total);
+    param_types[0] = cg.value_ptr_type;
+    for (int k = 0; k < fn->param_count; k++) {
+        param_types[k+1] = cg.value_ptr_type;
+    }
+    LLVMTypeRef fn_type = LLVMFunctionType(cg.void_ty, param_types, (unsigned)param_total, 0);
+    free(param_types);
+    target_fn->type = fn_type;
+    target_fn->fn = LLVMAddFunction(cg.mod, fn->name, fn_type);
+
+    // Generate Wrapper: void wrapper(BreadValue* ret, BreadValue** args)
+    // args is BreadValue**, so it points to array of pointers to BreadValue.
+    LLVMTypeRef wrapper_params[] = { cg.i8_ptr, LLVMPointerType(cg.i8_ptr, 0) };
+    LLVMTypeRef wrapper_ty = LLVMFunctionType(cg.void_ty, wrapper_params, 2, 0);
+    LLVMValueRef wrapper_fn = LLVMAddFunction(mod, "jit_wrapper", wrapper_ty);
+    LLVMBasicBlockRef wrapper_entry = LLVMAppendBasicBlock(wrapper_fn, "entry");
+    LLVMPositionBuilderAtEnd(builder, wrapper_entry);
+
+    LLVMValueRef ret_arg = LLVMGetParam(wrapper_fn, 0); // BreadValue* (casted to i8*)
+    LLVMValueRef args_arg = LLVMGetParam(wrapper_fn, 1); // BreadValue** (casted to i8**)
+
+    // Prepare arguments for target function call
+    LLVMValueRef* call_args = (LLVMValueRef*)malloc(sizeof(LLVMValueRef) * (size_t)param_total);
+    call_args[0] = LLVMBuildBitCast(builder, ret_arg, cg.value_ptr_type, "");
+    
+    for (int i = 0; i < fn->param_count; i++) {
+        LLVMValueRef idx = LLVMConstInt(cg.i32, i, 0);
+        LLVMValueRef ptr_to_arg_ptr = LLVMBuildGEP2(builder, cg.i8_ptr, args_arg, &idx, 1, "");
+        LLVMValueRef arg_ptr = LLVMBuildLoad2(builder, cg.i8_ptr, ptr_to_arg_ptr, "");
+        call_args[i + 1] = LLVMBuildBitCast(builder, arg_ptr, cg.value_ptr_type, "");
+    }
+
+    LLVMBuildCall2(builder, fn_type, target_fn->fn, call_args, (unsigned)param_total, "");
+    free(call_args);
+    LLVMBuildRetVoid(builder);
+
+    // Now compile the target function body
+    // Reuse logic from bread_llvm_build_module_from_program
+    
+    LLVMBasicBlockRef fn_entry = LLVMAppendBasicBlock(target_fn->fn, "entry");
+    LLVMPositionBuilderAtEnd(builder, fn_entry);
+
+    target_fn->ret_slot = LLVMGetParam(target_fn->fn, 0);
+    target_fn->scope = (CgScope*)malloc(sizeof(CgScope));
+    target_fn->scope->vars = NULL;
+    target_fn->scope->parent = NULL; // Globals are handled via runtime calls
+
+    LLVMValueRef val_size = cg_value_size(&cg);
+
+    for (int i = 0; i < target_fn->param_count; i++) {
+        LLVMValueRef param_val = LLVMGetParam(target_fn->fn, (unsigned)(i + 1));
+        LLVMValueRef alloca = LLVMBuildAlloca(builder, cg.value_type, target_fn->param_names[i]);
+        cg_scope_add_var(target_fn->scope, target_fn->param_names[i], alloca);
+
+        LLVMValueRef copy_args[] = {
+            LLVMBuildBitCast(builder, param_val, cg.i8_ptr, ""),
+            LLVMBuildBitCast(builder, alloca, cg.i8_ptr, "")
+        };
+        (void)LLVMBuildCall2(builder, cg.ty_value_copy, cg.fn_value_copy, copy_args, 2, "");
+    }
+
+    if (!cg_build_stmt_list(&cg, target_fn, val_size, target_fn->body)) {
+        LLVMDisposeBuilder(builder);
+        LLVMDisposeModule(mod);
+        return 0;
+    }
+    if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(builder)) == NULL) {
+        LLVMBuildRetVoid(builder);
+    }
+
+    if (!bread_llvm_verify_module(mod)) {
+        LLVMDisposeBuilder(builder);
+        LLVMDisposeModule(mod);
+        return 0;
+    }
+
+    LLVMDisposeBuilder(builder);
+
+    // JIT Execution
+    LLVMExecutionEngineRef engine;
+    char* err = NULL;
+    if (LLVMCreateExecutionEngineForModule(&engine, mod, &err) != 0) {
+        fprintf(stderr, "Error creating execution engine: %s\n", err);
+        LLVMDisposeMessage(err);
+        return 0;
+    }
+
+    uint64_t wrapper_ptr = LLVMGetFunctionAddress(engine, "jit_wrapper");
+    if (!wrapper_ptr) {
+        fprintf(stderr, "Error: Could not get function address for 'jit_wrapper'\n");
+        LLVMDisposeExecutionEngine(engine);
+        // Module is owned by engine now
+        return 0;
+    }
+
+    fn->jit_engine = engine;
+    fn->jit_fn = (void (*)(void*, void**))wrapper_ptr;
+    fn->is_jitted = 1;
+
+    printf("JIT compiled function '%s'\n", fn->name);
+
+    return 1;
 }

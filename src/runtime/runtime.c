@@ -310,8 +310,30 @@ void bread_value_release_value(struct BreadValue* v) {
 
 int bread_is_truthy(const BreadValue* v) {
     if (!v) return 0;
-    if (v->type != TYPE_BOOL) return 0;
-    return v->value.bool_val ? 1 : 0;
+    switch (v->type) {
+        case TYPE_NIL:
+            return 0;
+        case TYPE_BOOL:
+            return v->value.bool_val;
+        case TYPE_INT:
+            return v->value.int_val != 0;
+        case TYPE_FLOAT:
+            return v->value.float_val != 0.0f;
+        case TYPE_DOUBLE:
+            return v->value.double_val != 0.0;
+        case TYPE_STRING:
+            return bread_string_len(v->value.string_val) > 0;
+        case TYPE_ARRAY:
+            return 1; // Arrays are truthy even if empty, consistent with many languages (except Python)
+        case TYPE_DICT:
+            return 1;
+        case TYPE_OPTIONAL: {
+            BreadOptional* o = v->value.optional_val;
+            return o && o->is_some;
+        }
+        default:
+            return 0;
+    }
 }
 
 int bread_unary_not(const BreadValue* in, BreadValue* out) {
@@ -395,29 +417,38 @@ int bread_binary_op(char op, const BreadValue* left, const BreadValue* right, Br
         return 0;
     }
 
-    if (op == '=' || op == '!' || op == '<' || op == '>') {
+    // Note: '<=' and '>=' are encoded as 'l' and 'g' respectively.
+    if (op == '=' || op == '!' || op == '<' || op == '>' || op == 'l' || op == 'g') {
         int result_val = 0;
         if (left->type == TYPE_DOUBLE && right->type == TYPE_DOUBLE) {
             if (op == '=') result_val = left->value.double_val == right->value.double_val;
             else if (op == '!') result_val = left->value.double_val != right->value.double_val;
             else if (op == '<') result_val = left->value.double_val < right->value.double_val;
             else if (op == '>') result_val = left->value.double_val > right->value.double_val;
+            else if (op == 'l') result_val = left->value.double_val <= right->value.double_val;
+            else if (op == 'g') result_val = left->value.double_val >= right->value.double_val;
         } else if (left->type == TYPE_INT && right->type == TYPE_INT) {
             if (op == '=') result_val = left->value.int_val == right->value.int_val;
             else if (op == '!') result_val = left->value.int_val != right->value.int_val;
             else if (op == '<') result_val = left->value.int_val < right->value.int_val;
             else if (op == '>') result_val = left->value.int_val > right->value.int_val;
+            else if (op == 'l') result_val = left->value.int_val <= right->value.int_val;
+            else if (op == 'g') result_val = left->value.int_val >= right->value.int_val;
         } else if (left->type == TYPE_BOOL && right->type == TYPE_BOOL) {
             if (op == '=') result_val = left->value.bool_val == right->value.bool_val;
             else if (op == '!') result_val = left->value.bool_val != right->value.bool_val;
             else if (op == '<') result_val = left->value.bool_val < right->value.bool_val;
             else if (op == '>') result_val = left->value.bool_val > right->value.bool_val;
+            else if (op == 'l') result_val = left->value.bool_val <= right->value.bool_val;
+            else if (op == 'g') result_val = left->value.bool_val >= right->value.bool_val;
         } else if (left->type == TYPE_STRING && right->type == TYPE_STRING) {
             int cmp = bread_string_cmp(left->value.string_val, right->value.string_val);
             if (op == '=') result_val = cmp == 0;
             else if (op == '!') result_val = cmp != 0;
             else if (op == '<') result_val = cmp < 0;
             else if (op == '>') result_val = cmp > 0;
+            else if (op == 'l') result_val = cmp <= 0;
+            else if (op == 'g') result_val = cmp >= 0;
         } else {
             printf("Error: Cannot compare different types\n");
             return 0;

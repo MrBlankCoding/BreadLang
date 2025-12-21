@@ -65,6 +65,10 @@ int register_function(const Function* fn) {
     dst->return_type = fn->return_type;
     dst->body = fn->body;
     dst->body_is_ast = fn->body_is_ast;
+    dst->hot_count = 0;
+    dst->is_jitted = 0;
+    dst->jit_fn = NULL;
+    dst->jit_engine = NULL;
 
     if (fn->param_count > 0) {
         dst->param_names = malloc(sizeof(char*) * fn->param_count);
@@ -95,7 +99,16 @@ const Function* get_function(const char* name) {
     return NULL;
 }
 
-static int type_compatible(VarType expected, VarType actual) {
+int get_function_count() {
+    return function_count;
+}
+
+const Function* get_function_at(int index) {
+    if (index < 0 || index >= function_count) return NULL;
+    return &functions[index];
+}
+
+int type_compatible(VarType expected, VarType actual) {
     if (expected == actual) return 1;
     if (expected == TYPE_OPTIONAL && actual == TYPE_NIL) return 1;
     if (expected == TYPE_OPTIONAL && actual != TYPE_OPTIONAL) return 1;
@@ -105,7 +118,7 @@ static int type_compatible(VarType expected, VarType actual) {
     return 0;
 }
 
-static VarValue coerce_value(VarType target, ExprResult val) {
+VarValue coerce_value(VarType target, ExprResult val) {
     VarValue out;
     memset(&out, 0, sizeof(out));
     if (target == TYPE_OPTIONAL && val.type == TYPE_NIL) {

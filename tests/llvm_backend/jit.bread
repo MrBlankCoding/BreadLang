@@ -1,0 +1,12 @@
+// Test JIT compilation with function calls and loops
+func add(a: Int, b: Int) -> Int {
+    return a + b
+}
+
+var i: Int = 0
+var res: Int = 0
+while i < 10 {
+    res = add(i, 10)
+    print(res)
+    i = i + 1
+}

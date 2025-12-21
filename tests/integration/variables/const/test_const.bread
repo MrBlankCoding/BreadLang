@@ -1,3 +1,0 @@
-const pi: Float = 3.14159
-print(pi)
-pi = 3.14
