@@ -1,0 +1,19 @@
+let arr1: [Int] = [1, 2, 3]
+let arr2: [Int] = [1, 2, 3]
+let arr3: [Int] = arr1
+print(arr1 == arr2)
+print(arr1 == arr3)
+
+let dict1: [String: Int] = ["a": 1, "b": 2]
+let dict2: [String: Int] = ["a": 1, "b": 2]
+let dict3: [String: Int] = dict1
+print(dict1 == dict2)
+print(dict1 == dict3)
+
+let str1: String = "hello"
+let str2: String = "hello"
+print(str1 == str2)
+print(str1.length)
+
+let utf8_str: String = "🌟"
+print(utf8_str.length)

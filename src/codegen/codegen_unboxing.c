@@ -115,8 +115,10 @@ int cg_can_unbox_expr(Cg* cg, ASTExpr* expr) {
             }
             return 0;
         case AST_EXPR_VAR:
-            // For now, assume variables can be unboxed - this would need proper analysis
-            return 1;
+            // Arrays, dicts, and other complex types cannot be unboxed
+            // For now, assume variables can be unboxed only for primitive types
+            // This would need proper type analysis in a full implementation
+            return 0;  // Disable variable unboxing for now to ensure proper equality
         default:
             return 0;
     }

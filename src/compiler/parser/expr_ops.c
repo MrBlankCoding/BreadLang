@@ -138,8 +138,6 @@ ExprResult evaluate_binary_op(ExprResult left, ExprResult right, char op) {
         }
     }
 
-    // Comparison operations
-    // Note: '<=' and '>=' are encoded as 'l' and 'g' respectively.
     if (op == '=' || op == '!' || op == '<' || op == '>' || op == 'l' || op == 'g') {
         int result_val = 0;
         if (left.type == TYPE_DOUBLE && right.type == TYPE_DOUBLE) {

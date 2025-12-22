@@ -1,2 +1,18 @@
 const x: String = "World"
 print("HELLO" + x)
+
+let i: Int = 0
+while i < 3 {
+    print(i)
+    i = i + 1
+}
+
+if i == 3 {
+    print(100)
+} else {
+    print(200)
+}
+
+for x in range(3) {
+    print(x)
+}

@@ -1,0 +1,15 @@
+let a1: [Int] = [1, 2, 3]
+let a2: [Int] = [1, 2, 3]
+print(a1 == a2)
+
+let a3: [Int] = [1, 2, 3]
+let a4: [Int] = a3
+print(a3 == a4)
+
+let d1: [String: Int] = ["x": 1, "y": 2]
+let d2: [String: Int] = ["x": 1, "y": 2]
+print(d1 == d2)
+
+let d3: [String: Int] = ["x": 1, "y": 2]
+let d4: [String: Int] = d3
+print(d3 == d4)

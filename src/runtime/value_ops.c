@@ -504,6 +504,30 @@ int bread_binary_op(char op, const BreadValue* left, const BreadValue* right, Br
             else if (op == '>') result_val = cmp > 0;
             else if (op == 'l') result_val = cmp <= 0;
             else if (op == 'g') result_val = cmp >= 0;
+        } else if (left->type == TYPE_ARRAY && right->type == TYPE_ARRAY) {
+            // Phase 5: Reference equality for arrays
+            if (op == '=') result_val = (left->value.array_val == right->value.array_val);
+            else if (op == '!') result_val = (left->value.array_val != right->value.array_val);
+            else {
+                BREAD_ERROR_SET_TYPE_MISMATCH("Arrays only support == and != comparison");
+                return 0;
+            }
+        } else if (left->type == TYPE_DICT && right->type == TYPE_DICT) {
+            // Phase 5: Reference equality for dicts
+            if (op == '=') result_val = (left->value.dict_val == right->value.dict_val);
+            else if (op == '!') result_val = (left->value.dict_val != right->value.dict_val);
+            else {
+                BREAD_ERROR_SET_TYPE_MISMATCH("Dictionaries only support == and != comparison");
+                return 0;
+            }
+        } else if (left->type == TYPE_OPTIONAL && right->type == TYPE_OPTIONAL) {
+            // Phase 5: Reference equality for optionals
+            if (op == '=') result_val = (left->value.optional_val == right->value.optional_val);
+            else if (op == '!') result_val = (left->value.optional_val != right->value.optional_val);
+            else {
+                BREAD_ERROR_SET_TYPE_MISMATCH("Optionals only support == and != comparison");
+                return 0;
+            }
         } else {
             BREAD_ERROR_SET_TYPE_MISMATCH("Cannot compare different types");
             return 0;
