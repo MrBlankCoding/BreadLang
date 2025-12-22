@@ -275,6 +275,13 @@ static void analyze_expr_stability(ASTExpr* expr) {
             }
             info->stability = STABILITY_UNSTABLE; // Arrays are mutable
             break;
+        case AST_EXPR_STRUCT_LITERAL:
+            // Analyze struct field values
+            for (int i = 0; i < expr->as.struct_literal.field_count; i++) {
+                analyze_expr_stability(expr->as.struct_literal.field_values[i]);
+            }
+            info->stability = STABILITY_UNSTABLE; // Structs are mutable
+            break;
     }
 }
 
@@ -404,6 +411,9 @@ static void analyze_stmt_stability(ASTStmt* stmt) {
         case AST_STMT_BREAK:
         case AST_STMT_CONTINUE:
             // No expressions to analyze
+            break;
+        case AST_STMT_STRUCT_DECL:
+            // No expressions to analyze in struct declarations
             break;
     }
 }

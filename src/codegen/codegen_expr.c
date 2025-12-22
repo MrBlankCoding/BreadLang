@@ -518,6 +518,97 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
             (void)LLVMBuildCall2(cg->builder, cg->ty_value_set_dict, cg->fn_value_set_dict, dict_args, 2, "");
             return tmp;
         }
+        case AST_EXPR_STRUCT_LITERAL: {
+            tmp = cg_alloc_value(cg, "structlittmp");
+            
+            // Create struct instance
+            LLVMValueRef struct_name_str = cg_get_string_global(cg, expr->as.struct_literal.struct_name);
+            LLVMValueRef struct_name_ptr = LLVMBuildBitCast(cg->builder, struct_name_str, cg->i8_ptr, "");
+            
+            // Create field names array
+            LLVMTypeRef i8_ptr_ptr = LLVMPointerType(cg->i8_ptr, 0);
+            LLVMValueRef field_names_ptr = LLVMConstNull(i8_ptr_ptr);
+            if (expr->as.struct_literal.field_count > 0) {
+                LLVMTypeRef field_names_arr_ty = LLVMArrayType(cg->i8_ptr, (unsigned)expr->as.struct_literal.field_count);
+                LLVMValueRef field_names_arr = LLVMBuildAlloca(cg->builder, field_names_arr_ty, "struct_field_names");
+                
+                for (int i = 0; i < expr->as.struct_literal.field_count; i++) {
+                    LLVMValueRef field_name_str = cg_get_string_global(cg, expr->as.struct_literal.field_names[i]);
+                    LLVMValueRef field_name_ptr = LLVMBuildBitCast(cg->builder, field_name_str, cg->i8_ptr, "");
+                    LLVMValueRef field_slot = LLVMBuildGEP2(
+                        cg->builder,
+                        field_names_arr_ty,
+                        field_names_arr,
+                        (LLVMValueRef[]){LLVMConstInt(cg->i32, 0, 0), LLVMConstInt(cg->i32, i, 0)},
+                        2,
+                        "field_name_slot");
+                    LLVMBuildStore(cg->builder, field_name_ptr, field_slot);
+                }
+
+                // Pass `char**` (i8**) to runtime. Use pointer to first element.
+                LLVMValueRef first = LLVMBuildGEP2(
+                    cg->builder,
+                    field_names_arr_ty,
+                    field_names_arr,
+                    (LLVMValueRef[]){LLVMConstInt(cg->i32, 0, 0), LLVMConstInt(cg->i32, 0, 0)},
+                    2,
+                    "field_names_first");
+                field_names_ptr = LLVMBuildBitCast(cg->builder, first, i8_ptr_ptr, "");
+            }
+            
+            // Create the struct using a runtime function
+            LLVMTypeRef ty_struct_new = LLVMFunctionType(
+                cg->i8_ptr,  // Returns BreadStruct*
+                (LLVMTypeRef[]){cg->i8_ptr, cg->i32, i8_ptr_ptr},  // name, field_count, field_names
+                3,
+                0
+            );
+            LLVMValueRef fn_struct_new = cg_declare_fn(cg, "bread_struct_new", ty_struct_new);
+            
+            LLVMValueRef field_count = LLVMConstInt(cg->i32, expr->as.struct_literal.field_count, 0);
+            LLVMValueRef struct_ptr = LLVMBuildCall2(cg->builder, ty_struct_new, fn_struct_new,
+                (LLVMValueRef[]){struct_name_ptr, field_count, field_names_ptr}, 3, "struct_instance");
+            
+            // Set field values
+            if (expr->as.struct_literal.field_count > 0) {
+                LLVMTypeRef ty_struct_set_field = LLVMFunctionType(
+                    cg->void_ty,
+                    (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr, cg->i8_ptr},  // struct*, field_name, value*
+                    3,
+                    0
+                );
+                LLVMValueRef fn_struct_set_field = cg_declare_fn(cg, "bread_struct_set_field_value_ptr", ty_struct_set_field);
+                
+                for (int i = 0; i < expr->as.struct_literal.field_count; i++) {
+                    LLVMValueRef field_value = cg_build_expr(cg, cg_fn, val_size, expr->as.struct_literal.field_values[i]);
+                    if (!field_value) return NULL;
+                    
+                    LLVMValueRef field_name_str = cg_get_string_global(cg, expr->as.struct_literal.field_names[i]);
+                    LLVMValueRef field_name_ptr = LLVMBuildBitCast(cg->builder, field_name_str, cg->i8_ptr, "");
+                    
+                    LLVMValueRef set_args[] = {
+                        struct_ptr,
+                        field_name_ptr,
+                        cg_value_to_i8_ptr(cg, field_value)
+                    };
+                    (void)LLVMBuildCall2(cg->builder, ty_struct_set_field, fn_struct_set_field, set_args, 3, "");
+                }
+            }
+            
+            // Set the result value to the struct
+            LLVMTypeRef ty_value_set_struct = LLVMFunctionType(
+                cg->void_ty,
+                (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr},  // BreadValue*, BreadStruct*
+                2,
+                0
+            );
+            LLVMValueRef fn_value_set_struct = cg_declare_fn(cg, "bread_value_set_struct", ty_value_set_struct);
+            
+            LLVMValueRef struct_args[] = {cg_value_to_i8_ptr(cg, tmp), struct_ptr};
+            (void)LLVMBuildCall2(cg->builder, ty_value_set_struct, fn_value_set_struct, struct_args, 2, "");
+            
+            return tmp;
+        }
         default:
             fprintf(stderr, "Codegen not implemented for expr kind %d\n", expr->kind);
             return NULL;

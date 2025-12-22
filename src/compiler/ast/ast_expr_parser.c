@@ -53,7 +53,39 @@ ASTExpr* parse_expression_str_as_ast(const char** code) {
         if (**code == '"') {
             in_string = 1;
         } else if (paren_count == 0 && brace_count == 0 && bracket_count == 0 && **code == '{') {
-            break;
+            // Disambiguate between a statement block opener (e.g. `if cond {`) and
+            // an expression literal that uses braces (e.g. `Point{ x: 1 }`, `{ "k": 1 }`, `{}`).
+            // Heuristic: if the next non-whitespace token looks like a literal entry (`ident:` or `"...":`)
+            // or an immediate closing brace, treat it as part of the expression.
+            const char* look = *code + 1;
+            while (*look == ' ' || *look == '\t' || *look == '\r') look++;
+            if (*look == '}') {
+                // `{}` literal
+                brace_count++;
+            } else if (is_ident_start(*look)) {
+                const char* id = look;
+                id++;
+                while (*id && is_ident_char(*id)) id++;
+                while (*id == ' ' || *id == '\t' || *id == '\r') id++;
+                if (*id != ':') {
+                    break;
+                }
+                brace_count++;
+            } else if (*look == '"') {
+                // string key: { "k": v }
+                look++;
+                while (*look && *look != '"') {
+                    if (*look == '\\' && *(look + 1)) look += 2;
+                    else look++;
+                }
+                if (*look != '"') break;
+                look++;
+                while (*look == ' ' || *look == '\t' || *look == '\r') look++;
+                if (*look != ':') break;
+                brace_count++;
+            } else {
+                break;
+            }
         } else if (**code == '(') paren_count++;
         else if (**code == ')') {
             if (paren_count == 0) break;
@@ -700,6 +732,152 @@ static ASTExpr* parse_primary(const char** expr) {
 
         const char* after_ident = *expr;
         skip_whitespace(expr);
+        
+        // Check for struct literal: StructName { field: value, ... }
+        if (**expr == '{') {
+            (*expr)++;
+            
+            int cap = 0;
+            int count = 0;
+            char** field_names = NULL;
+            ASTExpr** field_values = NULL;
+
+            skip_whitespace(expr);
+            while (**expr && **expr != '}') {
+                skip_whitespace(expr);
+                if (**expr == '}') break;
+
+                // Parse field name
+                if (!is_ident_start(**expr)) {
+                    for (int i = 0; i < count; i++) {
+                        free(field_names[i]);
+                        ast_free_expr(field_values[i]);
+                    }
+                    free(field_names);
+                    free(field_values);
+                    free(name);
+                    BREAD_ERROR_SET_SYNTAX_ERROR("Expected field name in struct literal");
+                    return NULL;
+                }
+
+                const char* field_start = *expr;
+                (*expr)++;
+                while (**expr && is_ident_char(**expr)) (*expr)++;
+                char* field_name = dup_range(field_start, *expr);
+                if (!field_name) {
+                    for (int i = 0; i < count; i++) {
+                        free(field_names[i]);
+                        ast_free_expr(field_values[i]);
+                    }
+                    free(field_names);
+                    free(field_values);
+                    free(name);
+                    return NULL;
+                }
+
+                skip_whitespace(expr);
+                if (**expr != ':') {
+                    free(field_name);
+                    for (int i = 0; i < count; i++) {
+                        free(field_names[i]);
+                        ast_free_expr(field_values[i]);
+                    }
+                    free(field_names);
+                    free(field_values);
+                    free(name);
+                    BREAD_ERROR_SET_SYNTAX_ERROR("Expected ':' after field name in struct literal");
+                    return NULL;
+                }
+                (*expr)++;
+
+                // Parse field value
+                ASTExpr* field_value = parse_expression(expr);
+                if (!field_value) {
+                    free(field_name);
+                    for (int i = 0; i < count; i++) {
+                        free(field_names[i]);
+                        ast_free_expr(field_values[i]);
+                    }
+                    free(field_names);
+                    free(field_values);
+                    free(name);
+                    return NULL;
+                }
+
+                // Expand arrays if needed
+                if (count >= cap) {
+                    int new_cap = cap == 0 ? 4 : cap * 2;
+                    char** new_names = realloc(field_names, sizeof(char*) * (size_t)new_cap);
+                    ASTExpr** new_values = realloc(field_values, sizeof(ASTExpr*) * (size_t)new_cap);
+                    if (!new_names || !new_values) {
+                        free(new_names);
+                        free(new_values);
+                        free(field_name);
+                        ast_free_expr(field_value);
+                        for (int i = 0; i < count; i++) {
+                            free(field_names[i]);
+                            ast_free_expr(field_values[i]);
+                        }
+                        free(field_names);
+                        free(field_values);
+                        free(name);
+                        BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory parsing struct literal");
+                        return NULL;
+                    }
+                    field_names = new_names;
+                    field_values = new_values;
+                    cap = new_cap;
+                }
+
+                field_names[count] = field_name;
+                field_values[count] = field_value;
+                count++;
+
+                skip_whitespace(expr);
+                if (**expr == ',') {
+                    (*expr)++;
+                    continue;
+                }
+                break;
+            }
+
+            skip_whitespace(expr);
+            if (**expr != '}') {
+                for (int i = 0; i < count; i++) {
+                    free(field_names[i]);
+                    ast_free_expr(field_values[i]);
+                }
+                free(field_names);
+                free(field_values);
+                free(name);
+                BREAD_ERROR_SET_SYNTAX_ERROR("Missing closing '}' in struct literal");
+                return NULL;
+            }
+            (*expr)++;
+
+            // Create struct literal AST node
+            ASTExpr* e = ast_expr_new(AST_EXPR_STRUCT_LITERAL);
+            if (!e) {
+                for (int i = 0; i < count; i++) {
+                    free(field_names[i]);
+                    ast_free_expr(field_values[i]);
+                }
+                free(field_names);
+                free(field_values);
+                free(name);
+                return NULL;
+            }
+
+            e->as.struct_literal.struct_name = name;
+            e->as.struct_literal.field_count = count;
+            e->as.struct_literal.field_names = field_names;
+            e->as.struct_literal.field_values = field_values;
+            e->tag.is_known = 1;
+            e->tag.type = TYPE_STRUCT;
+            return e;
+        }
+        
+        // Check for function call: name(args...)
         if (**expr == '(') {
             (*expr)++;
 

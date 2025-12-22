@@ -143,6 +143,10 @@ int declare_variable_raw(const char* name, VarType type, VarValue value, int is_
             var->value.optional_val = value.optional_val;
             bread_optional_retain(var->value.optional_val);
             break;
+        case TYPE_STRUCT:
+            var->value.struct_val = value.struct_val;
+            bread_struct_retain(var->value.struct_val);
+            break;
         case TYPE_NIL:
             break;
         default:
@@ -174,6 +178,9 @@ static void release_variable(Variable* var) {
     } else if (var->type == TYPE_OPTIONAL && var->value.optional_val) {
         bread_optional_release(var->value.optional_val);
         var->value.optional_val = NULL;
+    } else if (var->type == TYPE_STRUCT && var->value.struct_val) {
+        bread_struct_release(var->value.struct_val);
+        var->value.struct_val = NULL;
     }
     if (var->name) {
         free(var->name);
@@ -202,6 +209,7 @@ static const char* type_name(VarType t) {
         case TYPE_ARRAY: return "Array";
         case TYPE_DICT: return "Dict";
         case TYPE_OPTIONAL: return "Optional";
+        case TYPE_STRUCT: return "Struct";
         case TYPE_NIL: return "Nil";
         default: return "Nil";
     }
@@ -295,6 +303,11 @@ static int set_variable_value_from_expr_result(Variable* target, const ExprResul
             if (target->value.optional_val) bread_optional_release(target->value.optional_val);
             target->value.optional_val = coerced_value.optional_val;
             bread_optional_retain(target->value.optional_val);
+            break;
+        case TYPE_STRUCT:
+            if (target->value.struct_val) bread_struct_release(target->value.struct_val);
+            target->value.struct_val = coerced_value.struct_val;
+            bread_struct_retain(target->value.struct_val);
             break;
         case TYPE_NIL:
             break;
@@ -419,6 +432,11 @@ static int set_variable_value(Variable* target, char* raw_value) {
                     if (target->value.optional_val) bread_optional_release(target->value.optional_val);
                     target->value.optional_val = coerced_value.optional_val;
                     bread_optional_retain(target->value.optional_val);
+                    break;
+                case TYPE_STRUCT:
+                    if (target->value.struct_val) bread_struct_release(target->value.struct_val);
+                    target->value.struct_val = coerced_value.struct_val;
+                    bread_struct_retain(target->value.struct_val);
                     break;
                 case TYPE_NIL:
                     break;

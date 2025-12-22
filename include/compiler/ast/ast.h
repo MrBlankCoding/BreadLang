@@ -39,7 +39,8 @@ typedef enum {
     AST_EXPR_MEMBER,
     AST_EXPR_METHOD_CALL,
     AST_EXPR_STRING_LITERAL,
-    AST_EXPR_ARRAY_LITERAL
+    AST_EXPR_ARRAY_LITERAL,
+    AST_EXPR_STRUCT_LITERAL
 } ASTExprKind;
 
 typedef struct {
@@ -107,6 +108,12 @@ struct ASTExpr {
             ASTExpr** elements;
             VarType element_type;
         } array_literal;
+        struct {
+            char* struct_name;
+            int field_count;
+            char** field_names;
+            ASTExpr** field_values;
+        } struct_literal;
     } as;
 };
 
@@ -123,6 +130,7 @@ typedef enum {
     AST_STMT_BREAK,
     AST_STMT_CONTINUE,
     AST_STMT_FUNC_DECL,
+    AST_STMT_STRUCT_DECL,
     AST_STMT_RETURN
 } ASTStmtKind;
 
@@ -192,6 +200,13 @@ typedef struct {
     ASTExpr* expr;
 } ASTStmtReturn;
 
+typedef struct {
+    char* name;
+    int field_count;
+    char** field_names;
+    TypeDescriptor** field_types;
+} ASTStmtStructDecl;
+
 struct ASTStmt {
     ASTStmtKind kind;
     SourceLoc loc;  // Source location for error reporting
@@ -207,6 +222,7 @@ struct ASTStmt {
         ASTStmtFor for_stmt;
         ASTStmtForIn for_in_stmt;
         ASTStmtFuncDecl func_decl;
+        ASTStmtStructDecl struct_decl;
         ASTStmtReturn ret;
     } as;
     ASTStmt* next;

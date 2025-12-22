@@ -92,6 +92,9 @@ int bread_eq(const BreadValue* left, const BreadValue* right, int* out_bool) {
         case TYPE_OPTIONAL:
             *out_bool = (left->value.optional_val == right->value.optional_val);
             return 1;
+        case TYPE_STRUCT:
+            *out_bool = (left->value.struct_val == right->value.struct_val);
+            return 1;
         default:
             *out_bool = 0;
             return 1;
@@ -165,6 +168,21 @@ static void bread_print_value_inner(const BreadValue* v) {
                 }
             }
             printf("}");
+            break;
+        }
+        case TYPE_STRUCT: {
+            BreadStruct* s = v->value.struct_val;
+            if (!s) {
+                printf("nil");
+                break;
+            }
+            printf("%s { ", s->type_name);
+            for (int i = 0; i < s->field_count; i++) {
+                if (i > 0) printf(", ");
+                printf("%s: ", s->field_names[i]);
+                bread_print_value_inner(&s->field_values[i]);
+            }
+            printf(" }");
             break;
         }
         default:
@@ -259,6 +277,21 @@ static void bread_print_value_inner_compact(const BreadValue* v) {
             printf("}");
             break;
         }
+        case TYPE_STRUCT: {
+            BreadStruct* s = v->value.struct_val;
+            if (!s) {
+                printf("nil");
+                break;
+            }
+            printf("%s { ", s->type_name);
+            for (int i = 0; i < s->field_count; i++) {
+                if (i > 0) printf(", ");
+                printf("%s: ", s->field_names[i]);
+                bread_print_value_inner_compact(&s->field_values[i]);
+            }
+            printf(" }");
+            break;
+        }
         default:
             printf("nil");
             break;
@@ -339,6 +372,14 @@ void bread_value_set_optional(struct BreadValue* out, struct BreadOptional* o) {
     bread_optional_retain(out->value.optional_val);
 }
 
+void bread_value_set_struct(struct BreadValue* out, struct BreadStruct* s) {
+    if (!out) return;
+    memset(out, 0, sizeof(*out));
+    out->type = TYPE_STRUCT;
+    out->value.struct_val = (BreadStruct*)s;
+    bread_struct_retain(out->value.struct_val);
+}
+
 size_t bread_value_size(void) {
     return sizeof(BreadValue);
 }
@@ -387,6 +428,8 @@ int bread_is_truthy(const BreadValue* v) {
             BreadOptional* o = v->value.optional_val;
             return o && o->is_some;
         }
+        case TYPE_STRUCT:
+            return v->value.struct_val != NULL;
         default:
             return 0;
     }
@@ -527,6 +570,14 @@ int bread_binary_op(char op, const BreadValue* left, const BreadValue* right, Br
             else if (op == '!') result_val = (left->value.optional_val != right->value.optional_val);
             else {
                 BREAD_ERROR_SET_TYPE_MISMATCH("Optionals only support == and != comparison");
+                return 0;
+            }
+        } else if (left->type == TYPE_STRUCT && right->type == TYPE_STRUCT) {
+            // Reference equality for structs
+            if (op == '=') result_val = (left->value.struct_val == right->value.struct_val);
+            else if (op == '!') result_val = (left->value.struct_val != right->value.struct_val);
+            else {
+                BREAD_ERROR_SET_TYPE_MISMATCH("Structs only support == and != comparison");
                 return 0;
             }
         } else {

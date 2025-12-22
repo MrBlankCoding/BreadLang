@@ -382,6 +382,7 @@ void bread_memory_print_leak_report(void) {
                 case BREAD_OBJ_ARRAY: type_name = "Array"; break;
                 case BREAD_OBJ_DICT: type_name = "Dict"; break;
                 case BREAD_OBJ_OPTIONAL: type_name = "Optional"; break;
+                case BREAD_OBJ_STRUCT: type_name = "Struct"; break;
             }
             
             BreadObjHeader* header = (BreadObjHeader*)node->object;

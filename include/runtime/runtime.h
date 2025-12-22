@@ -10,7 +10,8 @@ typedef enum {
     BREAD_OBJ_STRING = 1,
     BREAD_OBJ_ARRAY = 2,
     BREAD_OBJ_DICT = 3,
-    BREAD_OBJ_OPTIONAL = 4
+    BREAD_OBJ_OPTIONAL = 4,
+    BREAD_OBJ_STRUCT = 5
 } BreadObjKind;
 
 typedef struct {
@@ -55,6 +56,7 @@ void bread_string_intern_cleanup(void);
 struct BreadArray;
 struct BreadDict;
 struct BreadOptional;
+struct BreadStruct;
 
 typedef struct BreadValue {
     VarType type;
@@ -74,6 +76,7 @@ void bread_value_set_string(struct BreadValue* out, const char* cstr);
 void bread_value_set_array(struct BreadValue* out, struct BreadArray* a);
 void bread_value_set_dict(struct BreadValue* out, struct BreadDict* d);
 void bread_value_set_optional(struct BreadValue* out, struct BreadOptional* o);
+void bread_value_set_struct(struct BreadValue* out, struct BreadStruct* s);
 size_t bread_value_size(void);
 void bread_value_copy(const struct BreadValue* in, struct BreadValue* out);
 void bread_value_release_value(struct BreadValue* v);

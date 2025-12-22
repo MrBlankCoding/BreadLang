@@ -18,6 +18,7 @@ void bread_value_set_string(BreadValue* out, const char* cstr);
 void bread_value_set_array(BreadValue* out, struct BreadArray* a);
 void bread_value_set_dict(BreadValue* out, struct BreadDict* d);
 void bread_value_set_optional(BreadValue* out, struct BreadOptional* o);
+void bread_value_set_struct(BreadValue* out, struct BreadStruct* s);
 size_t bread_value_size(void);
 void bread_value_copy(const BreadValue* in, BreadValue* out);
 void bread_value_release_value(BreadValue* v);

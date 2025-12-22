@@ -564,3 +564,16 @@ cd ..
 ```
 
 ---
+
+## Structs
+
+BreadLang supports simple struct types with named fields.
+
+```breadlang
+struct Point {
+    x: Int
+    y: Int
+}
+
+let p: Point = Point{x: 10, y: 20}
+print(p)  // Point { x: 10, y: 20 }

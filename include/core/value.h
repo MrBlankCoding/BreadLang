@@ -36,6 +36,14 @@ struct BreadOptional {
     BreadValue value;
 };
 
+struct BreadStruct {
+    BreadObjHeader header;
+    char* type_name;
+    int field_count;
+    char** field_names;
+    BreadValue* field_values;
+};
+
 BreadValue bread_value_from_expr_result(ExprResult r);
 ExprResult bread_expr_result_from_value(BreadValue v);
 
@@ -46,6 +54,14 @@ BreadArray* bread_array_new(void);
 BreadArray* bread_array_new_typed(VarType element_type);
 BreadArray* bread_array_new_with_capacity(int capacity, VarType element_type);
 BreadArray* bread_array_from_literal(BreadValue* elements, int count);
+
+BreadStruct* bread_struct_new(const char* type_name, int field_count, char** field_names);
+void bread_struct_set_field(BreadStruct* s, const char* field_name, BreadValue value);
+void bread_struct_set_field_value_ptr(BreadStruct* s, const char* field_name, const BreadValue* value);
+BreadValue* bread_struct_get_field(BreadStruct* s, const char* field_name);
+int bread_struct_find_field_index(BreadStruct* s, const char* field_name);
+void bread_struct_retain(BreadStruct* s);
+void bread_struct_release(BreadStruct* s);
 
 // Initialize the value system
 void value_init(void);

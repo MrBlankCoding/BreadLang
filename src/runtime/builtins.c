@@ -260,6 +260,17 @@ BreadValue bread_builtin_str(BreadValue* args, int arg_count) {
         case TYPE_OPTIONAL:
             bread_value_set_string(&result, "optional");
             break;
+        case TYPE_STRUCT: {
+            BreadStruct* s = arg->value.struct_val;
+            if (s && s->type_name) {
+                char struct_str[256];
+                snprintf(struct_str, sizeof(struct_str), "%s{}", s->type_name);
+                bread_value_set_string(&result, struct_str);
+            } else {
+                bread_value_set_string(&result, "struct");
+            }
+            break;
+        }
         default:
             bread_value_set_string(&result, "unknown");
             break;

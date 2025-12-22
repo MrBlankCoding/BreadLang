@@ -3,8 +3,11 @@
 #include <string.h>
 #include "core/var.h"
 
+// Forward declaration
+TypeDescriptor* type_descriptor_clone(const TypeDescriptor* desc);
+
 TypeDescriptor* type_descriptor_create_primitive(VarType type) {
-    if (type == TYPE_ARRAY || type == TYPE_DICT || type == TYPE_OPTIONAL) {
+    if (type == TYPE_ARRAY || type == TYPE_DICT || type == TYPE_OPTIONAL || type == TYPE_STRUCT) {
         return NULL;
     }
     
@@ -49,6 +52,42 @@ TypeDescriptor* type_descriptor_create_optional(TypeDescriptor* wrapped_type) {
     return desc;
 }
 
+TypeDescriptor* type_descriptor_create_struct(const char* name, int field_count, char** field_names, TypeDescriptor** field_types) {
+    if (!name || field_count < 0 || (field_count > 0 && (!field_names || !field_types))) {
+        return NULL;
+    }
+    
+    TypeDescriptor* desc = malloc(sizeof(TypeDescriptor));
+    if (!desc) return NULL;
+    
+    desc->base_type = TYPE_STRUCT;
+    desc->params.struct_type.name = strdup(name);
+    desc->params.struct_type.field_count = field_count;
+    
+    if (field_count > 0) {
+        desc->params.struct_type.field_names = malloc(field_count * sizeof(char*));
+        desc->params.struct_type.field_types = malloc(field_count * sizeof(TypeDescriptor*));
+        
+        if (!desc->params.struct_type.field_names || !desc->params.struct_type.field_types) {
+            free(desc->params.struct_type.name);
+            free(desc->params.struct_type.field_names);
+            free(desc->params.struct_type.field_types);
+            free(desc);
+            return NULL;
+        }
+        
+        for (int i = 0; i < field_count; i++) {
+            desc->params.struct_type.field_names[i] = strdup(field_names[i]);
+            desc->params.struct_type.field_types[i] = type_descriptor_clone(field_types[i]);
+        }
+    } else {
+        desc->params.struct_type.field_names = NULL;
+        desc->params.struct_type.field_types = NULL;
+    }
+    
+    return desc;
+}
+
 void type_descriptor_free(TypeDescriptor* desc) {
     if (!desc) return;
     
@@ -62,6 +101,21 @@ void type_descriptor_free(TypeDescriptor* desc) {
             break;
         case TYPE_OPTIONAL:
             type_descriptor_free(desc->params.optional.wrapped_type);
+            break;
+        case TYPE_STRUCT:
+            free(desc->params.struct_type.name);
+            if (desc->params.struct_type.field_names) {
+                for (int i = 0; i < desc->params.struct_type.field_count; i++) {
+                    free(desc->params.struct_type.field_names[i]);
+                }
+                free(desc->params.struct_type.field_names);
+            }
+            if (desc->params.struct_type.field_types) {
+                for (int i = 0; i < desc->params.struct_type.field_count; i++) {
+                    type_descriptor_free(desc->params.struct_type.field_types[i]);
+                }
+                free(desc->params.struct_type.field_types);
+            }
             break;
         default:
             // Primitive types have no nested descriptors
@@ -111,6 +165,40 @@ TypeDescriptor* type_descriptor_clone(const TypeDescriptor* desc) {
             }
             return out;
         }
+        case TYPE_STRUCT: {
+            TypeDescriptor** field_types = NULL;
+            if (desc->params.struct_type.field_count > 0) {
+                field_types = malloc(desc->params.struct_type.field_count * sizeof(TypeDescriptor*));
+                if (!field_types) return NULL;
+                
+                for (int i = 0; i < desc->params.struct_type.field_count; i++) {
+                    field_types[i] = type_descriptor_clone(desc->params.struct_type.field_types[i]);
+                    if (!field_types[i]) {
+                        for (int j = 0; j < i; j++) {
+                            type_descriptor_free(field_types[j]);
+                        }
+                        free(field_types);
+                        return NULL;
+                    }
+                }
+            }
+            
+            TypeDescriptor* out = type_descriptor_create_struct(
+                desc->params.struct_type.name,
+                desc->params.struct_type.field_count,
+                desc->params.struct_type.field_names,
+                field_types
+            );
+            
+            if (field_types) {
+                for (int i = 0; i < desc->params.struct_type.field_count; i++) {
+                    type_descriptor_free(field_types[i]);
+                }
+                free(field_types);
+            }
+            
+            return out;
+        }
         default:
             return type_descriptor_create_primitive(desc->base_type);
     }
@@ -132,6 +220,14 @@ int type_descriptor_equals(const TypeDescriptor* a, const TypeDescriptor* b) {
         case TYPE_OPTIONAL:
             return type_descriptor_equals(a->params.optional.wrapped_type, 
                                         b->params.optional.wrapped_type);
+        case TYPE_STRUCT:
+            if (strcmp(a->params.struct_type.name, b->params.struct_type.name) != 0) return 0;
+            if (a->params.struct_type.field_count != b->params.struct_type.field_count) return 0;
+            for (int i = 0; i < a->params.struct_type.field_count; i++) {
+                if (strcmp(a->params.struct_type.field_names[i], b->params.struct_type.field_names[i]) != 0) return 0;
+                if (!type_descriptor_equals(a->params.struct_type.field_types[i], b->params.struct_type.field_types[i])) return 0;
+            }
+            return 1;
         default:
             return 1;
     }
@@ -142,6 +238,15 @@ int type_descriptor_compatible(const TypeDescriptor* from, const TypeDescriptor*
     
     // Exact match is always compatible
     if (type_descriptor_equals(from, to)) return 1;
+
+    // Structs are nominally typed by name. Field metadata may be absent or differ
+    // between declared types and inferred literals; treat same-name structs as compatible.
+    if (from->base_type == TYPE_STRUCT && to->base_type == TYPE_STRUCT) {
+        if (from->params.struct_type.name && to->params.struct_type.name &&
+            strcmp(from->params.struct_type.name, to->params.struct_type.name) == 0) {
+            return 1;
+        }
+    }
     
     // Special case: empty array [nil] can be assigned to any array type
     if (from->base_type == TYPE_ARRAY && to->base_type == TYPE_ARRAY &&
@@ -207,6 +312,9 @@ const char* type_descriptor_to_string(const TypeDescriptor* desc, char* buffer, 
             snprintf(buffer, buffer_size, "%s?", wrapped_buf);
             break;
         }
+        case TYPE_STRUCT:
+            snprintf(buffer, buffer_size, "%s", desc->params.struct_type.name);
+            break;
         case TYPE_NIL:
             snprintf(buffer, buffer_size, "nil");
             break;

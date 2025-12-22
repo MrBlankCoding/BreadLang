@@ -9,6 +9,7 @@ TypeDescriptor* type_descriptor_create_primitive(VarType type);
 TypeDescriptor* type_descriptor_create_array(TypeDescriptor* element_type);
 TypeDescriptor* type_descriptor_create_dict(TypeDescriptor* key_type, TypeDescriptor* value_type);
 TypeDescriptor* type_descriptor_create_optional(TypeDescriptor* wrapped_type);
+TypeDescriptor* type_descriptor_create_struct(const char* name, int field_count, char** field_names, TypeDescriptor** field_types);
 void type_descriptor_free(TypeDescriptor* desc);
 TypeDescriptor* type_descriptor_clone(const TypeDescriptor* desc);
 int type_descriptor_equals(const TypeDescriptor* a, const TypeDescriptor* b);

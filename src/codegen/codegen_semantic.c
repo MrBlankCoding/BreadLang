@@ -333,6 +333,10 @@ VarType cg_infer_expr_type_simple(Cg* cg, ASTExpr* expr) {
             return TYPE_INT;
         }
         
+        case AST_EXPR_STRUCT_LITERAL: {
+            return TYPE_STRUCT;
+        }
+        
         default:
             return TYPE_NIL;
     }
@@ -600,6 +604,58 @@ TypeDescriptor* cg_infer_expr_type_desc_simple(Cg* cg, ASTExpr* expr) {
         case AST_EXPR_MEMBER:
             return type_descriptor_create_primitive(TYPE_INT);
 
+        case AST_EXPR_STRUCT_LITERAL: {
+            // For struct literals, we need to look up the struct type
+            // For now, create a basic struct type descriptor
+            // In a full implementation, we'd validate against declared struct types
+            char** field_names = NULL;
+            TypeDescriptor** field_types = NULL;
+            
+            if (expr->as.struct_literal.field_count > 0) {
+                field_names = malloc(expr->as.struct_literal.field_count * sizeof(char*));
+                field_types = malloc(expr->as.struct_literal.field_count * sizeof(TypeDescriptor*));
+                
+                if (!field_names || !field_types) {
+                    free(field_names);
+                    free(field_types);
+                    return NULL;
+                }
+                
+                for (int i = 0; i < expr->as.struct_literal.field_count; i++) {
+                    field_names[i] = strdup(expr->as.struct_literal.field_names[i]);
+                    field_types[i] = cg_infer_expr_type_desc_simple(cg, expr->as.struct_literal.field_values[i]);
+                    if (!field_types[i]) {
+                        for (int j = 0; j < i; j++) {
+                            free(field_names[j]);
+                            type_descriptor_free(field_types[j]);
+                        }
+                        free(field_names);
+                        free(field_types);
+                        return NULL;
+                    }
+                }
+            }
+            
+            TypeDescriptor* struct_desc = type_descriptor_create_struct(
+                expr->as.struct_literal.struct_name,
+                expr->as.struct_literal.field_count,
+                field_names,
+                field_types
+            );
+            
+            // Clean up temporary arrays
+            if (field_names) {
+                for (int i = 0; i < expr->as.struct_literal.field_count; i++) {
+                    free(field_names[i]);
+                    type_descriptor_free(field_types[i]);
+                }
+                free(field_names);
+                free(field_types);
+            }
+            
+            return struct_desc;
+        }
+
         default:
             return NULL;
     }
@@ -696,6 +752,11 @@ int cg_analyze_expr(Cg* cg, ASTExpr* expr) {
             for (int i = 0; i < expr->as.dict.entry_count; i++) {
                 if (!cg_analyze_expr(cg, expr->as.dict.entries[i].key)) return 0;
                 if (!cg_analyze_expr(cg, expr->as.dict.entries[i].value)) return 0;
+            }
+            break;
+        case AST_EXPR_STRUCT_LITERAL:
+            for (int i = 0; i < expr->as.struct_literal.field_count; i++) {
+                if (!cg_analyze_expr(cg, expr->as.struct_literal.field_values[i])) return 0;
             }
             break;
         default:
@@ -873,6 +934,11 @@ int cg_analyze_stmt(Cg* cg, ASTStmt* stmt) {
             // This should not be reached in the second pass
             cg_error(cg, "Internal error: function declaration in second pass", stmt->as.func_decl.name);
             return 0;
+        }
+        case AST_STMT_STRUCT_DECL: {
+            // Struct declarations are registered during semantic analysis
+            // For now, we just validate that the struct is well-formed
+            return 1;
         }
         case AST_STMT_RETURN:
             if (stmt->as.ret.expr && !cg_analyze_expr(cg, stmt->as.ret.expr)) return 0;

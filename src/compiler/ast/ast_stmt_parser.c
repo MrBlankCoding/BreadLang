@@ -294,6 +294,160 @@ ASTStmt* parse_stmt(const char** code) {
         return s;
     }
 
+    if (strncmp(*code, "struct ", 7) == 0) {
+        *code += 7;
+        skip_whitespace(code);
+
+        // Parse struct name
+        const char* start = *code;
+        while (**code && (isalnum((unsigned char)**code) || **code == '_')) (*code)++;
+        if (*code == start) return NULL;
+        char* struct_name = dup_range(start, *code);
+        if (!struct_name) return NULL;
+
+        skip_whitespace(code);
+        if (**code != '{') {
+            free(struct_name);
+            return NULL;
+        }
+        (*code)++;
+
+        // Parse fields
+        int field_cap = 0;
+        int field_count = 0;
+        char** field_names = NULL;
+        TypeDescriptor** field_types = NULL;
+
+        skip_whitespace(code);
+        while (**code && **code != '}') {
+            skip_whitespace(code);
+            if (**code == '}') break;
+
+            // Parse field name
+            const char* field_start = *code;
+            while (**code && (isalnum((unsigned char)**code) || **code == '_')) (*code)++;
+            if (*code == field_start) {
+                free(struct_name);
+                for (int i = 0; i < field_count; i++) {
+                    free(field_names[i]);
+                    type_descriptor_free(field_types[i]);
+                }
+                free(field_names);
+                free(field_types);
+                return NULL;
+            }
+            char* field_name = dup_range(field_start, *code);
+            if (!field_name) {
+                free(struct_name);
+                for (int i = 0; i < field_count; i++) {
+                    free(field_names[i]);
+                    type_descriptor_free(field_types[i]);
+                }
+                free(field_names);
+                free(field_types);
+                return NULL;
+            }
+
+            skip_whitespace(code);
+            if (**code != ':') {
+                free(field_name);
+                free(struct_name);
+                for (int i = 0; i < field_count; i++) {
+                    free(field_names[i]);
+                    type_descriptor_free(field_types[i]);
+                }
+                free(field_names);
+                free(field_types);
+                return NULL;
+            }
+            (*code)++;
+
+            // Parse field type
+            TypeDescriptor* field_type = parse_type_descriptor(code);
+            if (!field_type) {
+                free(field_name);
+                free(struct_name);
+                for (int i = 0; i < field_count; i++) {
+                    free(field_names[i]);
+                    type_descriptor_free(field_types[i]);
+                }
+                free(field_names);
+                free(field_types);
+                return NULL;
+            }
+
+            // Expand arrays if needed
+            if (field_count >= field_cap) {
+                int new_cap = field_cap == 0 ? 4 : field_cap * 2;
+                char** new_names = malloc(sizeof(char*) * (size_t)new_cap);
+                TypeDescriptor** new_types = malloc(sizeof(TypeDescriptor*) * (size_t)new_cap);
+                if (!new_names || !new_types) {
+                    free(new_names);
+                    free(new_types);
+                    free(field_name);
+                    free(struct_name);
+                    type_descriptor_free(field_type);
+                    for (int i = 0; i < field_count; i++) {
+                        free(field_names[i]);
+                        type_descriptor_free(field_types[i]);
+                    }
+                    free(field_names);
+                    free(field_types);
+                    return NULL;
+                }
+                if (field_count > 0) {
+                    memcpy(new_names, field_names, sizeof(char*) * (size_t)field_count);
+                    memcpy(new_types, field_types, sizeof(TypeDescriptor*) * (size_t)field_count);
+                }
+                free(field_names);
+                free(field_types);
+                field_names = new_names;
+                field_types = new_types;
+                field_cap = new_cap;
+            }
+
+            field_names[field_count] = field_name;
+            field_types[field_count] = field_type;
+            field_count++;
+
+            skip_whitespace(code);
+            if (**code == '\n') (*code)++;
+            skip_whitespace(code);
+        }
+
+        if (**code != '}') {
+            free(struct_name);
+            for (int i = 0; i < field_count; i++) {
+                free(field_names[i]);
+                type_descriptor_free(field_types[i]);
+            }
+            free(field_names);
+            free(field_types);
+            return NULL;
+        }
+        (*code)++;
+
+        // Create AST node
+        ASTStmt* s = ast_stmt_new(AST_STMT_STRUCT_DECL);
+        if (!s) {
+            free(struct_name);
+            for (int i = 0; i < field_count; i++) {
+                free(field_names[i]);
+                type_descriptor_free(field_types[i]);
+            }
+            free(field_names);
+            free(field_types);
+            return NULL;
+        }
+
+        s->as.struct_decl.name = struct_name;
+        s->as.struct_decl.field_count = field_count;
+        s->as.struct_decl.field_names = field_names;
+        s->as.struct_decl.field_types = field_types;
+
+        return s;
+    }
+
     if (strncmp(*code, "let ", 4) == 0 || strncmp(*code, "var ", 4) == 0 || strncmp(*code, "const ", 6) == 0) {
         int is_const = strncmp(*code, "const ", 6) == 0;
         if (strncmp(*code, "const ", 6) == 0) *code += 6;

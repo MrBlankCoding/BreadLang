@@ -507,6 +507,12 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
             LLVMBuildBr(cg->builder, cg->current_loop_continue);
             return 1;
         }
+        case AST_STMT_STRUCT_DECL: {
+            // Struct declarations are handled during semantic analysis
+            // At codegen time, we just need to register the struct type
+            // The actual struct type creation is done in the semantic analysis phase
+            return 1;
+        }
         default:
             fprintf(stderr, "Codegen not implemented for stmt kind %d\n", stmt->kind);
             return 0;

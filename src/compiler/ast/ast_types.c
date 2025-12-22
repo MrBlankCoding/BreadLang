@@ -5,6 +5,7 @@
 
 #include "compiler/ast/ast.h"
 #include "compiler/ast/ast_types.h"
+#include "core/type_descriptor.h"
 #include "core/var.h"
 
 #define MAX_TOKEN_LEN 1024
@@ -113,8 +114,16 @@ TypeDescriptor* parse_type_descriptor(const char** code) {
             return NULL;
         }
 
-        out = type_descriptor_create_primitive(t);
-        if (!out) return NULL;
+        // Unknown type names are treated as user-defined struct types.
+        // The old behavior returned TYPE_NIL for unknown identifiers, which broke
+        // declarations like `let p: Point = ...`.
+        if (t == TYPE_NIL && strcmp(tmp, "Nil") != 0) {
+            out = type_descriptor_create_struct(tmp, 0, NULL, NULL);
+            if (!out) return NULL;
+        } else {
+            out = type_descriptor_create_primitive(t);
+            if (!out) return NULL;
+        }
     } else {
         return NULL;
     }
