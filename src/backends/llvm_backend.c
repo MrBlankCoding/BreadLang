@@ -377,6 +377,9 @@ static int bread_llvm_build_module_from_program(const ASTStmtList* program, LLVM
 
             f->ret_slot = LLVMGetParam(f->fn, 0);
 
+            // Push a new scope when entering the function
+            // (void)LLVMBuildCall2(builder, cg.ty_push_scope, cg.fn_push_scope, NULL, 0, "");
+
             for (int i = 0; i < f->param_count; i++) {
                 LLVMValueRef param_val = LLVMGetParam(f->fn, (unsigned)(i + 1));
                 LLVMValueRef alloca = LLVMBuildAlloca(builder, cg.value_type, f->param_names[i]);
@@ -394,7 +397,11 @@ static int bread_llvm_build_module_from_program(const ASTStmtList* program, LLVM
                 LLVMDisposeModule(mod);
                 return 0;
             }
+            
+            // Only pop scope and add return if there's no terminator (explicit return)
             if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(builder)) == NULL) {
+                // Pop the scope before returning from the function
+                // (void)LLVMBuildCall2(builder, cg.ty_pop_scope, cg.fn_pop_scope, NULL, 0, "");
                 LLVMBuildRetVoid(builder);
             }
         }
@@ -840,6 +847,9 @@ int bread_llvm_jit_function(Function* fn) {
     target_fn->scope->vars = NULL;
     target_fn->scope->parent = NULL;
 
+    // Push a new scope when entering the JIT function
+    (void)LLVMBuildCall2(builder, cg.ty_push_scope, cg.fn_push_scope, NULL, 0, "");
+
     LLVMValueRef val_size = cg_value_size(&cg);
 
     for (int i = 0; i < target_fn->param_count; i++) {
@@ -859,7 +869,11 @@ int bread_llvm_jit_function(Function* fn) {
         LLVMDisposeModule(mod);
         return 0;
     }
+    
+    // Only pop scope and add return if there's no terminator (explicit return)
     if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(builder)) == NULL) {
+        // Pop the scope before returning from the JIT function
+        (void)LLVMBuildCall2(builder, cg.ty_pop_scope, cg.fn_pop_scope, NULL, 0, "");
         LLVMBuildRetVoid(builder);
     }
 

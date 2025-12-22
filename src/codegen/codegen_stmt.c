@@ -457,6 +457,10 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
                 return 0;
             }
             cg_copy_value_into(cg, cg_fn->ret_slot, val);
+            
+            // Pop the scope before returning from the function
+            // (void)LLVMBuildCall2(cg->builder, cg->ty_pop_scope, cg->fn_pop_scope, NULL, 0, "");
+            
             LLVMBuildRetVoid(cg->builder);
             return 1;
         }

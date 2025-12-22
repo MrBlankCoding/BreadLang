@@ -79,6 +79,35 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
             }
 
             if (var) {
+                // Check if the variable is stored unboxed
+                if (var->unboxed_type != UNBOXED_NONE) {
+                    // Directly load the unboxed value and box it using cg_box_value
+                    LLVMTypeRef load_type;
+                    CgValueType result_type;
+                    
+                    switch (var->unboxed_type) {
+                        case UNBOXED_INT:
+                            load_type = cg->i32;
+                            result_type = CG_VALUE_UNBOXED_INT;
+                            break;
+                        case UNBOXED_DOUBLE:
+                            load_type = cg->f64;
+                            result_type = CG_VALUE_UNBOXED_DOUBLE;
+                            break;
+                        case UNBOXED_BOOL:
+                            load_type = cg->i1;
+                            result_type = CG_VALUE_UNBOXED_BOOL;
+                            break;
+                        default:
+                            // Fallback to boxed clone
+                            return cg_clone_value(cg, var->alloca, expr->as.var_name);
+                    }
+                    
+                    LLVMValueRef loaded = LLVMBuildLoad2(cg->builder, load_type, var->alloca, var->name);
+                    CgValue unboxed_val = cg_create_value(result_type, loaded, load_type);
+                    return cg_box_value(cg, unboxed_val);
+                }
+                
                 return cg_clone_value(cg, var->alloca, expr->as.var_name);
             }
 
