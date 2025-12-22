@@ -10,9 +10,17 @@ typedef struct ASTExpr ASTExpr;
 typedef struct ASTStmt ASTStmt;
 typedef struct ASTStmtList ASTStmtList;
 
+// Source location tracking for error reporting
+typedef struct {
+    int line;
+    int column;
+    const char* filename;
+} SourceLoc;
+
 typedef struct {
     int is_known;
     VarType type;
+    TypeDescriptor* type_desc;
 } ASTTypeTag;
 
 typedef enum {
@@ -42,6 +50,7 @@ typedef struct {
 struct ASTExpr {
     ASTExprKind kind;
     ASTTypeTag tag;
+    SourceLoc loc;  // Source location for error reporting
     void* stability_info;  // TypeStabilityInfo*
     void* escape_info;     // EscapeInfo*
     void* opt_hints;       // OptimizationHints*
@@ -120,7 +129,7 @@ typedef enum {
 typedef struct {
     char* var_name;
     VarType type;
-    char* type_str;
+    TypeDescriptor* type_desc;
     ASTExpr* init;
     int is_const;
 } ASTStmtVarDecl;
@@ -171,9 +180,10 @@ typedef struct {
     char* name;
     int param_count;
     char** param_names;
-    VarType* param_types;
+    TypeDescriptor** param_type_descs;
     ASTExpr** param_defaults;  // Default value expressions (NULL if no default)
     VarType return_type;
+    TypeDescriptor* return_type_desc;
     ASTStmtList* body;
     void* opt_info;        // FunctionOptInfo*
 } ASTStmtFuncDecl;
@@ -184,6 +194,7 @@ typedef struct {
 
 struct ASTStmt {
     ASTStmtKind kind;
+    SourceLoc loc;  // Source location for error reporting
     void* opt_hints;       // OptimizationHints*
     union {
         ASTStmtVarDecl var_decl;

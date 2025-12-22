@@ -33,6 +33,7 @@ set(BREADLANG_SOURCES
     src/core/function.c
     src/core/value.c
     src/core/var.c
+    src/core/type_descriptor.c
     
     # Compiler source files
     src/compiler/ast/ast.c

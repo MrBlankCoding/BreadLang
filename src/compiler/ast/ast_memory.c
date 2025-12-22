@@ -65,6 +65,8 @@ ASTStmt* ast_stmt_new(ASTStmtKind kind) {
 void ast_free_expr(ASTExpr* e) {
     if (!e) return;
 
+    type_descriptor_free(e->tag.type_desc);
+
     switch (e->kind) {
         case AST_EXPR_STRING:
             free(e->as.string_val);
@@ -135,7 +137,7 @@ void ast_free_stmt_list(ASTStmtList* stmts) {
         switch (cur->kind) {
             case AST_STMT_VAR_DECL:
                 free(cur->as.var_decl.var_name);
-                free(cur->as.var_decl.type_str);
+                type_descriptor_free(cur->as.var_decl.type_desc);
                 ast_free_expr(cur->as.var_decl.init);
                 break;
             case AST_STMT_VAR_ASSIGN:
@@ -176,13 +178,17 @@ void ast_free_stmt_list(ASTStmtList* stmts) {
                 free(cur->as.func_decl.name);
                 for (int i = 0; i < cur->as.func_decl.param_count; i++) {
                     free(cur->as.func_decl.param_names[i]);
+                    if (cur->as.func_decl.param_type_descs && cur->as.func_decl.param_type_descs[i]) {
+                        type_descriptor_free(cur->as.func_decl.param_type_descs[i]);
+                    }
                     if (cur->as.func_decl.param_defaults && cur->as.func_decl.param_defaults[i]) {
                         ast_free_expr(cur->as.func_decl.param_defaults[i]);
                     }
                 }
                 free(cur->as.func_decl.param_names);
-                free(cur->as.func_decl.param_types);
+                free(cur->as.func_decl.param_type_descs);
                 free(cur->as.func_decl.param_defaults);
+                type_descriptor_free(cur->as.func_decl.return_type_desc);
                 ast_free_stmt_list(cur->as.func_decl.body);
                 break;
             case AST_STMT_RETURN:

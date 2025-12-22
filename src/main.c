@@ -211,6 +211,9 @@ int main(int argc, char* argv[]) {
         if (!bread_llvm_emit_ll(program, dst)) {
             fprintf(stderr, "\n");
             fprintf(stderr, "error: failed to emit LLVM IR\n");
+            if (bread_error_has_error()) {
+                bread_error_print_current();
+            }
             result = 1;
         }
     } else if (emit_obj) {
@@ -218,6 +221,9 @@ int main(int argc, char* argv[]) {
         if (!bread_llvm_emit_obj(program, dst)) {
             fprintf(stderr, "\n");
             fprintf(stderr, "error: failed to emit object file\n");
+            if (bread_error_has_error()) {
+                bread_error_print_current();
+            }
             result = 1;
         }
     } else if (emit_exe) {
@@ -225,6 +231,9 @@ int main(int argc, char* argv[]) {
         if (!bread_llvm_emit_exe(program, dst)) {
             fprintf(stderr, "\n");
             fprintf(stderr, "error: failed to emit executable\n");
+            if (bread_error_has_error()) {
+                bread_error_print_current();
+            }
             result = 1;
         }
     }

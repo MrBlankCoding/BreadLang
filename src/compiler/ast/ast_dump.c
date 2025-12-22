@@ -4,6 +4,8 @@
 #include "compiler/ast/ast.h"
 #include "compiler/ast/ast_dump.h"
 
+#include "core/var.h"
+
 static void ast_dump_expr(const ASTExpr* e, FILE* out) {
     if (!out) return;
     if (!e) {
@@ -111,13 +113,20 @@ void ast_dump_stmt_list(const ASTStmtList* stmts, FILE* out) {
     while (cur) {
         switch (cur->kind) {
             case AST_STMT_VAR_DECL:
+            {
+                char type_buf[256];
+                const char* type_str = "";
+                if (cur->as.var_decl.type_desc) {
+                    type_str = type_descriptor_to_string(cur->as.var_decl.type_desc, type_buf, sizeof(type_buf));
+                }
                 fprintf(out, "%s %s: %s = ", 
                     cur->as.var_decl.is_const ? "const" : "let",
                     cur->as.var_decl.var_name ? cur->as.var_decl.var_name : "",
-                    cur->as.var_decl.type_str ? cur->as.var_decl.type_str : "");
+                    type_str);
                 ast_dump_expr(cur->as.var_decl.init, out);
                 fprintf(out, "\n");
                 break;
+            }
             case AST_STMT_VAR_ASSIGN:
                 fprintf(out, "%s = ", cur->as.var_assign.var_name ? cur->as.var_assign.var_name : "");
                 ast_dump_expr(cur->as.var_assign.value, out);

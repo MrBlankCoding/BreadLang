@@ -11,6 +11,7 @@ typedef struct CgVar {
     char* name;
     LLVMValueRef alloca;
     VarType type;
+    TypeDescriptor* type_desc;
     UnboxedType unboxed_type;  // stored unboxed ???!
     int is_const;
     int is_initialized;
@@ -30,6 +31,8 @@ typedef struct CgFunction {
     ASTStmtList* body;
     int param_count;
     char** param_names;
+    VarType return_type;
+    TypeDescriptor* return_type_desc;
     struct CgFunction* next;
     CgScope* scope;
     LLVMValueRef ret_slot;
@@ -224,10 +227,19 @@ int cg_analyze_stmt(Cg* cg, ASTStmt* stmt);
 int cg_analyze_expr(Cg* cg, ASTExpr* expr);
 void cg_enter_scope(Cg* cg);
 void cg_leave_scope(Cg* cg);
-int cg_declare_var(Cg* cg, const char* name, VarType type, int is_const);
+int cg_declare_var(Cg* cg, const char* name, const TypeDescriptor* type_desc, int is_const);
 CgVar* cg_find_var(Cg* cg, const char* name);
-int cg_declare_function(Cg* cg, const char* name, int param_count);
+int cg_declare_function_from_ast(Cg* cg, const ASTStmtFuncDecl* func_decl);
 CgFunction* cg_find_function(Cg* cg, const char* name);
 void cg_error(Cg* cg, const char* msg, const char* name);
+void cg_error_at(Cg* cg, const char* msg, const char* name, const SourceLoc* loc);
+void cg_type_error_at(Cg* cg, const char* msg, const TypeDescriptor* expected, const TypeDescriptor* actual, const SourceLoc* loc);
+
+// Type checking functions (simplified for Phase 2)
+VarType cg_infer_expr_type_simple(Cg* cg, ASTExpr* expr);
+TypeDescriptor* cg_infer_expr_type_desc_simple(Cg* cg, ASTExpr* expr);
+int cg_check_condition_type_simple(Cg* cg, ASTExpr* condition);
+int cg_check_condition_type_desc_simple(Cg* cg, ASTExpr* condition);
+void cg_type_error(Cg* cg, const char* msg, const TypeDescriptor* expected, const TypeDescriptor* actual);
 
 #endif

@@ -56,7 +56,7 @@ ASTStmt* parse_stmt(const char** code) {
         int param_cap = 0;
         int param_count = 0;
         char** param_names = NULL;
-        VarType* param_types = NULL;
+        TypeDescriptor** param_type_descs = NULL;
         ASTExpr** param_defaults = NULL;
 
         skip_whitespace(code);
@@ -83,8 +83,8 @@ ASTStmt* parse_stmt(const char** code) {
                 }
                 (*code)++;
 
-                VarType p_type;
-                if (!parse_type_token(code, &p_type)) {
+                TypeDescriptor* p_type_desc = parse_type_descriptor(code);
+                if (!p_type_desc) {
                     free(p_name);
                     free(fn_name);
                     return NULL;
@@ -100,12 +100,14 @@ ASTStmt* parse_stmt(const char** code) {
                     if (!default_expr) {
                         free(p_name);
                         free(fn_name);
+                        type_descriptor_free(p_type_desc);
                         for (int i = 0; i < param_count; i++) {
                             free(param_names[i]);
                             if (param_defaults[i]) ast_free_expr(param_defaults[i]);
+                            if (param_type_descs && param_type_descs[i]) type_descriptor_free(param_type_descs[i]);
                         }
                         free(param_names);
-                        free(param_types);
+                        free(param_type_descs);
                         free(param_defaults);
                         return NULL;
                     }
@@ -114,7 +116,7 @@ ASTStmt* parse_stmt(const char** code) {
                 if (param_count >= param_cap) {
                     int new_cap = param_cap == 0 ? 4 : param_cap * 2;
                     char** new_names = malloc(sizeof(char*) * (size_t)new_cap);
-                    VarType* new_types = malloc(sizeof(VarType) * (size_t)new_cap);
+                    TypeDescriptor** new_types = malloc(sizeof(TypeDescriptor*) * (size_t)new_cap);
                     ASTExpr** new_defaults = malloc(sizeof(ASTExpr*) * (size_t)new_cap);
                     if (!new_names || !new_types || !new_defaults) {
                         free(new_names);
@@ -122,27 +124,31 @@ ASTStmt* parse_stmt(const char** code) {
                         free(new_defaults);
                         free(p_name);
                         free(fn_name);
+                        type_descriptor_free(p_type_desc);
                         for (int i = 0; i < param_count; i++) free(param_names[i]);
                         free(param_names);
-                        free(param_types);
+                        for (int i = 0; i < param_count; i++) {
+                            if (param_type_descs && param_type_descs[i]) type_descriptor_free(param_type_descs[i]);
+                        }
+                        free(param_type_descs);
                         free(param_defaults);
                         return NULL;
                     }
                     if (param_count > 0) {
                         memcpy(new_names, param_names, sizeof(char*) * (size_t)param_count);
-                        memcpy(new_types, param_types, sizeof(VarType) * (size_t)param_count);
+                        memcpy(new_types, param_type_descs, sizeof(TypeDescriptor*) * (size_t)param_count);
                         memcpy(new_defaults, param_defaults, sizeof(ASTExpr*) * (size_t)param_count);
                     }
                     free(param_names);
-                    free(param_types);
+                    free(param_type_descs);
                     free(param_defaults);
                     param_names = new_names;
-                    param_types = new_types;
+                    param_type_descs = new_types;
                     param_defaults = new_defaults;
                     param_cap = new_cap;
                 }
                 param_names[param_count] = p_name;
-                param_types[param_count] = p_type;
+                param_type_descs[param_count] = p_type_desc;
                 param_defaults[param_count] = default_expr;
                 param_count++;
 
@@ -161,39 +167,47 @@ ASTStmt* parse_stmt(const char** code) {
             for (int i = 0; i < param_count; i++) {
                 free(param_names[i]);
                 if (param_defaults && param_defaults[i]) ast_free_expr(param_defaults[i]);
+                if (param_type_descs && param_type_descs[i]) type_descriptor_free(param_type_descs[i]);
             }
             free(param_names);
-            free(param_types);
+            free(param_type_descs);
             free(param_defaults);
             return NULL;
         }
         (*code)++;
 
         VarType ret_type = TYPE_INT;
+        TypeDescriptor* ret_type_desc = type_descriptor_create_primitive(TYPE_INT);
         skip_whitespace(code);
         if (**code == '-' && *(*code + 1) == '>') {
             *code += 2;
-            if (!parse_type_token(code, &ret_type)) {
+            type_descriptor_free(ret_type_desc);
+            ret_type_desc = parse_type_descriptor(code);
+            if (!ret_type_desc) {
                 free(fn_name);
                 for (int i = 0; i < param_count; i++) {
                     free(param_names[i]);
                     if (param_defaults && param_defaults[i]) ast_free_expr(param_defaults[i]);
+                    if (param_type_descs && param_type_descs[i]) type_descriptor_free(param_type_descs[i]);
                 }
                 free(param_names);
-                free(param_types);
+                free(param_type_descs);
                 free(param_defaults);
                 return NULL;
             }
+            ret_type = ret_type_desc->base_type;
         }
 
         if (**code == '-' && *(*code + 1) == '>') {
             free(fn_name);
+            type_descriptor_free(ret_type_desc);
             for (int i = 0; i < param_count; i++) {
                 free(param_names[i]);
                 if (param_defaults && param_defaults[i]) ast_free_expr(param_defaults[i]);
+                if (param_type_descs && param_type_descs[i]) type_descriptor_free(param_type_descs[i]);
             }
             free(param_names);
-            free(param_types);
+            free(param_type_descs);
             free(param_defaults);
             return NULL;
         }
@@ -201,12 +215,14 @@ ASTStmt* parse_stmt(const char** code) {
         skip_whitespace(code);
         if (**code != '{') {
             free(fn_name);
+            type_descriptor_free(ret_type_desc);
             for (int i = 0; i < param_count; i++) {
                 free(param_names[i]);
                 if (param_defaults && param_defaults[i]) ast_free_expr(param_defaults[i]);
+                if (param_type_descs && param_type_descs[i]) type_descriptor_free(param_type_descs[i]);
             }
             free(param_names);
-            free(param_types);
+            free(param_type_descs);
             free(param_defaults);
             return NULL;
         }
@@ -215,12 +231,14 @@ ASTStmt* parse_stmt(const char** code) {
         ASTStmtList* body = parse_block(code);
         if (!body || **code != '}') {
             free(fn_name);
+            type_descriptor_free(ret_type_desc);
             for (int i = 0; i < param_count; i++) {
                 free(param_names[i]);
                 if (param_defaults && param_defaults[i]) ast_free_expr(param_defaults[i]);
+                if (param_type_descs && param_type_descs[i]) type_descriptor_free(param_type_descs[i]);
             }
             free(param_names);
-            free(param_types);
+            free(param_type_descs);
             free(param_defaults);
             if (body) ast_free_stmt_list(body);
             return NULL;
@@ -230,12 +248,14 @@ ASTStmt* parse_stmt(const char** code) {
         ASTStmt* s = ast_stmt_new(AST_STMT_FUNC_DECL);
         if (!s) {
             free(fn_name);
+            type_descriptor_free(ret_type_desc);
             for (int i = 0; i < param_count; i++) {
                 free(param_names[i]);
                 if (param_defaults && param_defaults[i]) ast_free_expr(param_defaults[i]);
+                if (param_type_descs && param_type_descs[i]) type_descriptor_free(param_type_descs[i]);
             }
             free(param_names);
-            free(param_types);
+            free(param_type_descs);
             free(param_defaults);
             ast_free_stmt_list(body);
             return NULL;
@@ -243,9 +263,10 @@ ASTStmt* parse_stmt(const char** code) {
         s->as.func_decl.name = fn_name;
         s->as.func_decl.param_count = param_count;
         s->as.func_decl.param_names = param_names;
-        s->as.func_decl.param_types = param_types;
+        s->as.func_decl.param_type_descs = param_type_descs;
         s->as.func_decl.param_defaults = param_defaults;
         s->as.func_decl.return_type = ret_type;
+        s->as.func_decl.return_type_desc = ret_type_desc;
         s->as.func_decl.body = body;
         return s;
     }
@@ -288,55 +309,23 @@ ASTStmt* parse_stmt(const char** code) {
 
         skip_whitespace(code);
 
-        char* type_str = NULL;
-        VarType type = TYPE_INT; // default
-        char type_buf[MAX_TOKEN_LEN];
-
+        TypeDescriptor* type_desc = NULL;
         if (**code == ':') {
             (*code)++;
-            skip_whitespace(code);
-
-            if (!parse_type_string(code, type_buf, sizeof(type_buf))) {
+            type_desc = parse_type_descriptor(code);
+            if (!type_desc) {
                 free(var_name);
                 return NULL;
             }
-            type_str = strdup(type_buf);
         } else {
-            strcpy(type_buf, "Int");
-            type_str = strdup("Int");
-        }
-
-        size_t tlen = strlen(type_buf);
-        if (tlen > 0 && type_buf[tlen - 1] == '?') {
-            type = TYPE_OPTIONAL;
-        } else if (strcmp(type_buf, "Int") == 0) type = TYPE_INT;
-        else if (strcmp(type_buf, "String") == 0) type = TYPE_STRING;
-        else if (strcmp(type_buf, "Bool") == 0) type = TYPE_BOOL;
-        else if (strcmp(type_buf, "Float") == 0) type = TYPE_FLOAT;
-        else if (strcmp(type_buf, "Double") == 0) type = TYPE_DOUBLE;
-        else if (type_buf[0] == '[') {
-            int depth = 0;
-            const char* end = strrchr(type_buf, ']');
-            if (!end) {
+            type_desc = type_descriptor_create_primitive(TYPE_INT);
+            if (!type_desc) {
                 free(var_name);
-                free(type_str);
                 return NULL;
             }
-            int is_dict = 0;
-            for (const char* p = type_buf + 1; p < end; p++) {
-                if (*p == '[') depth++;
-                else if (*p == ']') depth--;
-                else if (*p == ':' && depth == 0) {
-                    is_dict = 1;
-                    break;
-                }
-            }
-            type = is_dict ? TYPE_DICT : TYPE_ARRAY;
-        } else {
-            free(var_name);
-            free(type_str);
-            return NULL;
         }
+
+        VarType type = type_desc->base_type;
 
         skip_whitespace(code);
         if (**code != '=') {
@@ -355,12 +344,13 @@ ASTStmt* parse_stmt(const char** code) {
         ASTStmt* s = ast_stmt_new(AST_STMT_VAR_DECL);
         if (!s) {
             free(var_name);
+            type_descriptor_free(type_desc);
             ast_free_expr(init);
             return NULL;
         }
         s->as.var_decl.var_name = var_name;
         s->as.var_decl.type = type;
-        s->as.var_decl.type_str = strdup(type_buf);
+        s->as.var_decl.type_desc = type_desc;
         s->as.var_decl.init = init;
         s->as.var_decl.is_const = is_const;
         return s;

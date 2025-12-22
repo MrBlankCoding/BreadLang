@@ -312,6 +312,9 @@ static int bread_llvm_build_module_from_program(const ASTStmtList* program, LLVM
     
     // Integrated semantic analysis - replaces separate semantic analysis pass
     if (!cg_semantic_analyze(&cg, (ASTStmtList*)program)) {
+        if (!bread_error_has_error()) {
+            BREAD_ERROR_SET_COMPILE_ERROR("Semantic analysis failed");
+        }
         LLVMDisposeBuilder(builder);
         LLVMDisposeModule(mod);
         return 0;
@@ -345,6 +348,9 @@ static int bread_llvm_build_module_from_program(const ASTStmtList* program, LLVM
     val_size = cg_value_size(&cg);
 
     if (!cg_build_stmt_list(&cg, NULL, val_size, (ASTStmtList*)program)) {
+        if (!bread_error_has_error()) {
+            BREAD_ERROR_SET_COMPILE_ERROR("Code generation failed");
+        }
         LLVMDisposeBuilder(builder);
         LLVMDisposeModule(mod);
         return 0;
@@ -457,7 +463,9 @@ int bread_llvm_emit_ll(const ASTStmtList* program, const char* out_path) {
 
     LLVMModuleRef mod = NULL;
     if (!bread_llvm_build_module_from_program(program, &mod)) {
-        BREAD_ERROR_SET_COMPILE_ERROR("Failed to build LLVM module from program");
+        if (!bread_error_has_error()) {
+            BREAD_ERROR_SET_COMPILE_ERROR("Failed to build LLVM module from program");
+        }
         return 0;
     }
     
@@ -488,7 +496,9 @@ int bread_llvm_emit_obj(const ASTStmtList* program, const char* out_path) {
 
     LLVMModuleRef mod = NULL;
     if (!bread_llvm_build_module_from_program(program, &mod)) {
-        BREAD_ERROR_SET_COMPILE_ERROR("Failed to build LLVM module from program");
+        if (!bread_error_has_error()) {
+            BREAD_ERROR_SET_COMPILE_ERROR("Failed to build LLVM module from program");
+        }
         return 0;
     }
 
@@ -566,6 +576,7 @@ static int bread_llvm_link_executable_with_clang(const char* obj_path, const cha
     char value_path[PATH_MAX];
     char var_path[PATH_MAX];
     char function_path[PATH_MAX];
+    char type_descriptor_path[PATH_MAX];
     char ast_path[PATH_MAX];
     char expr_path[PATH_MAX];
     char expr_ops_path[PATH_MAX];
@@ -592,6 +603,7 @@ static int bread_llvm_link_executable_with_clang(const char* obj_path, const cha
     snprintf(value_path, sizeof(value_path), "%s/src/core/value.c", root_dir);
     snprintf(var_path, sizeof(var_path), "%s/src/core/var.c", root_dir);
     snprintf(function_path, sizeof(function_path), "%s/src/core/function.c", root_dir);
+    snprintf(type_descriptor_path, sizeof(type_descriptor_path), "%s/src/core/type_descriptor.c", root_dir);
     
     // AST and parser
     snprintf(ast_path, sizeof(ast_path), "%s/src/compiler/ast/ast.c", root_dir);
@@ -616,7 +628,7 @@ static int bread_llvm_link_executable_with_clang(const char* obj_path, const cha
                 strlen(array_utils_path) + strlen(value_ops_path) + 
                 strlen(builtins_path) + strlen(error_path) + 
                 strlen(value_path) + strlen(var_path) + 
-                strlen(function_path) + strlen(ast_path) + 
+                strlen(function_path) + strlen(type_descriptor_path) + strlen(ast_path) + 
                 strlen(expr_path) + strlen(expr_ops_path) + 
                 strlen(ast_memory_path) + strlen(ast_types_path) + 
                 strlen(ast_expr_parser_path) + strlen(ast_stmt_parser_path) + 
@@ -635,7 +647,7 @@ static int bread_llvm_link_executable_with_clang(const char* obj_path, const cha
         "'%s' '%s' '%s' "  // string_ops_path, operators_path, array_utils_path
         "'%s' '%s' "  // value_ops_path, builtins_path
         "'%s' '%s' '%s' "  // error_path, value_path, var_path
-        "'%s' '%s' "  // function_path, ast_path
+        "'%s' '%s' '%s' "  // function_path, type_descriptor_path, ast_path
         "'%s' '%s' '%s' "  // expr_path, expr_ops_path, ast_memory_path
         "'%s' '%s' '%s' "  // ast_types_path, ast_expr_parser_path, ast_stmt_parser_path
         "'%s' -lm -fPIC -O2 -g",  // ast_dump_path and linker flags
@@ -646,7 +658,7 @@ static int bread_llvm_link_executable_with_clang(const char* obj_path, const cha
         string_ops_path, operators_path, array_utils_path,  // Runtime utilities
         value_ops_path, builtins_path,  // Core runtime
         error_path, value_path, var_path,  // Error handling and core types
-        function_path, ast_path,  // Functions and AST
+        function_path, type_descriptor_path, ast_path,  // Functions, types, and AST
         expr_path, expr_ops_path, ast_memory_path,  // Parser and AST memory
         ast_types_path, ast_expr_parser_path, ast_stmt_parser_path,  // AST components
         ast_dump_path  // AST dump
