@@ -1,23 +1,24 @@
 {
+{
   "Function Declaration": {
-    "prefix": "func",
+    "prefix": "def",
     "body": [
-      "func ${1:functionName}(${2:param}: ${3:Type}) -> ${4:ReturnType} {",
+      "def ${1:functionName}(${2:param}: ${3:Type}) -> ${4:ReturnType} {",
       "\t${5:// function body}",
       "\treturn ${6:value}",
       "}"
     ],
     "description": "Create a function declaration"
   },
-  "Function Declaration (fn)": {
-    "prefix": "fn",
+  "Function Declaration (simple)": {
+    "prefix": "function",
     "body": [
-      "fn ${1:functionName}(${2:param}: ${3:Type}) -> ${4:ReturnType} {",
+      "def ${1:functionName}(${2:param}: ${3:Type}) -> ${4:ReturnType} {",
       "\t${5:// function body}",
       "\treturn ${6:value}",
       "}"
     ],
-    "description": "Create a function declaration with fn keyword"
+    "description": "Create a function declaration"
   },
   "Let Variable": {
     "prefix": "let",
@@ -107,5 +108,59 @@
       "// ${1:comment}"
     ],
     "description": "Create a comment"
+  },
+  "String Interpolation": {
+    "prefix": "str",
+    "body": [
+      "str(${1:value})"
+    ],
+    "description": "Convert value to string"
+  },
+  "Type Conversion - Int": {
+    "prefix": "int",
+    "body": [
+      "int(${1:value})"
+    ],
+    "description": "Convert value to integer"
+  },
+  "Type Conversion - Float": {
+    "prefix": "float",
+    "body": [
+      "float(${1:value})"
+    ],
+    "description": "Convert value to float"
+  },
+  "Length Function": {
+    "prefix": "len",
+    "body": [
+      "len(${1:collection})"
+    ],
+    "description": "Get length of collection"
+  },
+  "Type Check": {
+    "prefix": "type",
+    "body": [
+      "type(${1:value})"
+    ],
+    "description": "Get type of value"
+  },
+  "Temperature Conversion": {
+    "prefix": "celsius",
+    "body": [
+      "def celsiusToFahrenheit(celsius: Double) -> Double {",
+      "\treturn celsius * 9.0 / 5.0 + 32.0",
+      "}"
+    ],
+    "description": "Celsius to Fahrenheit conversion function"
+  },
+  "Main Function": {
+    "prefix": "main",
+    "body": [
+      "def main() -> Int {",
+      "\t${1:// main code}",
+      "\treturn 0",
+      "}"
+    ],
+    "description": "Create a main function"
   }
 }

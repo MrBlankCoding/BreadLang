@@ -341,17 +341,15 @@ for row in matrix {
 
 ```breadlang
 // Basic function
-func add(a: Int, b: Int) -> Int {
+def add(a: Int, b: Int) -> Int {
     return a + b
 }
 
 // Alternative syntax
-fn multiply(x: Int, y: Int) -> Int {
+def multiply(x: Int, y: Int) -> Int {
     return x * y
 }
 ```
-
-Both `func` and `fn` keywords are supported for declaring functions.
 
 ### Calling Functions
 
@@ -366,7 +364,7 @@ print(sum)
 Functions can have default parameter values:
 
 ```breadlang
-func greet(name: String = "World") -> String {
+def greet(name: String = "World") -> String {
     return "Hello, " + name + "!"
 }
 
@@ -379,7 +377,7 @@ print(greet("Alice"))    // "Hello, Alice!"
 All code paths in a function must return a value of the declared type:
 
 ```breadlang
-func absolute(x: Int) -> Int {
+def absolute(x: Int) -> Int {
     if x < 0 {
         return -x
     } else {
@@ -511,11 +509,11 @@ for i in range(1, 101) {
 ### Example 2: Temperature Converter
 
 ```breadlang
-func celsiusToFahrenheit(celsius: Double) -> Double {
+def celsiusToFahrenheit(celsius: Double) -> Double {
     return celsius * 9.0 / 5.0 + 32.0
 }
 
-func fahrenheitToCelsius(fahrenheit: Double) -> Double {
+def fahrenheitToCelsius(fahrenheit: Double) -> Double {
     return (fahrenheit - 32.0) * 5.0 / 9.0
 }
 

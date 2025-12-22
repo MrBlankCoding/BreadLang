@@ -33,7 +33,7 @@ static bool test_valid_program_analysis(void) {
     const char* valid_code = 
         "let x: Int = 42\n"
         "let y: String = \"hello\"\n"
-        "func add(a: Int, b: Int) -> Int {\n"
+        "def add(a: Int, b: Int) -> Int {\n"
         "    return a + b\n"
         "}\n"
         "let result: Int = add(x, 10)\n";
@@ -76,7 +76,7 @@ static bool test_function_signature_validation(void) {
     bread_error_init();
     
     const char* invalid_code = 
-        "func test(x: Int) -> Int {\n"
+        "def test(x: Int) -> Int {\n"
         "    return x\n"
         "}\n"
         "let result: Int = test(\"string\")\n";

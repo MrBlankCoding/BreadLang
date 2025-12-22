@@ -57,7 +57,7 @@ void* generate_parser_test_data(PBTGenerator* gen) {
                 return NULL;
             }
             strcpy(data->source_code,
-                   "func add(a: Int, b: Int) -> Int {\n"
+                   "def add(a: Int, b: Int) -> Int {\n"
                    "    return a + b\n"
                    "}\n"
                    "let result: Int = add(5, 3)\n"

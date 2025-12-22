@@ -1,0 +1,12 @@
+<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+  <!-- File background -->
+  <rect x="2" y="1" width="12" height="14" rx="1" fill="#E8C4A0" stroke="#D4A574" stroke-width="0.5"/>
+  
+  <!-- Bread loaf mini icon -->
+  <ellipse cx="8" cy="8" rx="4" ry="3" fill="#D4A574"/>
+  <ellipse cx="8" cy="6.5" rx="3.5" ry="1" fill="#F5D5B7" opacity="0.8"/>
+  
+  <!-- Small texture lines -->
+  <path d="M5 7.5 Q8 7 11 7.5" stroke="#B8956A" stroke-width="0.5" fill="none"/>
+  <path d="M5.5 9 Q8 8.7 10.5 9" stroke="#B8956A" stroke-width="0.5" fill="none"/>
+</svg>

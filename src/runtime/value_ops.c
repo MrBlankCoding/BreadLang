@@ -345,6 +345,7 @@ size_t bread_value_size(void) {
 
 void bread_value_copy(const struct BreadValue* in, struct BreadValue* out) {
     if (!in || !out) return;
+    if (in == out) return; // Avoid self-copy
     bread_value_release(out);
     *out = bread_value_clone(*in);
 }

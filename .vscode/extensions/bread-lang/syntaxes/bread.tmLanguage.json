@@ -48,7 +48,7 @@
         },
         {
           "name": "keyword.declaration.bread",
-          "match": "\\b(let|const|func|fn)\\b"
+          "match": "\\b(let|const|def)\\b"
         },
         {
           "name": "constant.language.bread",
@@ -103,7 +103,7 @@
       "patterns": [
         {
           "name": "entity.name.function.bread",
-          "match": "\\b(func|fn)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "match": "\\b(def)\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
             "1": {
               "name": "keyword.declaration.bread"

@@ -35,9 +35,8 @@ ASTStmtList* parse_block(const char** code) {
 ASTStmt* parse_stmt(const char** code) {
     skip_whitespace(code);
 
-    if (strncmp(*code, "func ", 5) == 0 || strncmp(*code, "fn ", 3) == 0) {
-        int is_short = strncmp(*code, "fn ", 3) == 0;
-        *code += is_short ? 3 : 5;
+    if (strncmp(*code, "def ", 4) == 0) {
+        *code += 4;
         skip_whitespace(code);
 
         const char* start = *code;

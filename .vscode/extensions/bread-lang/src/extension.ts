@@ -1,8 +1,36 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
+
+let diagnosticCollection: vscode.DiagnosticCollection;
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('Bread Language extension is now active!');
+
+    // Create diagnostic collection for error reporting
+    diagnosticCollection = vscode.languages.createDiagnosticCollection('bread');
+    context.subscriptions.push(diagnosticCollection);
+
+    // Register document change listener for real-time error checking
+    const documentChangeListener = vscode.workspace.onDidChangeTextDocument(event => {
+        if (event.document.languageId === 'bread') {
+            validateBreadDocument(event.document);
+        }
+    });
+
+    // Register document open listener
+    const documentOpenListener = vscode.workspace.onDidOpenTextDocument(document => {
+        if (document.languageId === 'bread') {
+            validateBreadDocument(document);
+        }
+    });
+
+    // Validate all open Bread documents
+    vscode.workspace.textDocuments.forEach(document => {
+        if (document.languageId === 'bread') {
+            validateBreadDocument(document);
+        }
+    });
 
     // Register build command
     const buildCommand = vscode.commands.registerCommand('bread.build', async (uri?: vscode.Uri) => {
@@ -49,7 +77,7 @@ export function activate(context: vscode.ExtensionContext) {
 
                 // Keywords
                 const keywords = [
-                    'let', 'const', 'func', 'fn', 'if', 'else', 'while', 'for', 'in', 
+                    'let', 'const', 'def', 'if', 'else', 'while', 'for', 'in', 
                     'return', 'break', 'continue', 'true', 'false', 'nil'
                 ];
                 keywords.forEach(keyword => {
@@ -109,8 +137,7 @@ export function activate(context: vscode.ExtensionContext) {
             const hoverInfo: { [key: string]: string } = {
                 'let': 'Declares a mutable variable',
                 'const': 'Declares an immutable variable',
-                'func': 'Declares a function',
-                'fn': 'Declares a function (alternative syntax)',
+                'def': 'Declares a function',
                 'if': 'Conditional statement',
                 'else': 'Alternative branch for if statement',
                 'while': 'Loop that continues while condition is true',
@@ -210,8 +237,73 @@ export function activate(context: vscode.ExtensionContext) {
         buildAndRunCommand,
         completionProvider, 
         hoverProvider, 
-        signatureProvider
+        signatureProvider,
+        documentChangeListener,
+        documentOpenListener
     );
+}
+
+function validateBreadDocument(document: vscode.TextDocument) {
+    const diagnostics: vscode.Diagnostic[] = [];
+    const text = document.getText();
+    const lines = text.split('\n');
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const lineNumber = i;
+
+        // Check for common syntax errors
+        
+        // Check for old 'func' keyword usage
+        const funcMatch = line.match(/\b(func|fn)\s+/);
+        if (funcMatch) {
+            const startPos = line.indexOf(funcMatch[0]);
+            const range = new vscode.Range(
+                lineNumber, startPos,
+                lineNumber, startPos + funcMatch[1].length
+            );
+            const diagnostic = new vscode.Diagnostic(
+                range,
+                `Use 'def' instead of '${funcMatch[1]}' to declare functions`,
+                vscode.DiagnosticSeverity.Warning
+            );
+            diagnostic.code = 'deprecated-keyword';
+            diagnostics.push(diagnostic);
+        }
+
+        // Check for missing type annotations
+        const letMatch = line.match(/\blet\s+(\w+)\s*=\s*/);
+        if (letMatch && !line.includes(':')) {
+            const startPos = line.indexOf(letMatch[0]);
+            const range = new vscode.Range(
+                lineNumber, startPos,
+                lineNumber, line.length
+            );
+            const diagnostic = new vscode.Diagnostic(
+                range,
+                'Consider adding type annotation for better code clarity',
+                vscode.DiagnosticSeverity.Information
+            );
+            diagnostic.code = 'missing-type-annotation';
+            diagnostics.push(diagnostic);
+        }
+
+        // Skip bracket matching - VS Code handles this natively with language configuration
+
+        // Check for missing semicolons (if required by style)
+        if (line.trim().match(/^(let|const)\s+.*[^;{]$/) && !line.includes('{')) {
+            const range = new vscode.Range(lineNumber, line.length - 1, lineNumber, line.length);
+            const diagnostic = new vscode.Diagnostic(
+                range,
+                'Consider adding semicolon for consistency',
+                vscode.DiagnosticSeverity.Hint
+            );
+            diagnostic.code = 'missing-semicolon';
+            diagnostics.push(diagnostic);
+        }
+    }
+
+    diagnosticCollection.set(document.uri, diagnostics);
 }
 
 async function buildBreadFile(fileUri: vscode.Uri, shouldRun: boolean = false) {
@@ -230,6 +322,9 @@ async function buildBreadFile(fileUri: vscode.Uri, shouldRun: boolean = false) {
         await document.save();
     }
 
+    // Clear previous diagnostics
+    diagnosticCollection.clear();
+
     // Show output channel
     const outputChannel = vscode.window.createOutputChannel('Bread Build');
     outputChannel.show();
@@ -240,6 +335,18 @@ async function buildBreadFile(fileUri: vscode.Uri, shouldRun: boolean = false) {
     outputChannel.appendLine('');
 
     try {
+        // Check if breadlang compiler exists
+        const breadlangPath = path.join(workspaceFolder.uri.fsPath, 'build', 'breadlang');
+        const breadlangExists = fs.existsSync(breadlangPath);
+        const hasCMake = fs.existsSync(path.join(workspaceFolder.uri.fsPath, 'CMakeLists.txt'));
+        
+        if (!breadlangExists && !hasCMake) {
+            const message = 'Bread compiler not found. Please build the project first or install breadlang globally.';
+            outputChannel.appendLine(message);
+            vscode.window.showErrorMessage(message);
+            return;
+        }
+
         // Create terminal for build process
         const terminal = vscode.window.createTerminal({
             name: 'Bread Build',
@@ -247,10 +354,6 @@ async function buildBreadFile(fileUri: vscode.Uri, shouldRun: boolean = false) {
         });
 
         let buildCommand = '';
-        
-        // Check if breadlang compiler already exists
-        const breadlangExists = await vscode.workspace.fs.stat(vscode.Uri.joinPath(workspaceFolder.uri, 'build', 'breadlang')).then(() => true, () => false);
-        const hasCMake = await vscode.workspace.fs.stat(vscode.Uri.joinPath(workspaceFolder.uri, 'CMakeLists.txt')).then(() => true, () => false);
         
         if (breadlangExists) {
             // Use existing breadlang compiler
@@ -262,15 +365,8 @@ async function buildBreadFile(fileUri: vscode.Uri, shouldRun: boolean = false) {
         } else if (hasCMake) {
             // Build the breadlang compiler first, then use it to compile the .bread file
             outputChannel.appendLine('Building breadlang compiler first...');
-            buildCommand = `mkdir -p build && cd build && cmake .. && make breadlang && cd ..`;
+            buildCommand = `cmake --build build || (mkdir -p build && cd build && cmake .. && make breadlang && cd ..)`;
             buildCommand += ` && ./build/breadlang -o ${fileName} "${relativePath}"`;
-            if (shouldRun) {
-                buildCommand += ` && ./${fileName}`;
-            }
-        } else {
-            // Try to use system breadlang compiler
-            outputChannel.appendLine('Trying system breadlang compiler...');
-            buildCommand = `breadlang -o ${fileName} "${relativePath}"`;
             if (shouldRun) {
                 buildCommand += ` && ./${fileName}`;
             }
@@ -282,6 +378,7 @@ async function buildBreadFile(fileUri: vscode.Uri, shouldRun: boolean = false) {
         outputChannel.appendLine(`Executing: ${buildCommand}`);
         outputChannel.appendLine('');
         outputChannel.appendLine('Build process started in terminal...');
+        outputChannel.appendLine('Check the terminal for detailed output and any error messages.');
 
         // Show success message
         const message = shouldRun ? 

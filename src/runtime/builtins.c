@@ -232,13 +232,21 @@ BreadValue bread_builtin_str(BreadValue* args, int arg_count) {
             bread_value_set_string(&result, buffer);
             break;
         case TYPE_FLOAT:
-            snprintf(buffer, sizeof(buffer), "%f", arg->value.float_val);
+            snprintf(buffer, sizeof(buffer), "%.6g", (double)arg->value.float_val);
             bread_value_set_string(&result, buffer);
             break;
-        case TYPE_DOUBLE:
-            snprintf(buffer, sizeof(buffer), "%lf", arg->value.double_val);
+        case TYPE_DOUBLE: {
+            // Use a more robust double-to-string conversion
+            double val = arg->value.double_val;
+            if (val == (int)val && val >= -2147483648.0 && val <= 2147483647.0) {
+                // If it's a whole number within int range, format as int
+                snprintf(buffer, sizeof(buffer), "%d", (int)val);
+            } else {
+                snprintf(buffer, sizeof(buffer), "%.6g", val);
+            }
             bread_value_set_string(&result, buffer);
             break;
+        }
         case TYPE_STRING:
             // Return a copy of the string
             bread_value_set_string(&result, bread_string_cstr(arg->value.string_val));

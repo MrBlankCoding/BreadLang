@@ -130,6 +130,37 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
                 }
             }
             
+            // Special handling for string concatenation with builtin calls
+            if (expr->as.binary.op == '+') {
+                // Check if either operand is a builtin function call
+                int left_is_builtin = (expr->as.binary.left->kind == AST_EXPR_CALL && 
+                                     bread_builtin_lookup(expr->as.binary.left->as.call.name) != NULL);
+                int right_is_builtin = (expr->as.binary.right->kind == AST_EXPR_CALL && 
+                                       bread_builtin_lookup(expr->as.binary.right->as.call.name) != NULL);
+                
+                if (left_is_builtin || right_is_builtin) {
+                    // Evaluate operands and store in temporary variables first
+                    LLVMValueRef left = cg_build_expr(cg, cg_fn, val_size, expr->as.binary.left);
+                    if (!left) return NULL;
+                    LLVMValueRef left_temp = cg_clone_value(cg, left, "left_temp");
+                    
+                    LLVMValueRef right = cg_build_expr(cg, cg_fn, val_size, expr->as.binary.right);
+                    if (!right) return NULL;
+                    LLVMValueRef right_temp = cg_clone_value(cg, right, "right_temp");
+                    
+                    tmp = cg_alloc_value(cg, "bintmp");
+                    LLVMValueRef op = LLVMConstInt(cg->i8, expr->as.binary.op, 0);
+                    LLVMValueRef args[] = {
+                        op,
+                        cg_value_to_i8_ptr(cg, left_temp),
+                        cg_value_to_i8_ptr(cg, right_temp),
+                        cg_value_to_i8_ptr(cg, tmp)
+                    };
+                    (void)LLVMBuildCall2(cg->builder, cg->ty_binary_op, cg->fn_binary_op, args, 4, "");
+                    return tmp;
+                }
+            }
+            
             // FALL BACK !
             LLVMValueRef left = cg_build_expr(cg, cg_fn, val_size, expr->as.binary.left);
             if (!left) return NULL;
@@ -398,10 +429,19 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
                     LLVMValueRef param_val = LLVMGetParam(callee_fn->fn, (unsigned)(i + 1));
                     LLVMValueRef alloca = cg_alloc_value(cg, callee_fn->param_names[i]);
                     cg_scope_add_var(callee_fn->scope, callee_fn->param_names[i], alloca);
-                    cg_copy_value_into(cg, alloca, param_val);
+                    
+                    // Copy parameter value into local variable
+                    LLVMValueRef copy_args[] = {
+                        LLVMBuildBitCast(cg->builder, param_val, cg->i8_ptr, ""),
+                        LLVMBuildBitCast(cg->builder, alloca, cg->i8_ptr, "")
+                    };
+                    (void)LLVMBuildCall2(cg->builder, cg->ty_value_copy, cg->fn_value_copy, copy_args, 2, "");
                 }
 
-                if (!cg_build_stmt_list(cg, callee_fn, val_size, callee_fn->body)) return NULL;
+                if (!cg_build_stmt_list(cg, callee_fn, val_size, callee_fn->body)) {
+                    LLVMPositionBuilderAtEnd(cg->builder, current_block);
+                    return NULL;
+                }
                 if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(cg->builder)) == NULL) {
                     LLVMBuildRetVoid(cg->builder);
                 }

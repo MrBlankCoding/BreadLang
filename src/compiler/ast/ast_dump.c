@@ -177,7 +177,7 @@ void ast_dump_stmt_list(const ASTStmtList* stmts, FILE* out) {
                 fprintf(out, "}\n");
                 break;
             case AST_STMT_FUNC_DECL:
-                fprintf(out, "func %s(", cur->as.func_decl.name ? cur->as.func_decl.name : "");
+                fprintf(out, "def %s(", cur->as.func_decl.name ? cur->as.func_decl.name : "");
                 for (int i = 0; i < cur->as.func_decl.param_count; i++) {
                     if (i > 0) fprintf(out, ", ");
                     fprintf(out, "%s", cur->as.func_decl.param_names[i] ? cur->as.func_decl.param_names[i] : "");

@@ -469,7 +469,7 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
             new_cg_fn->body = stmt->as.func_decl.body;
             new_cg_fn->param_count = stmt->as.func_decl.param_count;
             new_cg_fn->param_names = stmt->as.func_decl.param_names;
-            new_cg_fn->scope = cg_scope_new(cg_fn ? cg_fn->scope : NULL);
+            new_cg_fn->scope = cg_scope_new(NULL);
             new_cg_fn->next = cg->functions;
             new_cg_fn->ret_slot = NULL;
             cg->functions = new_cg_fn;
