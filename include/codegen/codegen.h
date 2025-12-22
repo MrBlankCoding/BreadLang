@@ -92,6 +92,7 @@ typedef struct {
     LLVMValueRef fn_array_release;
     LLVMValueRef fn_dict_new;
     LLVMValueRef fn_dict_release;
+    LLVMValueRef fn_dict_keys;
     LLVMValueRef fn_string_create;
     LLVMValueRef fn_string_concat;
     LLVMValueRef fn_string_get_char;
@@ -155,6 +156,7 @@ typedef struct {
     LLVMTypeRef ty_array_release;
     LLVMTypeRef ty_dict_new;
     LLVMTypeRef ty_dict_release;
+    LLVMTypeRef ty_dict_keys;
     LLVMTypeRef ty_string_create;
     LLVMTypeRef ty_string_concat;
     LLVMTypeRef ty_string_get_char;
@@ -229,7 +231,7 @@ void cg_enter_scope(Cg* cg);
 void cg_leave_scope(Cg* cg);
 int cg_declare_var(Cg* cg, const char* name, const TypeDescriptor* type_desc, int is_const);
 CgVar* cg_find_var(Cg* cg, const char* name);
-int cg_declare_function_from_ast(Cg* cg, const ASTStmtFuncDecl* func_decl);
+int cg_declare_function_from_ast(Cg* cg, const ASTStmtFuncDecl* func_decl, const SourceLoc* loc);
 CgFunction* cg_find_function(Cg* cg, const char* name);
 void cg_error(Cg* cg, const char* msg, const char* name);
 void cg_error_at(Cg* cg, const char* msg, const char* name, const SourceLoc* loc);

@@ -237,6 +237,8 @@ static void cg_init(Cg* cg, LLVMModuleRef mod, LLVMBuilderRef builder) {
     cg->fn_dict_new = cg_declare_fn(cg, "bread_dict_new", cg->ty_dict_new);
     cg->ty_dict_release = LLVMFunctionType(cg->void_ty, (LLVMTypeRef[]){cg->i8_ptr}, 1, 0);
     cg->fn_dict_release = cg_declare_fn(cg, "bread_dict_release", cg->ty_dict_release);
+    cg->ty_dict_keys = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr}, 2, 0);
+    cg->fn_dict_keys = cg_declare_fn(cg, "bread_value_dict_keys_as_value", cg->ty_dict_keys);
     
     // String operations
     cg->ty_string_create = LLVMFunctionType(cg->i8_ptr, (LLVMTypeRef[]){cg->i8_ptr, cg->i64}, 2, 0);

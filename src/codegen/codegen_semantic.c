@@ -147,12 +147,12 @@ CgVar* cg_find_var(Cg* cg, const char* name) {
     return NULL;
 }
 
-int cg_declare_function_from_ast(Cg* cg, const ASTStmtFuncDecl* func_decl) {
+int cg_declare_function_from_ast(Cg* cg, const ASTStmtFuncDecl* func_decl, const SourceLoc* loc) {
     if (!cg || !func_decl || !func_decl->name) return 0;
     
     for (CgFunction* f = cg->functions; f; f = f->next) {
         if (strcmp(f->name, func_decl->name) == 0) {
-            cg_error(cg, "Function already declared", func_decl->name);
+            cg_error_at(cg, "Function already declared", func_decl->name, loc);
             return 0;
         }
     }
@@ -324,7 +324,7 @@ VarType cg_infer_expr_type_simple(Cg* cg, ASTExpr* expr) {
                 return TYPE_STRING;
             }
             
-            cg_error(cg, "Cannot index non-indexable type", NULL);
+            cg_error_at(cg, "Cannot index this type (only arrays, dictionaries, and strings can be indexed)", NULL, &expr->loc);
             return TYPE_NIL;
         }
         
@@ -632,24 +632,30 @@ int cg_analyze_expr(Cg* cg, ASTExpr* expr) {
         case AST_EXPR_CALL: {
             if (expr->as.call.name && strcmp(expr->as.call.name, "range") == 0) {
                 if (expr->as.call.arg_count != 1) {
-                    cg_error(cg, "Built-in function argument count mismatch", expr->as.call.name);
+                    cg_error_at(cg, "Built-in function 'range' expects 1 argument", expr->as.call.name, &expr->loc);
                     return 0;
                 }
             } else {
                 const BuiltinFunction* builtin = bread_builtin_lookup(expr->as.call.name);
                 if (builtin) {
                     if (builtin->param_count != expr->as.call.arg_count) {
-                        cg_error(cg, "Built-in function argument count mismatch", expr->as.call.name);
+                        char msg[256];
+                        snprintf(msg, sizeof(msg), "Built-in function expects %d argument(s), got %d", 
+                                builtin->param_count, expr->as.call.arg_count);
+                        cg_error_at(cg, msg, expr->as.call.name, &expr->loc);
                         return 0;
                     }
                 } else {
                     CgFunction* func = cg_find_function(cg, expr->as.call.name);
                     if (!func) {
-                        cg_error(cg, "Undefined function", expr->as.call.name);
+                        cg_error_at(cg, "Undefined function", expr->as.call.name, &expr->loc);
                         return 0;
                     }
                     if (func->param_count != expr->as.call.arg_count) {
-                        cg_error(cg, "Function argument count mismatch", expr->as.call.name);
+                        char msg[256];
+                        snprintf(msg, sizeof(msg), "Function expects %d argument(s), got %d", 
+                                func->param_count, expr->as.call.arg_count);
+                        cg_error_at(cg, msg, expr->as.call.name, &expr->loc);
                         return 0;
                     }
                 }
@@ -741,7 +747,7 @@ int cg_analyze_stmt(Cg* cg, ASTStmt* stmt) {
                     const TypeDescriptor* declared_type = stmt->as.var_decl.type_desc;
 
                     if (!type_descriptor_compatible(init_type, declared_type)) {
-                        cg_type_error(cg, "Type mismatch in variable initialization", declared_type, init_type);
+                        cg_type_error_at(cg, "Type mismatch in variable initialization", declared_type, init_type, &stmt->loc);
                         return 0;
                     }
                 }
@@ -751,11 +757,11 @@ int cg_analyze_stmt(Cg* cg, ASTStmt* stmt) {
         case AST_STMT_VAR_ASSIGN: {
             CgVar* var = cg_find_var(cg, stmt->as.var_assign.var_name);
             if (!var) {
-                cg_error(cg, "Undefined variable", stmt->as.var_assign.var_name);
+                cg_error_at(cg, "Undefined variable", stmt->as.var_assign.var_name, &stmt->loc);
                 return 0;
             }
             if (var->is_const) {
-                cg_error(cg, "Cannot assign to const variable", stmt->as.var_assign.var_name);
+                cg_error_at(cg, "Cannot assign to const variable", stmt->as.var_assign.var_name, &stmt->loc);
                 return 0;
             }
             if (!cg_analyze_expr(cg, stmt->as.var_assign.value)) return 0;
@@ -833,10 +839,26 @@ int cg_analyze_stmt(Cg* cg, ASTStmt* stmt) {
             if (!cg_analyze_expr(cg, stmt->as.for_in_stmt.iterable)) return 0;
             cg_enter_scope(cg);
             {
-                TypeDescriptor* nil_type = type_descriptor_create_primitive(TYPE_NIL);
-                if (!nil_type) return 0;
-                int ok = cg_declare_var(cg, stmt->as.for_in_stmt.var_name, nil_type, 0);
-                type_descriptor_free(nil_type);
+                // Infer the element type from the iterable
+                TypeDescriptor* iterable_type = cg_infer_expr_type_desc_simple(cg, stmt->as.for_in_stmt.iterable);
+                TypeDescriptor* element_type = NULL;
+                
+                if (iterable_type) {
+                    if (iterable_type->base_type == TYPE_ARRAY && iterable_type->params.array.element_type) {
+                        element_type = type_descriptor_clone(iterable_type->params.array.element_type);
+                    } else if (iterable_type->base_type == TYPE_DICT && iterable_type->params.dict.key_type) {
+                        // For dictionary iteration, we iterate over keys
+                        element_type = type_descriptor_clone(iterable_type->params.dict.key_type);
+                    }
+                    type_descriptor_free(iterable_type);
+                }
+                
+                if (!element_type) {
+                    element_type = type_descriptor_create_primitive(TYPE_NIL);
+                }
+                
+                int ok = cg_declare_var(cg, stmt->as.for_in_stmt.var_name, element_type, 0);
+                type_descriptor_free(element_type);
                 if (!ok) return 0;
             }
             if (stmt->as.for_in_stmt.body) {
@@ -875,7 +897,7 @@ int cg_semantic_analyze(Cg* cg, ASTStmtList* program) {
     // Pass uno, declare functions
     for (ASTStmt* stmt = program->head; stmt; stmt = stmt->next) {
         if (stmt->kind == AST_STMT_FUNC_DECL) {
-            if (!cg_declare_function_from_ast(cg, &stmt->as.func_decl)) {
+            if (!cg_declare_function_from_ast(cg, &stmt->as.func_decl, &stmt->loc)) {
                 return 0;
             }
         }

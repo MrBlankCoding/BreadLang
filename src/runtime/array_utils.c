@@ -71,3 +71,18 @@ int bread_value_array_length(BreadValue* array_val) {
     if (!array_val || array_val->type != TYPE_ARRAY) return 0;
     return bread_array_length(array_val->value.array_val);
 }
+
+BreadArray* bread_value_dict_keys(BreadValue* dict_val) {
+    if (!dict_val || dict_val->type != TYPE_DICT) return NULL;
+    return bread_dict_keys(dict_val->value.dict_val);
+}
+
+int bread_value_dict_keys_as_value(BreadValue* dict_val, BreadValue* out) {
+    if (!dict_val || dict_val->type != TYPE_DICT || !out) return 0;
+    
+    BreadArray* keys = bread_dict_keys(dict_val->value.dict_val);
+    if (!keys) return 0;
+    
+    bread_value_set_array(out, keys);
+    return 1;
+}

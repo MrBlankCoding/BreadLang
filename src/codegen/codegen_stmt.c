@@ -1,4 +1,5 @@
 #include "codegen_internal.h"
+#include "core/type_descriptor.h"
 
 int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stmt) {
     if (!cg || !stmt) return 0;
@@ -357,11 +358,36 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
             LLVMValueRef iterable = cg_build_expr(cg, cg_fn, val_size, stmt->as.for_in_stmt.iterable);
             if (!iterable) return 0;
 
+            // Determine the type of the iterable
+            TypeDescriptor* iterable_type = cg_infer_expr_type_desc_simple(cg, stmt->as.for_in_stmt.iterable);
+            if (!iterable_type) return 0;
+
+            LLVMValueRef keys_array = NULL;
+            LLVMValueRef actual_iterable = iterable;
+
+            // If it's a dictionary, get the keys array to iterate over
+            if (iterable_type->base_type == TYPE_DICT) {
+                keys_array = cg_alloc_value(cg, "dict.keys");
+                LLVMValueRef get_keys_args[] = {cg_value_to_i8_ptr(cg, iterable), cg_value_to_i8_ptr(cg, keys_array)};
+                LLVMValueRef success = LLVMBuildCall2(cg->builder, cg->ty_dict_keys, cg->fn_dict_keys, get_keys_args, 2, "");
+                
+                // Check if getting keys was successful
+                LLVMValueRef success_check = LLVMBuildICmp(cg->builder, LLVMIntNE, success, LLVMConstInt(cg->i32, 0, 0), "");
+                LLVMBasicBlockRef keys_success_block = LLVMAppendBasicBlock(fn, "keys.success");
+                LLVMBuildCondBr(cg->builder, success_check, keys_success_block, end_block);
+                LLVMPositionBuilderAtEnd(cg->builder, keys_success_block);
+                
+                actual_iterable = keys_array;
+            } else if (iterable_type->base_type != TYPE_ARRAY) {
+                type_descriptor_free(iterable_type);
+                return 0; // Only arrays and dictionaries are iterable
+            }
+
             LLVMValueRef index_slot = LLVMBuildAlloca(cg->builder, cg->i32, "forin.index");
             LLVMBuildStore(cg->builder, LLVMConstInt(cg->i32, 0, 0), index_slot);
 
             LLVMValueRef length = LLVMBuildCall2(cg->builder, cg->ty_array_length, cg->fn_array_length,
-                                                (LLVMValueRef[]){cg_value_to_i8_ptr(cg, iterable)}, 1, "forin.length");
+                                                (LLVMValueRef[]){cg_value_to_i8_ptr(cg, actual_iterable)}, 1, "forin.length");
 
             LLVMValueRef length_check = LLVMBuildICmp(cg->builder, LLVMIntSGT, length, LLVMConstInt(cg->i32, 0, 0), "");
             LLVMBasicBlockRef valid_length_block = LLVMAppendBasicBlock(fn, "forin.valid_length");
@@ -393,7 +419,7 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
             LLVMPositionBuilderAtEnd(cg->builder, body_block);
             
             LLVMValueRef element_tmp = cg_alloc_value(cg, "forin.element");
-            LLVMValueRef get_args[] = {cg_value_to_i8_ptr(cg, iterable), index_phi, cg_value_to_i8_ptr(cg, element_tmp)};
+            LLVMValueRef get_args[] = {cg_value_to_i8_ptr(cg, actual_iterable), index_phi, cg_value_to_i8_ptr(cg, element_tmp)};
             LLVMValueRef get_success = LLVMBuildCall2(cg->builder, cg->ty_array_get, cg->fn_array_get, get_args, 3, "");
             
             LLVMValueRef success_cmp = LLVMBuildICmp(cg->builder, LLVMIntNE, get_success, LLVMConstInt(cg->i32, 0, 0), "");
@@ -419,6 +445,7 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
             cg->current_loop_end = prev_loop_end;
             cg->current_loop_continue = prev_loop_continue;
 
+            type_descriptor_free(iterable_type);
             LLVMPositionBuilderAtEnd(cg->builder, end_block);
             return 1;
         }
