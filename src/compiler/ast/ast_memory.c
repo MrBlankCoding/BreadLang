@@ -203,3 +203,71 @@ void ast_free_stmt_list(ASTStmtList* stmts) {
     }
     free(stmts);
 }
+
+void ast_free_stmt(ASTStmt* stmt) {
+    if (!stmt) return;
+    switch (stmt->kind) {
+        case AST_STMT_VAR_DECL:
+            free(stmt->as.var_decl.var_name);
+            type_descriptor_free(stmt->as.var_decl.type_desc);
+            ast_free_expr(stmt->as.var_decl.init);
+            break;
+        case AST_STMT_VAR_ASSIGN:
+            free(stmt->as.var_assign.var_name);
+            ast_free_expr(stmt->as.var_assign.value);
+            break;
+        case AST_STMT_INDEX_ASSIGN:
+            ast_free_expr(stmt->as.index_assign.target);
+            ast_free_expr(stmt->as.index_assign.index);
+            ast_free_expr(stmt->as.index_assign.value);
+            break;
+        case AST_STMT_PRINT:
+            ast_free_expr(stmt->as.print.expr);
+            break;
+        case AST_STMT_EXPR:
+            ast_free_expr(stmt->as.expr.expr);
+            break;
+        case AST_STMT_IF:
+            ast_free_expr(stmt->as.if_stmt.condition);
+            ast_free_stmt_list(stmt->as.if_stmt.then_branch);
+            if (stmt->as.if_stmt.else_branch) ast_free_stmt_list(stmt->as.if_stmt.else_branch);
+            break;
+        case AST_STMT_WHILE:
+            ast_free_expr(stmt->as.while_stmt.condition);
+            ast_free_stmt_list(stmt->as.while_stmt.body);
+            break;
+        case AST_STMT_FOR:
+            free(stmt->as.for_stmt.var_name);
+            ast_free_expr(stmt->as.for_stmt.range_expr);
+            ast_free_stmt_list(stmt->as.for_stmt.body);
+            break;
+        case AST_STMT_FOR_IN:
+            free(stmt->as.for_in_stmt.var_name);
+            ast_free_expr(stmt->as.for_in_stmt.iterable);
+            ast_free_stmt_list(stmt->as.for_in_stmt.body);
+            break;
+        case AST_STMT_FUNC_DECL:
+            free(stmt->as.func_decl.name);
+            for (int i = 0; i < stmt->as.func_decl.param_count; i++) {
+                free(stmt->as.func_decl.param_names[i]);
+                if (stmt->as.func_decl.param_type_descs && stmt->as.func_decl.param_type_descs[i]) {
+                    type_descriptor_free(stmt->as.func_decl.param_type_descs[i]);
+                }
+                if (stmt->as.func_decl.param_defaults && stmt->as.func_decl.param_defaults[i]) {
+                    ast_free_expr(stmt->as.func_decl.param_defaults[i]);
+                }
+            }
+            free(stmt->as.func_decl.param_names);
+            free(stmt->as.func_decl.param_type_descs);
+            free(stmt->as.func_decl.param_defaults);
+            type_descriptor_free(stmt->as.func_decl.return_type_desc);
+            ast_free_stmt_list(stmt->as.func_decl.body);
+            break;
+        case AST_STMT_RETURN:
+            ast_free_expr(stmt->as.ret.expr);
+            break;
+        default:
+            break;
+    }
+    free(stmt);
+}

@@ -65,6 +65,17 @@ static int files_equal_normalized_newlines(const char* a, const char* b) {
     }
     cb[wb] = '\0';
 
+    // Trim trailing whitespace (spaces, tabs, newlines)
+    while (wa > 0 && (ca[wa-1] == ' ' || ca[wa-1] == '\t' || ca[wa-1] == '\n')) {
+        wa--;
+    }
+    ca[wa] = '\0';
+
+    while (wb > 0 && (cb[wb-1] == ' ' || cb[wb-1] == '\t' || cb[wb-1] == '\n')) {
+        wb--;
+    }
+    cb[wb] = '\0';
+
     int eq = (wa == wb) && (memcmp(ca, cb, wa) == 0);
     free(ca);
     free(cb);

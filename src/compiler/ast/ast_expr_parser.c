@@ -491,6 +491,18 @@ static ASTExpr* parse_primary(const char** expr) {
             return e;
         }
 
+        // Check for empty dictionary syntax [:]
+        if (**expr == ':' && *(*expr + 1) == ']') {
+            *expr += 2; // Skip ":]"
+            ASTExpr* e = ast_expr_new(AST_EXPR_DICT);
+            if (!e) return NULL;
+            e->as.dict.entry_count = 0;
+            e->as.dict.entries = NULL;
+            e->tag.is_known = 1;
+            e->tag.type = TYPE_DICT;
+            return e;
+        }
+
         const char* look = *expr;
         int depth = 0;
         int in_string = 0;

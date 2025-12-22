@@ -405,20 +405,43 @@ ASTStmt* parse_stmt(const char** code) {
         if (strncmp(*code, "else ", 5) == 0) {
             *code += 5;
             skip_whitespace(code);
-            if (**code != '{') {
-                ast_free_expr(cond);
-                ast_free_stmt_list(then_branch);
-                return NULL;
+            
+            // Check for "else if" pattern
+            if (strncmp(*code, "if ", 3) == 0) {
+                // Parse the "else if" as a nested if statement
+                ASTStmt* nested_if = parse_stmt(code);
+                if (!nested_if) {
+                    ast_free_expr(cond);
+                    ast_free_stmt_list(then_branch);
+                    return NULL;
+                }
+                
+                // Create a statement list containing just the nested if
+                else_branch = ast_stmt_list_new();
+                if (!else_branch) {
+                    ast_free_expr(cond);
+                    ast_free_stmt_list(then_branch);
+                    ast_free_stmt(nested_if);
+                    return NULL;
+                }
+                ast_stmt_list_add(else_branch, nested_if);
+            } else {
+                // Regular else block
+                if (**code != '{') {
+                    ast_free_expr(cond);
+                    ast_free_stmt_list(then_branch);
+                    return NULL;
+                }
+                (*code)++;
+                else_branch = parse_block(code);
+                if (**code != '}') {
+                    ast_free_expr(cond);
+                    ast_free_stmt_list(then_branch);
+                    ast_free_stmt_list(else_branch);
+                    return NULL;
+                }
+                (*code)++;
             }
-            (*code)++;
-            else_branch = parse_block(code);
-            if (**code != '}') {
-                ast_free_expr(cond);
-                ast_free_stmt_list(then_branch);
-                ast_free_stmt_list(else_branch);
-                return NULL;
-            }
-            (*code)++;
         }
 
         ASTStmt* s = ast_stmt_new(AST_STMT_IF);

@@ -143,6 +143,19 @@ int type_descriptor_compatible(const TypeDescriptor* from, const TypeDescriptor*
     // Exact match is always compatible
     if (type_descriptor_equals(from, to)) return 1;
     
+    // Special case: empty array [nil] can be assigned to any array type
+    if (from->base_type == TYPE_ARRAY && to->base_type == TYPE_ARRAY &&
+        from->params.array.element_type && from->params.array.element_type->base_type == TYPE_NIL) {
+        return 1;
+    }
+    
+    // Special case: empty dict {nil:nil} can be assigned to any dict type
+    if (from->base_type == TYPE_DICT && to->base_type == TYPE_DICT &&
+        from->params.dict.key_type && from->params.dict.key_type->base_type == TYPE_NIL &&
+        from->params.dict.value_type && from->params.dict.value_type->base_type == TYPE_NIL) {
+        return 1;
+    }
+    
     // nil can be assigned to any optional type
     if (from->base_type == TYPE_NIL && to->base_type == TYPE_OPTIONAL) {
         return 1;
