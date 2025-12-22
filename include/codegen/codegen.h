@@ -38,6 +38,22 @@ typedef struct CgFunction {
     LLVMValueRef ret_slot;
 } CgFunction;
 
+typedef struct CgClass {
+    char* name;
+    char* parent_name;
+    int field_count;
+    char** field_names;
+    TypeDescriptor** field_types;
+    int method_count;
+    ASTStmtFuncDecl** methods;
+    ASTStmtFuncDecl* constructor;
+    struct CgClass* next;
+    
+    // Runtime method information
+    LLVMValueRef* method_functions;  // Generated LLVM functions for methods
+    char** method_names;             // Method names for lookup
+} CgClass;
+
 typedef struct {
     LLVMModuleRef mod;
     LLVMBuilderRef builder;
@@ -185,6 +201,7 @@ typedef struct {
     LLVMBasicBlockRef current_loop_continue;
 
     CgFunction* functions;
+    CgClass* classes;
     LLVMTypeRef value_type;
     LLVMTypeRef value_ptr_type;
     
@@ -233,6 +250,8 @@ int cg_declare_var(Cg* cg, const char* name, const TypeDescriptor* type_desc, in
 CgVar* cg_find_var(Cg* cg, const char* name);
 int cg_declare_function_from_ast(Cg* cg, const ASTStmtFuncDecl* func_decl, const SourceLoc* loc);
 CgFunction* cg_find_function(Cg* cg, const char* name);
+int cg_declare_class_from_ast(Cg* cg, const ASTStmtClassDecl* class_decl, const SourceLoc* loc);
+CgClass* cg_find_class(Cg* cg, const char* name);
 void cg_error(Cg* cg, const char* msg, const char* name);
 void cg_error_at(Cg* cg, const char* msg, const char* name, const SourceLoc* loc);
 void cg_type_error_at(Cg* cg, const char* msg, const TypeDescriptor* expected, const TypeDescriptor* actual, const SourceLoc* loc);

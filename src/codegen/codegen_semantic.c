@@ -183,6 +183,67 @@ CgFunction* cg_find_function(Cg* cg, const char* name) {
     return NULL;
 }
 
+CgClass* cg_find_class(Cg* cg, const char* name) {
+    if (!cg || !name) return NULL;
+    
+    for (CgClass* c = cg->classes; c; c = c->next) {
+        if (strcmp(c->name, name) == 0) {
+            return c;
+        }
+    }
+    return NULL;
+}
+
+int cg_declare_class_from_ast(Cg* cg, const ASTStmtClassDecl* class_decl, const SourceLoc* loc) {
+    if (!cg || !class_decl || !class_decl->name) return 0;
+    
+    // Check if class already exists
+    if (cg_find_class(cg, class_decl->name)) {
+        cg_error_at(cg, "Class already declared", class_decl->name, loc);
+        return 0;
+    }
+    
+    // Create new class
+    CgClass* new_class = malloc(sizeof(CgClass));
+    if (!new_class) return 0;
+    
+    new_class->name = strdup(class_decl->name);
+    new_class->parent_name = class_decl->parent_name ? strdup(class_decl->parent_name) : NULL;
+    new_class->field_count = class_decl->field_count;
+    new_class->field_names = class_decl->field_names;
+    new_class->field_types = class_decl->field_types;
+    new_class->method_count = class_decl->method_count;
+    new_class->methods = class_decl->methods;
+    new_class->constructor = class_decl->constructor;
+    new_class->next = cg->classes;
+    
+    // Initialize runtime method information
+    new_class->method_functions = NULL;
+    new_class->method_names = NULL;
+    if (new_class->method_count > 0) {
+        new_class->method_functions = malloc(sizeof(LLVMValueRef) * new_class->method_count);
+        new_class->method_names = malloc(sizeof(char*) * new_class->method_count);
+        if (!new_class->method_functions || !new_class->method_names) {
+            free(new_class->method_functions);
+            free(new_class->method_names);
+            free(new_class->name);
+            free(new_class->parent_name);
+            free(new_class);
+            return 0;
+        }
+        
+        // Copy method names for runtime lookup
+        for (int i = 0; i < new_class->method_count; i++) {
+            new_class->method_names[i] = strdup(new_class->methods[i]->name);
+            new_class->method_functions[i] = NULL; // Will be set during codegen
+        }
+    }
+    
+    cg->classes = new_class;
+    
+    return 1;
+}
+
 VarType cg_infer_expr_type_simple(Cg* cg, ASTExpr* expr) {
     if (!expr) return TYPE_NIL;
     
@@ -333,8 +394,34 @@ VarType cg_infer_expr_type_simple(Cg* cg, ASTExpr* expr) {
             return TYPE_INT;
         }
         
+        case AST_EXPR_CALL: {
+            // Check for class constructors
+            CgClass* class = cg_find_class(cg, expr->as.call.name);
+            if (class) {
+                return TYPE_CLASS;
+            }
+            
+            // Check for user-defined functions
+            CgFunction* func = cg_find_function(cg, expr->as.call.name);
+            if (func) {
+                return func->return_type;
+            }
+            
+            // Check for builtins
+            const BuiltinFunction* builtin = bread_builtin_lookup(expr->as.call.name);
+            if (builtin) {
+                return builtin->return_type;
+            }
+            
+            return TYPE_NIL;
+        }
+        
         case AST_EXPR_STRUCT_LITERAL: {
             return TYPE_STRUCT;
+        }
+        
+        case AST_EXPR_CLASS_LITERAL: {
+            return TYPE_CLASS;
         }
         
         default:
@@ -389,6 +476,13 @@ TypeDescriptor* cg_infer_expr_type_desc_simple(Cg* cg, ASTExpr* expr) {
                 } else {
                     return type_descriptor_create_primitive(func->return_type);
                 }
+            }
+
+            // Check for class constructors
+            CgClass* class = cg_find_class(cg, expr->as.call.name);
+            if (class) {
+                return type_descriptor_create_class(class->name, class->parent_name, 
+                                                  class->field_count, class->field_names, class->field_types);
             }
 
             return type_descriptor_create_primitive(TYPE_NIL);
@@ -656,6 +750,59 @@ TypeDescriptor* cg_infer_expr_type_desc_simple(Cg* cg, ASTExpr* expr) {
             return struct_desc;
         }
 
+        case AST_EXPR_CLASS_LITERAL: {
+            // For class literals, we need to look up the class type
+            // For now, create a basic class type descriptor
+            // In a full implementation, we'd validate against declared class types
+            char** field_names = NULL;
+            TypeDescriptor** field_types = NULL;
+            
+            if (expr->as.class_literal.field_count > 0) {
+                field_names = malloc(expr->as.class_literal.field_count * sizeof(char*));
+                field_types = malloc(expr->as.class_literal.field_count * sizeof(TypeDescriptor*));
+                
+                if (!field_names || !field_types) {
+                    free(field_names);
+                    free(field_types);
+                    return NULL;
+                }
+                
+                for (int i = 0; i < expr->as.class_literal.field_count; i++) {
+                    field_names[i] = strdup(expr->as.class_literal.field_names[i]);
+                    field_types[i] = cg_infer_expr_type_desc_simple(cg, expr->as.class_literal.field_values[i]);
+                    if (!field_types[i]) {
+                        for (int j = 0; j < i; j++) {
+                            free(field_names[j]);
+                            type_descriptor_free(field_types[j]);
+                        }
+                        free(field_names);
+                        free(field_types);
+                        return NULL;
+                    }
+                }
+            }
+            
+            TypeDescriptor* class_desc = type_descriptor_create_class(
+                expr->as.class_literal.class_name,
+                NULL,  // No parent for literals
+                expr->as.class_literal.field_count,
+                field_names,
+                field_types
+            );
+            
+            // Clean up temporary arrays
+            if (field_names) {
+                for (int i = 0; i < expr->as.class_literal.field_count; i++) {
+                    free(field_names[i]);
+                    type_descriptor_free(field_types[i]);
+                }
+                free(field_names);
+                free(field_types);
+            }
+            
+            return class_desc;
+        }
+
         default:
             return NULL;
     }
@@ -703,15 +850,31 @@ int cg_analyze_expr(Cg* cg, ASTExpr* expr) {
                     }
                 } else {
                     CgFunction* func = cg_find_function(cg, expr->as.call.name);
-                    if (!func) {
-                        cg_error_at(cg, "Undefined function", expr->as.call.name, &expr->loc);
-                        return 0;
-                    }
-                    if (func->param_count != expr->as.call.arg_count) {
-                        char msg[256];
-                        snprintf(msg, sizeof(msg), "Function expects %d argument(s), got %d", 
-                                func->param_count, expr->as.call.arg_count);
-                        cg_error_at(cg, msg, expr->as.call.name, &expr->loc);
+                    CgClass* class = cg_find_class(cg, expr->as.call.name);
+                    
+                    if (func) {
+                        if (func->param_count != expr->as.call.arg_count) {
+                            char msg[256];
+                            snprintf(msg, sizeof(msg), "Function expects %d argument(s), got %d", 
+                                    func->param_count, expr->as.call.arg_count);
+                            cg_error_at(cg, msg, expr->as.call.name, &expr->loc);
+                            return 0;
+                        }
+                    } else if (class) {
+                        // Check if class has constructor and validate argument count
+                        if (!class->constructor) {
+                            cg_error_at(cg, "Class has no constructor", expr->as.call.name, &expr->loc);
+                            return 0;
+                        }
+                        if (class->constructor->param_count != expr->as.call.arg_count) {
+                            char msg[256];
+                            snprintf(msg, sizeof(msg), "Constructor expects %d argument(s), got %d", 
+                                    class->constructor->param_count, expr->as.call.arg_count);
+                            cg_error_at(cg, msg, expr->as.call.name, &expr->loc);
+                            return 0;
+                        }
+                    } else {
+                        cg_error_at(cg, "Undefined function or class", expr->as.call.name, &expr->loc);
                         return 0;
                     }
                 }
@@ -759,6 +922,11 @@ int cg_analyze_expr(Cg* cg, ASTExpr* expr) {
                 if (!cg_analyze_expr(cg, expr->as.struct_literal.field_values[i])) return 0;
             }
             break;
+        case AST_EXPR_CLASS_LITERAL:
+            for (int i = 0; i < expr->as.class_literal.field_count; i++) {
+                if (!cg_analyze_expr(cg, expr->as.class_literal.field_values[i])) return 0;
+            }
+            break;
         default:
             // Literals are valid
             break;
@@ -795,22 +963,48 @@ int cg_analyze_stmt(Cg* cg, ASTStmt* stmt) {
     
     switch (stmt->kind) {
         case AST_STMT_VAR_DECL: {
-            if (!cg_declare_var(cg, stmt->as.var_decl.var_name, stmt->as.var_decl.type_desc, stmt->as.var_decl.is_const)) {
-                return 0;
-            }
+            // First analyze the initialization expression if present
             if (stmt->as.var_decl.init) {
                 if (!cg_analyze_expr(cg, stmt->as.var_decl.init)) {
                     return 0;
                 }
-                
-                if (stmt->as.var_decl.init->tag.is_known && stmt->as.var_decl.init->tag.type_desc) {
-                    const TypeDescriptor* init_type = stmt->as.var_decl.init->tag.type_desc;
-                    const TypeDescriptor* declared_type = stmt->as.var_decl.type_desc;
+            }
+            
+            // Handle type inference when no explicit type is provided
+            TypeDescriptor* actual_type_desc = stmt->as.var_decl.type_desc;
+            if (!actual_type_desc && stmt->as.var_decl.init && 
+                stmt->as.var_decl.init->tag.is_known && stmt->as.var_decl.init->tag.type_desc) {
+                // Infer type from initialization expression
+                actual_type_desc = type_descriptor_clone(stmt->as.var_decl.init->tag.type_desc);
+                stmt->as.var_decl.type_desc = actual_type_desc;
+                stmt->as.var_decl.type = actual_type_desc->base_type;
+            }
+            
+            // Check if the declared type is actually a class (parsed as struct) BEFORE declaring the variable
+            if (actual_type_desc && actual_type_desc->base_type == TYPE_STRUCT) {
+                CgClass* class = cg_find_class(cg, actual_type_desc->params.struct_type.name);
+                if (class) {
+                    // Replace struct type descriptor with class type descriptor
+                    type_descriptor_free(actual_type_desc);
+                    actual_type_desc = type_descriptor_create_class(class->name, class->parent_name, 
+                                                                  class->field_count, class->field_names, class->field_types);
+                    stmt->as.var_decl.type_desc = actual_type_desc;
+                }
+            }
+            
+            if (!cg_declare_var(cg, stmt->as.var_decl.var_name, stmt->as.var_decl.type_desc, stmt->as.var_decl.is_const)) {
+                return 0;
+            }
+            
+            // Type compatibility check (only if we have both types)
+            if (stmt->as.var_decl.init && stmt->as.var_decl.init->tag.is_known && 
+                stmt->as.var_decl.init->tag.type_desc && stmt->as.var_decl.type_desc) {
+                const TypeDescriptor* init_type = stmt->as.var_decl.init->tag.type_desc;
+                const TypeDescriptor* declared_type = stmt->as.var_decl.type_desc;
 
-                    if (!type_descriptor_compatible(init_type, declared_type)) {
-                        cg_type_error_at(cg, "Type mismatch in variable initialization", declared_type, init_type, &stmt->loc);
-                        return 0;
-                    }
+                if (!type_descriptor_compatible(init_type, declared_type)) {
+                    cg_type_error_at(cg, "Type mismatch in variable initialization", declared_type, init_type, &stmt->loc);
+                    return 0;
                 }
             }
             break;
@@ -938,6 +1132,13 @@ int cg_analyze_stmt(Cg* cg, ASTStmt* stmt) {
         case AST_STMT_STRUCT_DECL: {
             // Struct declarations are registered during semantic analysis
             // For now, we just validate that the struct is well-formed
+            return 1;
+        }
+        case AST_STMT_CLASS_DECL: {
+            // Register the class declaration
+            if (!cg_declare_class_from_ast(cg, &stmt->as.class_decl, &stmt->loc)) {
+                return 0;
+            }
             return 1;
         }
         case AST_STMT_RETURN:

@@ -282,6 +282,13 @@ static void analyze_expr_stability(ASTExpr* expr) {
             }
             info->stability = STABILITY_UNSTABLE; // Structs are mutable
             break;
+        case AST_EXPR_CLASS_LITERAL:
+            // Analyze class field values
+            for (int i = 0; i < expr->as.class_literal.field_count; i++) {
+                analyze_expr_stability(expr->as.class_literal.field_values[i]);
+            }
+            info->stability = STABILITY_UNSTABLE; // Classes are mutable
+            break;
     }
 }
 
@@ -414,6 +421,9 @@ static void analyze_stmt_stability(ASTStmt* stmt) {
             break;
         case AST_STMT_STRUCT_DECL:
             // No expressions to analyze in struct declarations
+            break;
+        case AST_STMT_CLASS_DECL:
+            // No expressions to analyze in class declarations
             break;
     }
 }

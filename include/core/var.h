@@ -13,6 +13,7 @@ typedef enum {
     TYPE_DICT,
     TYPE_OPTIONAL,
     TYPE_STRUCT,
+    TYPE_CLASS,
     TYPE_NIL
 } VarType;
 
@@ -35,6 +36,16 @@ typedef enum {
              char** field_names;
              struct TypeDescriptor** field_types;
          } struct_type;
+         struct {
+             char* name;
+             char* parent_name;
+             int field_count;
+             char** field_names;
+             struct TypeDescriptor** field_types;
+             int method_count;
+             char** method_names;
+             struct TypeDescriptor** method_signatures;
+         } class_type;
      } params;
  } TypeDescriptor;
 
@@ -69,6 +80,7 @@ typedef union {
     BreadDict* dict_val;
     BreadOptional* optional_val;
     BreadStruct* struct_val;
+    BreadClass* class_val;
 } VarValue;
 
 typedef struct {

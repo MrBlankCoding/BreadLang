@@ -31,7 +31,12 @@ set(BREADLANG_SOURCES
     
     # Core source files
     src/core/function.c
-    src/core/value.c
+    src/core/value_core.c
+    src/core/value_array.c
+    src/core/value_dict.c
+    src/core/value_optional.c
+    src/core/value_struct.c
+    src/core/value_class.c
     src/core/var.c
     src/core/type_descriptor.c
     

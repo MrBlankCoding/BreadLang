@@ -513,6 +513,102 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
             // The actual struct type creation is done in the semantic analysis phase
             return 1;
         }
+        case AST_STMT_CLASS_DECL: {
+            // Save current builder position
+            LLVMBasicBlockRef saved_bb = LLVMGetInsertBlock(cg->builder);
+            
+            // Generate LLVM functions for class methods
+            CgClass* class = cg_find_class(cg, stmt->as.class_decl.name);
+            if (!class) {
+                fprintf(stderr, "Error: Class '%s' not found during codegen\n", stmt->as.class_decl.name);
+                return 0;
+            }
+            
+            // Generate constructor function if it exists
+            if (class->constructor) {
+                char constructor_name[256];
+                snprintf(constructor_name, sizeof(constructor_name), "%s_init", class->name);
+                
+                // Constructor has self as first parameter, then the declared parameters
+                int param_total = class->constructor->param_count + 2; // +1 for return slot, +1 for self
+                LLVMTypeRef* param_types = malloc(sizeof(LLVMTypeRef) * param_total);
+                if (!param_types) return 0;
+                
+                param_types[0] = cg->value_ptr_type; // return slot
+                param_types[1] = cg->value_ptr_type; // self parameter
+                for (int i = 0; i < class->constructor->param_count; i++) {
+                    param_types[i + 2] = cg->value_ptr_type;
+                }
+                
+                LLVMTypeRef constructor_type = LLVMFunctionType(cg->void_ty, param_types, param_total, 0);
+                LLVMValueRef constructor_fn = LLVMAddFunction(cg->mod, constructor_name, constructor_type);
+                free(param_types);
+                
+                // Generate constructor body (temporarily disabled for debugging)
+                LLVMBasicBlockRef entry_bb = LLVMAppendBasicBlock(constructor_fn, "entry");
+                LLVMPositionBuilderAtEnd(cg->builder, entry_bb);
+                
+                // Simple constructor that just returns
+                LLVMBuildRetVoid(cg->builder);
+                
+                // Store constructor function for runtime lookup
+                if (class->method_functions && class->method_count > 0) {
+                    // Find the init method and store its function
+                    for (int i = 0; i < class->method_count; i++) {
+                        if (strcmp(class->method_names[i], "init") == 0) {
+                            class->method_functions[i] = constructor_fn;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // Generate functions for other methods
+            for (int i = 0; i < class->method_count; i++) {
+                ASTStmtFuncDecl* method = class->methods[i];
+                if (!method || strcmp(method->name, "init") == 0) continue; // Skip constructor, already handled
+                
+                char method_name[256];
+                snprintf(method_name, sizeof(method_name), "%s_%s", class->name, method->name);
+                
+                // Method has self as first parameter, then the declared parameters
+                int param_total = method->param_count + 2; // +1 for return slot, +1 for self
+                LLVMTypeRef* param_types = malloc(sizeof(LLVMTypeRef) * param_total);
+                if (!param_types) return 0;
+                
+                param_types[0] = cg->value_ptr_type; // return slot
+                param_types[1] = cg->value_ptr_type; // self parameter
+                for (int j = 0; j < method->param_count; j++) {
+                    param_types[j + 2] = cg->value_ptr_type;
+                }
+                
+                LLVMTypeRef method_type = LLVMFunctionType(cg->void_ty, param_types, param_total, 0);
+                LLVMValueRef method_fn = LLVMAddFunction(cg->mod, method_name, method_type);
+                free(param_types);
+                
+                // Generate method body (temporarily disabled for debugging)
+                LLVMBasicBlockRef entry_bb = LLVMAppendBasicBlock(method_fn, "entry");
+                LLVMPositionBuilderAtEnd(cg->builder, entry_bb);
+                
+                // Simple method that returns nil
+                LLVMValueRef return_slot = LLVMGetParam(method_fn, 0);
+                LLVMValueRef nil_val = cg_alloc_value(cg, "nil_ret");
+                LLVMValueRef args[] = { cg_value_to_i8_ptr(cg, nil_val) };
+                LLVMBuildCall2(cg->builder, cg->ty_value_set_nil, cg->fn_value_set_nil, args, 1, "");
+                cg_copy_value_into(cg, return_slot, nil_val);
+                LLVMBuildRetVoid(cg->builder);
+                
+                // Store method function for runtime lookup
+                class->method_functions[i] = method_fn;
+            }
+            
+            // Restore builder position
+            if (saved_bb) {
+                LLVMPositionBuilderAtEnd(cg->builder, saved_bb);
+            }
+            
+            return 1;
+        }
         default:
             fprintf(stderr, "Codegen not implemented for stmt kind %d\n", stmt->kind);
             return 0;

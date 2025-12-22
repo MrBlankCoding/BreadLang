@@ -21,6 +21,7 @@
 #include "core/var.h"
 #include "core/function.h"
 #include "codegen/codegen.h"
+#include "../codegen/codegen_internal.h"
 
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
@@ -409,6 +410,116 @@ static int bread_llvm_build_module_from_program(const ASTStmtList* program, LLVM
         }
     }
     
+    // Generate method bodies for classes
+    for (CgClass* c = cg.classes; c; c = c->next) {
+        // Generate constructor body
+        if (c->constructor && c->method_functions) {
+            // Find constructor function
+            LLVMValueRef constructor_fn = NULL;
+            for (int i = 0; i < c->method_count; i++) {
+                if (strcmp(c->method_names[i], "init") == 0) {
+                    constructor_fn = c->method_functions[i];
+                    break;
+                }
+            }
+            
+            if (constructor_fn && LLVMCountBasicBlocks(constructor_fn) == 0) {
+                LLVMBasicBlockRef constructor_entry = LLVMAppendBasicBlock(constructor_fn, "entry");
+                LLVMPositionBuilderAtEnd(builder, constructor_entry);
+                
+                // Create a temporary function context for the constructor
+                CgFunction temp_fn;
+                temp_fn.ret_slot = LLVMGetParam(constructor_fn, 0);
+                temp_fn.scope = cg_scope_new(NULL);
+                
+                // Add self parameter to scope
+                LLVMValueRef self_param = LLVMGetParam(constructor_fn, 1);
+                LLVMValueRef self_alloca = LLVMBuildAlloca(builder, cg.value_type, "self");
+                cg_scope_add_var(temp_fn.scope, "self", self_alloca);
+                
+                LLVMValueRef self_copy_args[] = {
+                    LLVMBuildBitCast(builder, self_param, cg.i8_ptr, ""),
+                    LLVMBuildBitCast(builder, self_alloca, cg.i8_ptr, "")
+                };
+                (void)LLVMBuildCall2(builder, cg.ty_value_copy, cg.fn_value_copy, self_copy_args, 2, "");
+                
+                // Add constructor parameters to scope
+                for (int i = 0; i < c->constructor->param_count; i++) {
+                    LLVMValueRef param_val = LLVMGetParam(constructor_fn, (unsigned)(i + 2)); // +2 for ret_slot and self
+                    LLVMValueRef alloca = LLVMBuildAlloca(builder, cg.value_type, c->constructor->param_names[i]);
+                    cg_scope_add_var(temp_fn.scope, c->constructor->param_names[i], alloca);
+                    
+                    LLVMValueRef copy_args[] = {
+                        LLVMBuildBitCast(builder, param_val, cg.i8_ptr, ""),
+                        LLVMBuildBitCast(builder, alloca, cg.i8_ptr, "")
+                    };
+                    (void)LLVMBuildCall2(builder, cg.ty_value_copy, cg.fn_value_copy, copy_args, 2, "");
+                }
+                
+                // Generate constructor body
+                if (!cg_build_stmt_list(&cg, &temp_fn, val_size, c->constructor->body)) {
+                    LLVMDisposeBuilder(builder);
+                    LLVMDisposeModule(mod);
+                    return 0;
+                }
+                if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(builder)) == NULL) {
+                    LLVMBuildRetVoid(builder);
+                }
+            }
+        }
+        
+        // Generate other method bodies
+        for (int i = 0; i < c->method_count; i++) {
+            ASTStmtFuncDecl* method = c->methods[i];
+            if (!method || strcmp(method->name, "init") == 0) continue; // Skip constructor
+            
+            LLVMValueRef method_fn = c->method_functions[i];
+            if (method_fn && LLVMCountBasicBlocks(method_fn) == 0) {
+                LLVMBasicBlockRef method_entry = LLVMAppendBasicBlock(method_fn, "entry");
+                LLVMPositionBuilderAtEnd(builder, method_entry);
+                
+                // Create a temporary function context for the method
+                CgFunction temp_fn;
+                temp_fn.ret_slot = LLVMGetParam(method_fn, 0);
+                temp_fn.scope = cg_scope_new(NULL);
+                
+                // Add self parameter to scope
+                LLVMValueRef self_param = LLVMGetParam(method_fn, 1);
+                LLVMValueRef self_alloca = LLVMBuildAlloca(builder, cg.value_type, "self");
+                cg_scope_add_var(temp_fn.scope, "self", self_alloca);
+                
+                LLVMValueRef self_copy_args[] = {
+                    LLVMBuildBitCast(builder, self_param, cg.i8_ptr, ""),
+                    LLVMBuildBitCast(builder, self_alloca, cg.i8_ptr, "")
+                };
+                (void)LLVMBuildCall2(builder, cg.ty_value_copy, cg.fn_value_copy, self_copy_args, 2, "");
+                
+                // Add method parameters to scope
+                for (int j = 0; j < method->param_count; j++) {
+                    LLVMValueRef param_val = LLVMGetParam(method_fn, (unsigned)(j + 2)); // +2 for ret_slot and self
+                    LLVMValueRef alloca = LLVMBuildAlloca(builder, cg.value_type, method->param_names[j]);
+                    cg_scope_add_var(temp_fn.scope, method->param_names[j], alloca);
+                    
+                    LLVMValueRef copy_args[] = {
+                        LLVMBuildBitCast(builder, param_val, cg.i8_ptr, ""),
+                        LLVMBuildBitCast(builder, alloca, cg.i8_ptr, "")
+                    };
+                    (void)LLVMBuildCall2(builder, cg.ty_value_copy, cg.fn_value_copy, copy_args, 2, "");
+                }
+                
+                // Generate method body
+                if (!cg_build_stmt_list(&cg, &temp_fn, val_size, method->body)) {
+                    LLVMDisposeBuilder(builder);
+                    LLVMDisposeModule(mod);
+                    return 0;
+                }
+                if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(builder)) == NULL) {
+                    LLVMBuildRetVoid(builder);
+                }
+            }
+        }
+    }
+    
     LLVMPositionBuilderAtEnd(builder, main_block);
     // LLVM optimization passes disabled (legacy pass manager removed)
 
@@ -582,7 +693,12 @@ static int bread_llvm_link_executable_with_clang(const char* obj_path, const cha
     char value_ops_path[PATH_MAX];
     char builtins_path[PATH_MAX];
     char error_path[PATH_MAX];
-    char value_path[PATH_MAX];
+    char value_core_path[PATH_MAX];
+    char value_array_path[PATH_MAX];
+    char value_dict_path[PATH_MAX];
+    char value_optional_path[PATH_MAX];
+    char value_struct_path[PATH_MAX];
+    char value_class_path[PATH_MAX];
     char var_path[PATH_MAX];
     char function_path[PATH_MAX];
     char type_descriptor_path[PATH_MAX];
@@ -609,7 +725,12 @@ static int bread_llvm_link_executable_with_clang(const char* obj_path, const cha
     snprintf(error_path, sizeof(error_path), "%s/src/runtime/error.c", root_dir);
     
     // Core types and variables
-    snprintf(value_path, sizeof(value_path), "%s/src/core/value.c", root_dir);
+    snprintf(value_core_path, sizeof(value_core_path), "%s/src/core/value_core.c", root_dir);
+    snprintf(value_array_path, sizeof(value_array_path), "%s/src/core/value_array.c", root_dir);
+    snprintf(value_dict_path, sizeof(value_dict_path), "%s/src/core/value_dict.c", root_dir);
+    snprintf(value_optional_path, sizeof(value_optional_path), "%s/src/core/value_optional.c", root_dir);
+    snprintf(value_struct_path, sizeof(value_struct_path), "%s/src/core/value_struct.c", root_dir);
+    snprintf(value_class_path, sizeof(value_class_path), "%s/src/core/value_class.c", root_dir);
     snprintf(var_path, sizeof(var_path), "%s/src/core/var.c", root_dir);
     snprintf(function_path, sizeof(function_path), "%s/src/core/function.c", root_dir);
     snprintf(type_descriptor_path, sizeof(type_descriptor_path), "%s/src/core/type_descriptor.c", root_dir);
@@ -636,7 +757,9 @@ static int bread_llvm_link_executable_with_clang(const char* obj_path, const cha
                 strlen(string_ops_path) + strlen(operators_path) + 
                 strlen(array_utils_path) + strlen(value_ops_path) + 
                 strlen(builtins_path) + strlen(error_path) + 
-                strlen(value_path) + strlen(var_path) + 
+                strlen(value_core_path) + strlen(value_array_path) + strlen(value_dict_path) + 
+                strlen(value_optional_path) + strlen(value_struct_path) + strlen(value_class_path) + 
+                strlen(var_path) + 
                 strlen(function_path) + strlen(type_descriptor_path) + strlen(ast_path) + 
                 strlen(expr_path) + strlen(expr_ops_path) + 
                 strlen(ast_memory_path) + strlen(ast_types_path) + 
@@ -655,22 +778,25 @@ static int bread_llvm_link_executable_with_clang(const char* obj_path, const cha
         "'%s' '%s' '%s' "  // rt_path, memory_path, print_path
         "'%s' '%s' '%s' "  // string_ops_path, operators_path, array_utils_path
         "'%s' '%s' "  // value_ops_path, builtins_path
-        "'%s' '%s' '%s' "  // error_path, value_path, var_path
-        "'%s' '%s' '%s' "  // function_path, type_descriptor_path, ast_path
-        "'%s' '%s' '%s' "  // expr_path, expr_ops_path, ast_memory_path
-        "'%s' '%s' '%s' "  // ast_types_path, ast_expr_parser_path, ast_stmt_parser_path
-        "'%s' -lm -fPIC -O2 -g",  // ast_dump_path and linker flags
+        "'%s' '%s' '%s' "  // error_path, value_core_path, value_array_path
+        "'%s' '%s' '%s' "  // value_dict_path, value_optional_path, value_struct_path
+        "'%s' '%s' '%s' "  // value_class_path, var_path, function_path
+        "'%s' '%s' '%s' "  // type_descriptor_path, ast_path, expr_path
+        "'%s' '%s' '%s' "  // expr_ops_path, ast_memory_path, ast_types_path
+        "'%s' '%s' '%s' "  // ast_expr_parser_path, ast_stmt_parser_path, ast_dump_path
+        " -lm -fPIC -O2 -g",  // linker flags
         inc_path,          // Include path
         out_path,          // Output file
         obj_path,          // Input object file
         rt_path, memory_path, print_path,  // Runtime
         string_ops_path, operators_path, array_utils_path,  // Runtime utilities
         value_ops_path, builtins_path,  // Core runtime
-        error_path, value_path, var_path,  // Error handling and core types
-        function_path, type_descriptor_path, ast_path,  // Functions, types, and AST
-        expr_path, expr_ops_path, ast_memory_path,  // Parser and AST memory
-        ast_types_path, ast_expr_parser_path, ast_stmt_parser_path,  // AST components
-        ast_dump_path  // AST dump
+        error_path, value_core_path, value_array_path,  // Error handling and core types
+        value_dict_path, value_optional_path, value_struct_path,  // More core types
+        value_class_path, var_path, function_path,  // Classes, vars, and functions
+        type_descriptor_path, ast_path, expr_path,  // Types, AST, and parser
+        expr_ops_path, ast_memory_path, ast_types_path,  // Parser ops and AST components
+        ast_expr_parser_path, ast_stmt_parser_path, ast_dump_path  // AST parsers and dump
     );
     
     // Print the command for debugging

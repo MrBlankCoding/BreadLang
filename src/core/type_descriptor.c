@@ -7,7 +7,7 @@
 TypeDescriptor* type_descriptor_clone(const TypeDescriptor* desc);
 
 TypeDescriptor* type_descriptor_create_primitive(VarType type) {
-    if (type == TYPE_ARRAY || type == TYPE_DICT || type == TYPE_OPTIONAL || type == TYPE_STRUCT) {
+    if (type == TYPE_ARRAY || type == TYPE_DICT || type == TYPE_OPTIONAL || type == TYPE_STRUCT || type == TYPE_CLASS) {
         return NULL;
     }
     
@@ -88,6 +88,47 @@ TypeDescriptor* type_descriptor_create_struct(const char* name, int field_count,
     return desc;
 }
 
+TypeDescriptor* type_descriptor_create_class(const char* name, const char* parent_name, int field_count, char** field_names, TypeDescriptor** field_types) {
+    if (!name || field_count < 0 || (field_count > 0 && (!field_names || !field_types))) {
+        return NULL;
+    }
+    
+    TypeDescriptor* desc = malloc(sizeof(TypeDescriptor));
+    if (!desc) return NULL;
+    
+    desc->base_type = TYPE_CLASS;
+    desc->params.class_type.name = strdup(name);
+    desc->params.class_type.parent_name = parent_name ? strdup(parent_name) : NULL;
+    desc->params.class_type.field_count = field_count;
+    desc->params.class_type.method_count = 0;
+    desc->params.class_type.method_names = NULL;
+    desc->params.class_type.method_signatures = NULL;
+    
+    if (field_count > 0) {
+        desc->params.class_type.field_names = malloc(field_count * sizeof(char*));
+        desc->params.class_type.field_types = malloc(field_count * sizeof(TypeDescriptor*));
+        
+        if (!desc->params.class_type.field_names || !desc->params.class_type.field_types) {
+            free(desc->params.class_type.name);
+            free(desc->params.class_type.parent_name);
+            free(desc->params.class_type.field_names);
+            free(desc->params.class_type.field_types);
+            free(desc);
+            return NULL;
+        }
+        
+        for (int i = 0; i < field_count; i++) {
+            desc->params.class_type.field_names[i] = strdup(field_names[i]);
+            desc->params.class_type.field_types[i] = type_descriptor_clone(field_types[i]);
+        }
+    } else {
+        desc->params.class_type.field_names = NULL;
+        desc->params.class_type.field_types = NULL;
+    }
+    
+    return desc;
+}
+
 void type_descriptor_free(TypeDescriptor* desc) {
     if (!desc) return;
     
@@ -115,6 +156,22 @@ void type_descriptor_free(TypeDescriptor* desc) {
                     type_descriptor_free(desc->params.struct_type.field_types[i]);
                 }
                 free(desc->params.struct_type.field_types);
+            }
+            break;
+        case TYPE_CLASS:
+            free(desc->params.class_type.name);
+            free(desc->params.class_type.parent_name);
+            if (desc->params.class_type.field_names) {
+                for (int i = 0; i < desc->params.class_type.field_count; i++) {
+                    free(desc->params.class_type.field_names[i]);
+                }
+                free(desc->params.class_type.field_names);
+            }
+            if (desc->params.class_type.field_types) {
+                for (int i = 0; i < desc->params.class_type.field_count; i++) {
+                    type_descriptor_free(desc->params.class_type.field_types[i]);
+                }
+                free(desc->params.class_type.field_types);
             }
             break;
         default:
@@ -199,6 +256,41 @@ TypeDescriptor* type_descriptor_clone(const TypeDescriptor* desc) {
             
             return out;
         }
+        case TYPE_CLASS: {
+            TypeDescriptor** field_types = NULL;
+            if (desc->params.class_type.field_count > 0) {
+                field_types = malloc(desc->params.class_type.field_count * sizeof(TypeDescriptor*));
+                if (!field_types) return NULL;
+                
+                for (int i = 0; i < desc->params.class_type.field_count; i++) {
+                    field_types[i] = type_descriptor_clone(desc->params.class_type.field_types[i]);
+                    if (!field_types[i]) {
+                        for (int j = 0; j < i; j++) {
+                            type_descriptor_free(field_types[j]);
+                        }
+                        free(field_types);
+                        return NULL;
+                    }
+                }
+            }
+            
+            TypeDescriptor* out = type_descriptor_create_class(
+                desc->params.class_type.name,
+                desc->params.class_type.parent_name,
+                desc->params.class_type.field_count,
+                desc->params.class_type.field_names,
+                field_types
+            );
+            
+            if (field_types) {
+                for (int i = 0; i < desc->params.class_type.field_count; i++) {
+                    type_descriptor_free(field_types[i]);
+                }
+                free(field_types);
+            }
+            
+            return out;
+        }
         default:
             return type_descriptor_create_primitive(desc->base_type);
     }
@@ -228,6 +320,10 @@ int type_descriptor_equals(const TypeDescriptor* a, const TypeDescriptor* b) {
                 if (!type_descriptor_equals(a->params.struct_type.field_types[i], b->params.struct_type.field_types[i])) return 0;
             }
             return 1;
+        case TYPE_CLASS:
+            if (strcmp(a->params.class_type.name, b->params.class_type.name) != 0) return 0;
+            // For classes, we only check the name - inheritance and methods are handled separately
+            return 1;
         default:
             return 1;
     }
@@ -244,6 +340,15 @@ int type_descriptor_compatible(const TypeDescriptor* from, const TypeDescriptor*
     if (from->base_type == TYPE_STRUCT && to->base_type == TYPE_STRUCT) {
         if (from->params.struct_type.name && to->params.struct_type.name &&
             strcmp(from->params.struct_type.name, to->params.struct_type.name) == 0) {
+            return 1;
+        }
+    }
+    
+    // Classes are nominally typed by name. Field metadata may be absent or differ
+    // between declared types and inferred literals; treat same-name classes as compatible.
+    if (from->base_type == TYPE_CLASS && to->base_type == TYPE_CLASS) {
+        if (from->params.class_type.name && to->params.class_type.name &&
+            strcmp(from->params.class_type.name, to->params.class_type.name) == 0) {
             return 1;
         }
     }
@@ -314,6 +419,9 @@ const char* type_descriptor_to_string(const TypeDescriptor* desc, char* buffer, 
         }
         case TYPE_STRUCT:
             snprintf(buffer, buffer_size, "%s", desc->params.struct_type.name);
+            break;
+        case TYPE_CLASS:
+            snprintf(buffer, buffer_size, "%s", desc->params.class_type.name);
             break;
         case TYPE_NIL:
             snprintf(buffer, buffer_size, "nil");

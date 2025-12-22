@@ -6,5 +6,6 @@ typedef struct BreadArray BreadArray;
 typedef struct BreadDict BreadDict;
 typedef struct BreadOptional BreadOptional;
 typedef struct BreadStruct BreadStruct;
+typedef struct BreadClass BreadClass;
 
 #endif // FORWARD_DECLS_H

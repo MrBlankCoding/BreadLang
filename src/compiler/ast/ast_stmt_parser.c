@@ -448,6 +448,548 @@ ASTStmt* parse_stmt(const char** code) {
         return s;
     }
 
+    if (strncmp(*code, "class ", 6) == 0) {
+        *code += 6;
+        skip_whitespace(code);
+
+        // Parse class name
+        const char* start = *code;
+        while (**code && (isalnum((unsigned char)**code) || **code == '_')) (*code)++;
+        if (*code == start) return NULL;
+        char* class_name = dup_range(start, *code);
+        if (!class_name) return NULL;
+
+        skip_whitespace(code);
+        
+        // Check for inheritance
+        char* parent_name = NULL;
+        if (strncmp(*code, "extends ", 8) == 0) {
+            *code += 8;
+            skip_whitespace(code);
+            
+            const char* parent_start = *code;
+            while (**code && (isalnum((unsigned char)**code) || **code == '_')) (*code)++;
+            if (*code == parent_start) {
+                free(class_name);
+                return NULL;
+            }
+            parent_name = dup_range(parent_start, *code);
+            if (!parent_name) {
+                free(class_name);
+                return NULL;
+            }
+            skip_whitespace(code);
+        }
+
+        if (**code != '{') {
+            free(class_name);
+            free(parent_name);
+            return NULL;
+        }
+        (*code)++;
+
+        // Parse fields and methods
+        int field_cap = 0;
+        int field_count = 0;
+        char** field_names = NULL;
+        TypeDescriptor** field_types = NULL;
+        
+        int method_cap = 0;
+        int method_count = 0;
+        ASTStmtFuncDecl** methods = NULL;
+        ASTStmtFuncDecl* constructor = NULL;
+
+        skip_whitespace(code);
+        while (**code && **code != '}') {
+            skip_whitespace(code);
+            if (**code == '}') break;
+
+            // Check if this is a method (starts with 'def') or constructor (starts with 'init')
+            if (strncmp(*code, "init(", 5) == 0) {
+                // Parse constructor - must be named 'init'
+                *code += 4; // Skip "init"
+                skip_whitespace(code);
+                
+                if (**code != '(') {
+                    free(class_name);
+                    free(parent_name);
+                    return NULL;
+                }
+                (*code)++;
+
+                // Parse constructor parameters
+                int param_cap = 0;
+                int param_count = 0;
+                char** param_names = NULL;
+                TypeDescriptor** param_type_descs = NULL;
+                ASTExpr** param_defaults = NULL;
+
+                skip_whitespace(code);
+                if (**code != ')') {
+                    while (**code) {
+                        skip_whitespace(code);
+                        const char* pstart = *code;
+                        while (**code && (isalnum((unsigned char)**code) || **code == '_')) (*code)++;
+                        if (*code == pstart) {
+                            free(class_name);
+                            free(parent_name);
+                            return NULL;
+                        }
+                        char* p_name = dup_range(pstart, *code);
+                        if (!p_name) {
+                            free(class_name);
+                            free(parent_name);
+                            return NULL;
+                        }
+
+                        skip_whitespace(code);
+                        if (**code != ':') {
+                            free(p_name);
+                            free(class_name);
+                            free(parent_name);
+                            return NULL;
+                        }
+                        (*code)++;
+
+                        TypeDescriptor* p_type_desc = parse_type_descriptor(code);
+                        if (!p_type_desc) {
+                            free(p_name);
+                            free(class_name);
+                            free(parent_name);
+                            return NULL;
+                        }
+
+                        // Check for default value
+                        ASTExpr* default_expr = NULL;
+                        skip_whitespace(code);
+                        if (**code == '=') {
+                            (*code)++;
+                            skip_whitespace(code);
+                            default_expr = parse_expression_str_as_ast(code);
+                            if (!default_expr) {
+                                free(p_name);
+                                free(class_name);
+                                free(parent_name);
+                                type_descriptor_free(p_type_desc);
+                                return NULL;
+                            }
+                        }
+
+                        // Expand arrays if needed
+                        if (param_count >= param_cap) {
+                            int new_cap = param_cap == 0 ? 4 : param_cap * 2;
+                            char** new_names = malloc(sizeof(char*) * (size_t)new_cap);
+                            TypeDescriptor** new_types = malloc(sizeof(TypeDescriptor*) * (size_t)new_cap);
+                            ASTExpr** new_defaults = malloc(sizeof(ASTExpr*) * (size_t)new_cap);
+                            if (!new_names || !new_types || !new_defaults) {
+                                free(new_names);
+                                free(new_types);
+                                free(new_defaults);
+                                free(p_name);
+                                free(class_name);
+                                free(parent_name);
+                                type_descriptor_free(p_type_desc);
+                                return NULL;
+                            }
+                            if (param_count > 0) {
+                                memcpy(new_names, param_names, sizeof(char*) * (size_t)param_count);
+                                memcpy(new_types, param_type_descs, sizeof(TypeDescriptor*) * (size_t)param_count);
+                                memcpy(new_defaults, param_defaults, sizeof(ASTExpr*) * (size_t)param_count);
+                            }
+                            free(param_names);
+                            free(param_type_descs);
+                            free(param_defaults);
+                            param_names = new_names;
+                            param_type_descs = new_types;
+                            param_defaults = new_defaults;
+                            param_cap = new_cap;
+                        }
+                        param_names[param_count] = p_name;
+                        param_type_descs[param_count] = p_type_desc;
+                        param_defaults[param_count] = default_expr;
+                        param_count++;
+
+                        skip_whitespace(code);
+                        if (**code == ',') {
+                            (*code)++;
+                            continue;
+                        }
+                        break;
+                    }
+                }
+
+                skip_whitespace(code);
+                if (**code != ')') {
+                    free(class_name);
+                    free(parent_name);
+                    return NULL;
+                }
+                (*code)++;
+
+                skip_whitespace(code);
+                if (**code != '{') {
+                    free(class_name);
+                    free(parent_name);
+                    return NULL;
+                }
+                (*code)++;
+
+                ASTStmtList* body = parse_block(code);
+                if (!body || **code != '}') {
+                    free(class_name);
+                    free(parent_name);
+                    if (body) ast_free_stmt_list(body);
+                    return NULL;
+                }
+                (*code)++;
+
+                // Create constructor function declaration
+                constructor = malloc(sizeof(ASTStmtFuncDecl));
+                if (!constructor) {
+                    free(class_name);
+                    free(parent_name);
+                    ast_free_stmt_list(body);
+                    return NULL;
+                }
+                
+                constructor->name = strdup("init");
+                constructor->param_count = param_count;
+                constructor->param_names = param_names;
+                constructor->param_type_descs = param_type_descs;
+                constructor->param_defaults = param_defaults;
+                constructor->return_type = TYPE_NIL;
+                constructor->return_type_desc = type_descriptor_create_primitive(TYPE_NIL);
+                constructor->body = body;
+                constructor->opt_info = NULL;
+                
+            } else if (strncmp(*code, "def ", 4) == 0) {
+                // Parse method
+                *code += 4;
+                skip_whitespace(code);
+
+                const char* method_start = *code;
+                while (**code && (isalnum((unsigned char)**code) || **code == '_')) (*code)++;
+                if (*code == method_start) {
+                    free(class_name);
+                    free(parent_name);
+                    return NULL;
+                }
+                char* method_name = dup_range(method_start, *code);
+                if (!method_name) {
+                    free(class_name);
+                    free(parent_name);
+                    return NULL;
+                }
+
+                skip_whitespace(code);
+                if (**code != '(') {
+                    free(method_name);
+                    free(class_name);
+                    free(parent_name);
+                    return NULL;
+                }
+                (*code)++;
+
+                // Parse method parameters
+                int param_cap = 0;
+                int param_count = 0;
+                char** param_names = NULL;
+                TypeDescriptor** param_type_descs = NULL;
+                ASTExpr** param_defaults = NULL;
+
+                skip_whitespace(code);
+                if (**code != ')') {
+                    while (**code) {
+                        skip_whitespace(code);
+                        const char* pstart = *code;
+                        while (**code && (isalnum((unsigned char)**code) || **code == '_')) (*code)++;
+                        if (*code == pstart) {
+                            free(method_name);
+                            free(class_name);
+                            free(parent_name);
+                            return NULL;
+                        }
+                        char* p_name = dup_range(pstart, *code);
+                        if (!p_name) {
+                            free(method_name);
+                            free(class_name);
+                            free(parent_name);
+                            return NULL;
+                        }
+
+                        skip_whitespace(code);
+                        if (**code != ':') {
+                            free(p_name);
+                            free(method_name);
+                            free(class_name);
+                            free(parent_name);
+                            return NULL;
+                        }
+                        (*code)++;
+
+                        TypeDescriptor* p_type_desc = parse_type_descriptor(code);
+                        if (!p_type_desc) {
+                            free(p_name);
+                            free(method_name);
+                            free(class_name);
+                            free(parent_name);
+                            return NULL;
+                        }
+
+                        // Check for default value
+                        ASTExpr* default_expr = NULL;
+                        skip_whitespace(code);
+                        if (**code == '=') {
+                            (*code)++;
+                            skip_whitespace(code);
+                            default_expr = parse_expression_str_as_ast(code);
+                            if (!default_expr) {
+                                free(p_name);
+                                free(method_name);
+                                free(class_name);
+                                free(parent_name);
+                                type_descriptor_free(p_type_desc);
+                                return NULL;
+                            }
+                        }
+
+                        // Expand arrays if needed
+                        if (param_count >= param_cap) {
+                            int new_cap = param_cap == 0 ? 4 : param_cap * 2;
+                            char** new_names = malloc(sizeof(char*) * (size_t)new_cap);
+                            TypeDescriptor** new_types = malloc(sizeof(TypeDescriptor*) * (size_t)new_cap);
+                            ASTExpr** new_defaults = malloc(sizeof(ASTExpr*) * (size_t)new_cap);
+                            if (!new_names || !new_types || !new_defaults) {
+                                free(new_names);
+                                free(new_types);
+                                free(new_defaults);
+                                free(p_name);
+                                free(method_name);
+                                free(class_name);
+                                free(parent_name);
+                                type_descriptor_free(p_type_desc);
+                                return NULL;
+                            }
+                            if (param_count > 0) {
+                                memcpy(new_names, param_names, sizeof(char*) * (size_t)param_count);
+                                memcpy(new_types, param_type_descs, sizeof(TypeDescriptor*) * (size_t)param_count);
+                                memcpy(new_defaults, param_defaults, sizeof(ASTExpr*) * (size_t)param_count);
+                            }
+                            free(param_names);
+                            free(param_type_descs);
+                            free(param_defaults);
+                            param_names = new_names;
+                            param_type_descs = new_types;
+                            param_defaults = new_defaults;
+                            param_cap = new_cap;
+                        }
+                        param_names[param_count] = p_name;
+                        param_type_descs[param_count] = p_type_desc;
+                        param_defaults[param_count] = default_expr;
+                        param_count++;
+
+                        skip_whitespace(code);
+                        if (**code == ',') {
+                            (*code)++;
+                            continue;
+                        }
+                        break;
+                    }
+                }
+
+                skip_whitespace(code);
+                if (**code != ')') {
+                    free(method_name);
+                    free(class_name);
+                    free(parent_name);
+                    return NULL;
+                }
+                (*code)++;
+
+                // Parse return type
+                VarType ret_type = TYPE_NIL;
+                TypeDescriptor* ret_type_desc = type_descriptor_create_primitive(TYPE_NIL);
+                skip_whitespace(code);
+                if (**code == '-' && *(*code + 1) == '>') {
+                    *code += 2;
+                    type_descriptor_free(ret_type_desc);
+                    ret_type_desc = parse_type_descriptor(code);
+                    if (!ret_type_desc) {
+                        free(method_name);
+                        free(class_name);
+                        free(parent_name);
+                        return NULL;
+                    }
+                    ret_type = ret_type_desc->base_type;
+                }
+
+                skip_whitespace(code);
+                if (**code != '{') {
+                    free(method_name);
+                    free(class_name);
+                    free(parent_name);
+                    type_descriptor_free(ret_type_desc);
+                    return NULL;
+                }
+                (*code)++;
+
+                ASTStmtList* body = parse_block(code);
+                if (!body || **code != '}') {
+                    free(method_name);
+                    free(class_name);
+                    free(parent_name);
+                    type_descriptor_free(ret_type_desc);
+                    if (body) ast_free_stmt_list(body);
+                    return NULL;
+                }
+                (*code)++;
+
+                // Create method function declaration
+                ASTStmtFuncDecl* method_decl = malloc(sizeof(ASTStmtFuncDecl));
+                if (!method_decl) {
+                    free(method_name);
+                    free(class_name);
+                    free(parent_name);
+                    type_descriptor_free(ret_type_desc);
+                    ast_free_stmt_list(body);
+                    return NULL;
+                }
+                
+                method_decl->name = method_name;
+                method_decl->param_count = param_count;
+                method_decl->param_names = param_names;
+                method_decl->param_type_descs = param_type_descs;
+                method_decl->param_defaults = param_defaults;
+                method_decl->return_type = ret_type;
+                method_decl->return_type_desc = ret_type_desc;
+                method_decl->body = body;
+                method_decl->opt_info = NULL;
+                
+                // Add to methods array
+                if (method_count >= method_cap) {
+                    int new_cap = method_cap == 0 ? 4 : method_cap * 2;
+                    ASTStmtFuncDecl** new_methods = realloc(methods, new_cap * sizeof(ASTStmtFuncDecl*));
+                    if (!new_methods) {
+                        free(method_decl);
+                        free(class_name);
+                        free(parent_name);
+                        return NULL;
+                    }
+                    methods = new_methods;
+                    method_cap = new_cap;
+                }
+                methods[method_count++] = method_decl;
+                
+            } else {
+                // Parse field
+                const char* field_start = *code;
+                while (**code && (isalnum((unsigned char)**code) || **code == '_')) (*code)++;
+                if (*code == field_start) {
+                    free(class_name);
+                    free(parent_name);
+                    return NULL;
+                }
+                char* field_name = dup_range(field_start, *code);
+                if (!field_name) {
+                    free(class_name);
+                    free(parent_name);
+                    return NULL;
+                }
+
+                skip_whitespace(code);
+                if (**code != ':') {
+                    free(field_name);
+                    free(class_name);
+                    free(parent_name);
+                    return NULL;
+                }
+                (*code)++;
+
+                // Parse field type
+                TypeDescriptor* field_type = parse_type_descriptor(code);
+                if (!field_type) {
+                    free(field_name);
+                    free(class_name);
+                    free(parent_name);
+                    return NULL;
+                }
+
+                // Expand arrays if needed
+                if (field_count >= field_cap) {
+                    int new_cap = field_cap == 0 ? 4 : field_cap * 2;
+                    char** new_names = realloc(field_names, new_cap * sizeof(char*));
+                    TypeDescriptor** new_types = realloc(field_types, new_cap * sizeof(TypeDescriptor*));
+                    if (!new_names || !new_types) {
+                        free(new_names);
+                        free(new_types);
+                        free(field_name);
+                        free(class_name);
+                        free(parent_name);
+                        type_descriptor_free(field_type);
+                        return NULL;
+                    }
+                    field_names = new_names;
+                    field_types = new_types;
+                    field_cap = new_cap;
+                }
+
+                field_names[field_count] = field_name;
+                field_types[field_count] = field_type;
+                field_count++;
+            }
+
+            skip_whitespace(code);
+            if (**code == '\n') (*code)++;
+            skip_whitespace(code);
+        }
+
+        if (**code != '}') {
+            free(class_name);
+            free(parent_name);
+            // Free fields and methods
+            return NULL;
+        }
+        (*code)++;
+
+        // Require constructor for classes
+        if (!constructor) {
+            free(class_name);
+            free(parent_name);
+            // Free fields and methods
+            for (int i = 0; i < field_count; i++) {
+                free(field_names[i]);
+                type_descriptor_free(field_types[i]);
+            }
+            free(field_names);
+            free(field_types);
+            for (int i = 0; i < method_count; i++) {
+                // Free method declarations
+                free(methods[i]);
+            }
+            free(methods);
+            return NULL; // Error: class must have init constructor
+        }
+
+        // Create AST node
+        ASTStmt* s = ast_stmt_new(AST_STMT_CLASS_DECL);
+        if (!s) {
+            free(class_name);
+            free(parent_name);
+            return NULL;
+        }
+
+        s->as.class_decl.name = class_name;
+        s->as.class_decl.parent_name = parent_name;
+        s->as.class_decl.field_count = field_count;
+        s->as.class_decl.field_names = field_names;
+        s->as.class_decl.field_types = field_types;
+        s->as.class_decl.method_count = method_count;
+        s->as.class_decl.methods = methods;
+        s->as.class_decl.constructor = constructor;
+
+        return s;
+    }
+
     if (strncmp(*code, "let ", 4) == 0 || strncmp(*code, "var ", 4) == 0 || strncmp(*code, "const ", 6) == 0) {
         int is_const = strncmp(*code, "const ", 6) == 0;
         if (strncmp(*code, "const ", 6) == 0) *code += 6;
@@ -470,13 +1012,8 @@ ASTStmt* parse_stmt(const char** code) {
                 free(var_name);
                 return NULL;
             }
-        } else {
-            type_desc = type_descriptor_create_primitive(TYPE_INT);
-            if (!type_desc) {
-                free(var_name);
-                return NULL;
-            }
         }
+        // If no explicit type, we'll infer it during semantic analysis
 
         VarType type = type_desc->base_type;
 

@@ -184,6 +184,13 @@ static void analyze_expr_escape(ASTExpr* expr, int is_assignment_target) {
                 analyze_expr_escape(expr->as.struct_literal.field_values[i], 0);
             }
             break;
+        case AST_EXPR_CLASS_LITERAL:
+            // Class literals may escape; conservatively treat as heap
+            mark_escape(info, ESCAPE_HEAP);
+            for (int i = 0; i < expr->as.class_literal.field_count; i++) {
+                analyze_expr_escape(expr->as.class_literal.field_values[i], 0);
+            }
+            break;
     }
 }
 
@@ -300,6 +307,9 @@ static void analyze_stmt_escape(ASTStmt* stmt) {
 
         case AST_STMT_STRUCT_DECL:
             // No expressions to analyze in struct declarations
+            break;
+        case AST_STMT_CLASS_DECL:
+            // No expressions to analyze in class declarations
             break;
     }
 }

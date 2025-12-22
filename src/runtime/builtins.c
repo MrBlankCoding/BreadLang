@@ -198,6 +198,12 @@ BreadValue bread_builtin_type(BreadValue* args, int arg_count) {
         case TYPE_OPTIONAL:
             type_name = "Optional";
             break;
+        case TYPE_STRUCT:
+            type_name = "Struct";
+            break;
+        case TYPE_CLASS:
+            type_name = "Class";
+            break;
         default:
             type_name = "Unknown";
             break;
@@ -268,6 +274,17 @@ BreadValue bread_builtin_str(BreadValue* args, int arg_count) {
                 bread_value_set_string(&result, struct_str);
             } else {
                 bread_value_set_string(&result, "struct");
+            }
+            break;
+        }
+        case TYPE_CLASS: {
+            BreadClass* c = arg->value.class_val;
+            if (c && c->class_name) {
+                char class_str[256];
+                snprintf(class_str, sizeof(class_str), "%s{}", c->class_name);
+                bread_value_set_string(&result, class_str);
+            } else {
+                bread_value_set_string(&result, "class");
             }
             break;
         }

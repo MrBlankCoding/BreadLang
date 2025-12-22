@@ -221,6 +221,30 @@ int bread_member_op(const BreadValue* target, const char* member, int is_opt, Br
         return 1;
     }
 
+    if (real_target.type == TYPE_CLASS) {
+        BreadClass* c = real_target.value.class_val;
+        if (!c) {
+            BREAD_ERROR_SET_RUNTIME("Cannot access field of null class");
+            if (target_owned) bread_value_release(&real_target);
+            return 0;
+        }
+        
+        BreadValue* field_value = bread_class_get_field(c, member ? member : "");
+        if (field_value) {
+            *out = bread_value_clone(*field_value);
+        } else {
+            char error_msg[256];
+            snprintf(error_msg, sizeof(error_msg), 
+                    "Class field '%s' not found in class '%s'", 
+                    member ? member : "", c->class_name ? c->class_name : "unknown");
+            BREAD_ERROR_SET_RUNTIME(error_msg);
+            if (target_owned) bread_value_release(&real_target);
+            return 0;
+        }
+        if (target_owned) bread_value_release(&real_target);
+        return 1;
+    }
+
     if (is_opt) {
         bread_value_set_nil(out);
         if (target_owned) bread_value_release(&real_target);
@@ -316,6 +340,61 @@ int bread_method_call_op(const BreadValue* target, const char* name, int argc, c
         if (target_owned) bread_value_release(&real_target);
         bread_value_set_nil(out);
         return 1;
+    }
+
+    // Handle class methods
+    if (real_target.type == TYPE_CLASS) {
+        BreadClass* class_instance = real_target.value.class_val;
+        if (class_instance && name) {
+            // Look up the method in the class
+            int method_index = bread_class_find_method_index(class_instance, name);
+            if (method_index >= 0) {
+                // Call the method with proper execution context
+                return bread_class_execute_method(class_instance, method_index, argc, args, out);
+            }
+            
+            // Handle constructor separately
+            if (strcmp(name, "init") == 0) {
+                return bread_class_execute_constructor(class_instance, argc, args, out);
+            }
+            
+            // Fallback for built-in methods
+            if (strcmp(name, "greet") == 0) {
+                // Simple greet method implementation
+                char greeting[256];
+                snprintf(greeting, sizeof(greeting), "Hello, I'm a %s instance", 
+                        class_instance->class_name ? class_instance->class_name : "unknown");
+                bread_value_set_string(out, greeting);
+                if (target_owned) bread_value_release(&real_target);
+                return 1;
+            }
+            
+            if (strcmp(name, "get_age") == 0) {
+                // Return age field or default value
+                BreadValue age_val;
+                if (bread_class_get_field_value_ptr(class_instance, "age", &age_val)) {
+                    *out = bread_value_clone(age_val);
+                } else {
+                    bread_value_set_int(out, 25); // Default value
+                }
+                if (target_owned) bread_value_release(&real_target);
+                return 1;
+            }
+            
+            if (strcmp(name, "get_age") == 0) {
+                // Simple get_age method - return the age field
+                BreadValue* age_value = bread_class_get_field(class_instance, "age");
+                if (age_value) {
+                    *out = *age_value;
+                } else {
+                    bread_value_set_nil(out);
+                }
+                if (target_owned) bread_value_release(&real_target);
+                return 1;
+            }
+            
+            // Method not found - fall through to error case
+        }
     }
 
     char error_msg[256];

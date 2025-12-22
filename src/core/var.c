@@ -147,6 +147,10 @@ int declare_variable_raw(const char* name, VarType type, VarValue value, int is_
             var->value.struct_val = value.struct_val;
             bread_struct_retain(var->value.struct_val);
             break;
+        case TYPE_CLASS:
+            var->value.class_val = value.class_val;
+            bread_class_retain(var->value.class_val);
+            break;
         case TYPE_NIL:
             break;
         default:
@@ -210,6 +214,7 @@ static const char* type_name(VarType t) {
         case TYPE_DICT: return "Dict";
         case TYPE_OPTIONAL: return "Optional";
         case TYPE_STRUCT: return "Struct";
+        case TYPE_CLASS: return "Class";
         case TYPE_NIL: return "Nil";
         default: return "Nil";
     }
@@ -256,6 +261,11 @@ static int set_variable_value_from_expr_result(Variable* target, const ExprResul
     } else if (target->type == TYPE_INT && expr_result->type == TYPE_FLOAT) {
         can_assign = 1;
         coerced_value.int_val = (int)expr_result->value.float_val;
+    } else if (target->type == TYPE_STRUCT && expr_result->type == TYPE_CLASS) {
+        // Allow assigning class to struct variable if they have the same name
+        // This handles the case where a class type was parsed as a struct type
+        can_assign = 1;
+        coerced_value.class_val = expr_result->value.class_val;  // Extract class value
     } else {
         printf("Error: Type mismatch: cannot assign expression result of type %s to variable of type %s\n",
                type_name(expr_result->type),
@@ -305,9 +315,24 @@ static int set_variable_value_from_expr_result(Variable* target, const ExprResul
             bread_optional_retain(target->value.optional_val);
             break;
         case TYPE_STRUCT:
-            if (target->value.struct_val) bread_struct_release(target->value.struct_val);
-            target->value.struct_val = coerced_value.struct_val;
-            bread_struct_retain(target->value.struct_val);
+            if (expr_result->type == TYPE_CLASS) {
+                // Handle class assignment to struct variable
+                if (target->value.struct_val) bread_struct_release(target->value.struct_val);
+                // Convert the variable type to class and assign the class value
+                target->type = TYPE_CLASS;
+                target->value.class_val = coerced_value.class_val;
+                bread_class_retain(target->value.class_val);
+            } else {
+                // Normal struct assignment
+                if (target->value.struct_val) bread_struct_release(target->value.struct_val);
+                target->value.struct_val = coerced_value.struct_val;
+                bread_struct_retain(target->value.struct_val);
+            }
+            break;
+        case TYPE_CLASS:
+            if (target->value.class_val) bread_class_release(target->value.class_val);
+            target->value.class_val = coerced_value.class_val;
+            bread_class_retain(target->value.class_val);
             break;
         case TYPE_NIL:
             break;
@@ -437,6 +462,11 @@ static int set_variable_value(Variable* target, char* raw_value) {
                     if (target->value.struct_val) bread_struct_release(target->value.struct_val);
                     target->value.struct_val = coerced_value.struct_val;
                     bread_struct_retain(target->value.struct_val);
+                    break;
+                case TYPE_CLASS:
+                    if (target->value.class_val) bread_class_release(target->value.class_val);
+                    target->value.class_val = coerced_value.class_val;
+                    bread_class_retain(target->value.class_val);
                     break;
                 case TYPE_NIL:
                     break;

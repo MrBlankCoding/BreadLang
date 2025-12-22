@@ -40,7 +40,8 @@ typedef enum {
     AST_EXPR_METHOD_CALL,
     AST_EXPR_STRING_LITERAL,
     AST_EXPR_ARRAY_LITERAL,
-    AST_EXPR_STRUCT_LITERAL
+    AST_EXPR_STRUCT_LITERAL,
+    AST_EXPR_CLASS_LITERAL
 } ASTExprKind;
 
 typedef struct {
@@ -114,6 +115,12 @@ struct ASTExpr {
             char** field_names;
             ASTExpr** field_values;
         } struct_literal;
+        struct {
+            char* class_name;
+            int field_count;
+            char** field_names;
+            ASTExpr** field_values;
+        } class_literal;
     } as;
 };
 
@@ -131,6 +138,7 @@ typedef enum {
     AST_STMT_CONTINUE,
     AST_STMT_FUNC_DECL,
     AST_STMT_STRUCT_DECL,
+    AST_STMT_CLASS_DECL,
     AST_STMT_RETURN
 } ASTStmtKind;
 
@@ -207,6 +215,17 @@ typedef struct {
     TypeDescriptor** field_types;
 } ASTStmtStructDecl;
 
+typedef struct {
+    char* name;
+    char* parent_name;  // NULL if no inheritance
+    int field_count;
+    char** field_names;
+    TypeDescriptor** field_types;
+    int method_count;
+    ASTStmtFuncDecl** methods;
+    ASTStmtFuncDecl* constructor;  // NULL if no explicit constructor
+} ASTStmtClassDecl;
+
 struct ASTStmt {
     ASTStmtKind kind;
     SourceLoc loc;  // Source location for error reporting
@@ -223,6 +242,7 @@ struct ASTStmt {
         ASTStmtForIn for_in_stmt;
         ASTStmtFuncDecl func_decl;
         ASTStmtStructDecl struct_decl;
+        ASTStmtClassDecl class_decl;
         ASTStmtReturn ret;
     } as;
     ASTStmt* next;

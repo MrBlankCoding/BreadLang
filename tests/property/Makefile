@@ -87,7 +87,12 @@ INCLUDE_DIR = ../../include
 
 CORE_SOURCES = \
 	$(SRC_DIR)/core/var.c \
-	$(SRC_DIR)/core/value.c \
+	$(SRC_DIR)/core/value_core.c \
+	$(SRC_DIR)/core/value_array.c \
+	$(SRC_DIR)/core/value_dict.c \
+	$(SRC_DIR)/core/value_optional.c \
+	$(SRC_DIR)/core/value_struct.c \
+	$(SRC_DIR)/core/value_class.c \
 	$(SRC_DIR)/core/function.c \
 	$(SRC_DIR)/runtime/runtime.c \
 	$(SRC_DIR)/runtime/error.c \

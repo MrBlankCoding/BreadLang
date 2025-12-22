@@ -95,6 +95,9 @@ int bread_eq(const BreadValue* left, const BreadValue* right, int* out_bool) {
         case TYPE_STRUCT:
             *out_bool = (left->value.struct_val == right->value.struct_val);
             return 1;
+        case TYPE_CLASS:
+            *out_bool = (left->value.class_val == right->value.class_val);
+            return 1;
         default:
             *out_bool = 0;
             return 1;
@@ -181,6 +184,21 @@ static void bread_print_value_inner(const BreadValue* v) {
                 if (i > 0) printf(", ");
                 printf("%s: ", s->field_names[i]);
                 bread_print_value_inner(&s->field_values[i]);
+            }
+            printf(" }");
+            break;
+        }
+        case TYPE_CLASS: {
+            BreadClass* c = v->value.class_val;
+            if (!c) {
+                printf("nil");
+                break;
+            }
+            printf("%s { ", c->class_name);
+            for (int i = 0; i < c->field_count; i++) {
+                if (i > 0) printf(", ");
+                printf("%s: ", c->field_names[i]);
+                bread_print_value_inner(&c->field_values[i]);
             }
             printf(" }");
             break;
@@ -292,6 +310,21 @@ static void bread_print_value_inner_compact(const BreadValue* v) {
             printf(" }");
             break;
         }
+        case TYPE_CLASS: {
+            BreadClass* c = v->value.class_val;
+            if (!c) {
+                printf("nil");
+                break;
+            }
+            printf("%s { ", c->class_name);
+            for (int i = 0; i < c->field_count; i++) {
+                if (i > 0) printf(", ");
+                printf("%s: ", c->field_names[i]);
+                bread_print_value_inner_compact(&c->field_values[i]);
+            }
+            printf(" }");
+            break;
+        }
         default:
             printf("nil");
             break;
@@ -380,6 +413,14 @@ void bread_value_set_struct(struct BreadValue* out, struct BreadStruct* s) {
     bread_struct_retain(out->value.struct_val);
 }
 
+void bread_value_set_class(struct BreadValue* out, struct BreadClass* c) {
+    if (!out) return;
+    memset(out, 0, sizeof(*out));
+    out->type = TYPE_CLASS;
+    out->value.class_val = (BreadClass*)c;
+    bread_class_retain(out->value.class_val);
+}
+
 size_t bread_value_size(void) {
     return sizeof(BreadValue);
 }
@@ -430,6 +471,8 @@ int bread_is_truthy(const BreadValue* v) {
         }
         case TYPE_STRUCT:
             return v->value.struct_val != NULL;
+        case TYPE_CLASS:
+            return v->value.class_val != NULL;
         default:
             return 0;
     }
@@ -578,6 +621,14 @@ int bread_binary_op(char op, const BreadValue* left, const BreadValue* right, Br
             else if (op == '!') result_val = (left->value.struct_val != right->value.struct_val);
             else {
                 BREAD_ERROR_SET_TYPE_MISMATCH("Structs only support == and != comparison");
+                return 0;
+            }
+        } else if (left->type == TYPE_CLASS && right->type == TYPE_CLASS) {
+            // Reference equality for classes
+            if (op == '=') result_val = (left->value.class_val == right->value.class_val);
+            else if (op == '!') result_val = (left->value.class_val != right->value.class_val);
+            else {
+                BREAD_ERROR_SET_TYPE_MISMATCH("Classes only support == and != comparison");
                 return 0;
             }
         } else {

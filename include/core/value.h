@@ -44,6 +44,23 @@ struct BreadStruct {
     BreadValue* field_values;
 };
 
+// Forward declaration for method function pointer
+typedef struct BreadValue (*BreadMethod)(struct BreadClass* self, struct BreadValue* args, int arg_count);
+
+struct BreadClass {
+    BreadObjHeader header;
+    char* class_name;
+    char* parent_name;  // NULL if no inheritance
+    struct BreadClass* parent_class;  // NULL if no inheritance
+    int field_count;
+    char** field_names;
+    BreadValue* field_values;
+    int method_count;
+    char** method_names;
+    BreadMethod* methods;
+    BreadMethod constructor;  // NULL if no explicit constructor
+};
+
 BreadValue bread_value_from_expr_result(ExprResult r);
 ExprResult bread_expr_result_from_value(BreadValue v);
 
@@ -61,6 +78,22 @@ void bread_struct_set_field_value_ptr(BreadStruct* s, const char* field_name, co
 BreadValue* bread_struct_get_field(BreadStruct* s, const char* field_name);
 int bread_struct_find_field_index(BreadStruct* s, const char* field_name);
 void bread_struct_retain(BreadStruct* s);
+void bread_struct_release(BreadStruct* s);
+
+BreadClass* bread_class_new(const char* class_name, const char* parent_name, int field_count, char** field_names);
+void bread_class_set_field(BreadClass* c, const char* field_name, BreadValue value);
+void bread_class_set_field_value_ptr(BreadClass* c, const char* field_name, const BreadValue* value);
+BreadValue* bread_class_get_field(BreadClass* c, const char* field_name);
+int bread_class_get_field_value_ptr(BreadClass* c, const char* field_name, BreadValue* out);
+int bread_class_find_field_index(BreadClass* c, const char* field_name);
+int bread_class_find_method_index(BreadClass* c, const char* method_name);
+void bread_class_add_method(BreadClass* c, const char* method_name, BreadMethod method);
+BreadMethod bread_class_get_method(BreadClass* c, const char* method_name);
+BreadValue bread_class_call_method(BreadClass* c, const char* method_name, BreadValue* args, int arg_count);
+int bread_class_execute_method(BreadClass* c, int method_index, int argc, const BreadValue* args, BreadValue* out);
+int bread_class_execute_constructor(BreadClass* c, int argc, const BreadValue* args, BreadValue* out);
+void bread_class_retain(BreadClass* c);
+void bread_class_release(BreadClass* c);
 void bread_struct_release(BreadStruct* s);
 
 // Initialize the value system
