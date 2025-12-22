@@ -4,6 +4,7 @@
 #include <limits.h>
 
 #include "runtime/runtime.h"
+#include "runtime/error.h"
 #include "core/value.h"
 
 #define MAX_BUILTINS 64
@@ -29,13 +30,16 @@ void bread_builtin_cleanup(void) {
 int bread_builtin_register(const BuiltinFunction* builtin) {
     if (!builtin || !builtin->name || !builtin->implementation) return 0;
     if (builtin_count >= MAX_BUILTINS) {
-        printf("Error: Too many built-in functions\n");
+        BREAD_ERROR_SET_RUNTIME("Too many built-in functions");
         return 0;
     }
 
     for (int i = 0; i < builtin_count; i++) {
         if (strcmp(builtins[i].name, builtin->name) == 0) {
-            printf("Error: Built-in function '%s' already registered\n", builtin->name);
+            char error_msg[256];
+            snprintf(error_msg, sizeof(error_msg), 
+                    "Built-in function '%s' already registered", builtin->name);
+            BREAD_ERROR_SET_RUNTIME(error_msg);
             return 0;
         }
     }
@@ -79,13 +83,19 @@ BreadValue bread_builtin_call(const char* name, BreadValue* args, int arg_count)
     
     const BuiltinFunction* builtin = bread_builtin_lookup(name);
     if (!builtin) {
-        printf("Error: Unknown built-in function '%s'\n", name ? name : "");
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg), 
+                "Unknown built-in function '%s'", name ? name : "");
+        BREAD_ERROR_SET_RUNTIME(error_msg);
         return result;
     }
     
     if (builtin->param_count != arg_count) {
-        printf("Error: Built-in function '%s' expects %d arguments, got %d\n", 
-               name, builtin->param_count, arg_count);
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg), 
+                "Built-in function '%s' expects %d arguments, got %d", 
+                name, builtin->param_count, arg_count);
+        BREAD_ERROR_SET_RUNTIME(error_msg);
         return result;
     }
     
@@ -93,8 +103,11 @@ BreadValue bread_builtin_call(const char* name, BreadValue* args, int arg_count)
         if (builtin->param_types[i] != TYPE_NIL && args[i].type != builtin->param_types[i]) {
             if (!(builtin->param_types[i] == TYPE_DOUBLE && 
                   (args[i].type == TYPE_INT || args[i].type == TYPE_FLOAT))) {
-                printf("Error: Built-in function '%s' parameter %d expects type %d, got %d\n", 
-                       name, i, builtin->param_types[i], args[i].type);
+                char error_msg[256];
+                snprintf(error_msg, sizeof(error_msg), 
+                        "Built-in function '%s' parameter %d expects type %d, got %d", 
+                        name, i, builtin->param_types[i], args[i].type);
+                BREAD_ERROR_SET_TYPE_MISMATCH(error_msg);
                 return result;
             }
         }
@@ -118,7 +131,7 @@ BreadValue bread_builtin_len(BreadValue* args, int arg_count) {
     bread_value_set_nil(&result);
     
     if (arg_count != 1) {
-        printf("Error: len() expects 1 argument\n");
+        BREAD_ERROR_SET_RUNTIME("len() expects 1 argument");
         return result;
     }
     
@@ -136,7 +149,7 @@ BreadValue bread_builtin_len(BreadValue* args, int arg_count) {
             length = arg->value.dict_val ? arg->value.dict_val->count : 0;
             break;
         default:
-            printf("Error: len() not supported for this type\n");
+            BREAD_ERROR_SET_RUNTIME("len() not supported for this type");
             return result;
     }
     
@@ -150,7 +163,7 @@ BreadValue bread_builtin_type(BreadValue* args, int arg_count) {
     bread_value_set_nil(&result);
     
     if (arg_count != 1) {
-        printf("Error: type() expects 1 argument\n");
+        BREAD_ERROR_SET_RUNTIME("type() expects 1 argument");
         return result;
     }
     
@@ -200,7 +213,7 @@ BreadValue bread_builtin_str(BreadValue* args, int arg_count) {
     bread_value_set_nil(&result);
     
     if (arg_count != 1) {
-        printf("Error: str() expects 1 argument\n");
+        BREAD_ERROR_SET_RUNTIME("str() expects 1 argument");
         return result;
     }
     
@@ -253,7 +266,7 @@ BreadValue bread_builtin_int(BreadValue* args, int arg_count) {
     bread_value_set_nil(&result);
     
     if (arg_count != 1) {
-        printf("Error: int() expects 1 argument\n");
+        BREAD_ERROR_SET_RUNTIME("int() expects 1 argument");
         return result;
     }
     
@@ -279,12 +292,15 @@ BreadValue bread_builtin_int(BreadValue* args, int arg_count) {
             if (*endptr == '\0' && val >= INT_MIN && val <= INT_MAX) {
                 bread_value_set_int(&result, (int)val);
             } else {
-                printf("Error: Cannot convert string '%s' to int\n", str);
+                char error_msg[256];
+                snprintf(error_msg, sizeof(error_msg), 
+                        "Cannot convert string '%s' to int", str);
+                BREAD_ERROR_SET_RUNTIME(error_msg);
             }
             break;
         }
         default:
-            printf("Error: Cannot convert this type to int\n");
+            BREAD_ERROR_SET_RUNTIME("Cannot convert this type to int");
             break;
     }
     
@@ -297,7 +313,7 @@ BreadValue bread_builtin_float(BreadValue* args, int arg_count) {
     bread_value_set_nil(&result);
     
     if (arg_count != 1) {
-        printf("Error: float() expects 1 argument\n");
+        BREAD_ERROR_SET_RUNTIME("float() expects 1 argument");
         return result;
     }
     
@@ -323,12 +339,15 @@ BreadValue bread_builtin_float(BreadValue* args, int arg_count) {
             if (*endptr == '\0') {
                 bread_value_set_double(&result, val);
             } else {
-                printf("Error: Cannot convert string '%s' to float\n", str);
+                char error_msg[256];
+                snprintf(error_msg, sizeof(error_msg), 
+                        "Cannot convert string '%s' to float", str);
+                BREAD_ERROR_SET_RUNTIME(error_msg);
             }
             break;
         }
         default:
-            printf("Error: Cannot convert this type to float\n");
+            BREAD_ERROR_SET_RUNTIME("Cannot convert this type to float");
             break;
     }
     

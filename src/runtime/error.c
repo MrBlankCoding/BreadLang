@@ -84,6 +84,15 @@ void bread_error_set_with_context(BreadErrorType type, const char* message, cons
         type == BREAD_ERROR_COMPILE_ERROR) {
         g_compilation_failed = 1;
     }
+    
+    // Fail-fast for runtime errors - abort immediately
+    if (type == BREAD_ERROR_RUNTIME_ERROR ||
+        type == BREAD_ERROR_INDEX_OUT_OF_BOUNDS ||
+        type == BREAD_ERROR_DIVISION_BY_ZERO ||
+        type == BREAD_ERROR_MEMORY_ALLOCATION) {
+        bread_error_print_current();
+        abort();
+    }
 }
 
 void bread_error_clear(void) {

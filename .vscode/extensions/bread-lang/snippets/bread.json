@@ -1,0 +1,111 @@
+{
+  "Function Declaration": {
+    "prefix": "func",
+    "body": [
+      "func ${1:functionName}(${2:param}: ${3:Type}) -> ${4:ReturnType} {",
+      "\t${5:// function body}",
+      "\treturn ${6:value}",
+      "}"
+    ],
+    "description": "Create a function declaration"
+  },
+  "Function Declaration (fn)": {
+    "prefix": "fn",
+    "body": [
+      "fn ${1:functionName}(${2:param}: ${3:Type}) -> ${4:ReturnType} {",
+      "\t${5:// function body}",
+      "\treturn ${6:value}",
+      "}"
+    ],
+    "description": "Create a function declaration with fn keyword"
+  },
+  "Let Variable": {
+    "prefix": "let",
+    "body": [
+      "let ${1:variableName}: ${2:Type} = ${3:value}"
+    ],
+    "description": "Create a mutable variable"
+  },
+  "Const Variable": {
+    "prefix": "const",
+    "body": [
+      "const ${1:variableName}: ${2:Type} = ${3:value}"
+    ],
+    "description": "Create an immutable variable"
+  },
+  "If Statement": {
+    "prefix": "if",
+    "body": [
+      "if ${1:condition} {",
+      "\t${2:// code}",
+      "}"
+    ],
+    "description": "Create an if statement"
+  },
+  "If-Else Statement": {
+    "prefix": "ifelse",
+    "body": [
+      "if ${1:condition} {",
+      "\t${2:// if code}",
+      "} else {",
+      "\t${3:// else code}",
+      "}"
+    ],
+    "description": "Create an if-else statement"
+  },
+  "While Loop": {
+    "prefix": "while",
+    "body": [
+      "while ${1:condition} {",
+      "\t${2:// loop body}",
+      "}"
+    ],
+    "description": "Create a while loop"
+  },
+  "For-In Loop": {
+    "prefix": "for",
+    "body": [
+      "for ${1:item} in ${2:iterable} {",
+      "\t${3:// loop body}",
+      "}"
+    ],
+    "description": "Create a for-in loop"
+  },
+  "Range Loop": {
+    "prefix": "forrange",
+    "body": [
+      "for ${1:i} in range(${2:count}) {",
+      "\t${3:// loop body}",
+      "}"
+    ],
+    "description": "Create a for loop with range"
+  },
+  "Array Declaration": {
+    "prefix": "array",
+    "body": [
+      "let ${1:arrayName}: [${2:Type}] = [${3:values}]"
+    ],
+    "description": "Create an array"
+  },
+  "Dictionary Declaration": {
+    "prefix": "dict",
+    "body": [
+      "let ${1:dictName}: [${2:KeyType}: ${3:ValueType}] = [${4:\"key\": value}]"
+    ],
+    "description": "Create a dictionary"
+  },
+  "Print Statement": {
+    "prefix": "print",
+    "body": [
+      "print(${1:value})"
+    ],
+    "description": "Print a value"
+  },
+  "Comment": {
+    "prefix": "//",
+    "body": [
+      "// ${1:comment}"
+    ],
+    "description": "Create a comment"
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "name": "bread-lang",
+  "displayName": "Bread Language Support",
+  "description": "Language support for BreadLang programming language",
+  "version": "0.1.0",
+  "publisher": "breadlang",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "bread",
+        "aliases": [
+          "Bread",
+          "BreadLang",
+          "bread"
+        ],
+        "extensions": [
+          ".bread"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "bread",
+        "scopeName": "source.bread",
+        "path": "./syntaxes/bread.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "bread",
+        "path": "./snippets/bread.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "bread.build",
+        "title": "Build Bread File",
+        "icon": "$(tools)"
+      },
+      {
+        "command": "bread.buildAndRun",
+        "title": "Build & Run Bread File",
+        "icon": "$(play)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "bread.build",
+          "when": "resourceExtname == .bread",
+          "group": "navigation"
+        },
+        {
+          "command": "bread.buildAndRun",
+          "when": "resourceExtname == .bread",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "activationEvents": [
+    "onLanguage:bread"
+  ],
+  "main": "./out/extension.js",
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.74.0",
+    "@types/node": "16.x",
+    "typescript": "^4.9.4"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

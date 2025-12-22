@@ -811,8 +811,17 @@ static ExprResult parse_postfix(const char** expr, ExprResult base) {
 }
 
 static void skip_whitespace(const char** expr) {
-    while (**expr && isspace(**expr)) {
-        (*expr)++;
+    while (**expr) {
+        if (isspace(**expr)) {
+            (*expr)++;
+        }
+        else if (**expr == '/' && *(*expr + 1) == '/') {
+            while (**expr && **expr != '\n') {
+                (*expr)++;
+            }
+        } else {
+            break;
+        }
     }
 }
 

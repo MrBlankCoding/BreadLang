@@ -56,7 +56,7 @@ int bread_index_op(const BreadValue* target, const BreadValue* idx, BreadValue* 
 
     if (real_target.type == TYPE_ARRAY) {
         if (idx->type != TYPE_INT) {
-            printf("Error: Array index must be Int\n");
+            BREAD_ERROR_SET_TYPE_MISMATCH("Array index must be Int");
             if (target_owned) bread_value_release(&real_target);
             return 0;
         }
@@ -69,7 +69,10 @@ int bread_index_op(const BreadValue* target, const BreadValue* idx, BreadValue* 
         }
         
         if (index < 0 || index >= length) {
-            printf("Error: Array index %d out of bounds (length %d)\n", idx->value.int_val, length);
+            char error_msg[256];
+            snprintf(error_msg, sizeof(error_msg), 
+                    "Array index %d out of bounds (length %d)", idx->value.int_val, length);
+            BREAD_ERROR_SET_INDEX_OUT_OF_BOUNDS(error_msg);
             if (target_owned) bread_value_release(&real_target);
             return 0;
         }
@@ -82,17 +85,26 @@ int bread_index_op(const BreadValue* target, const BreadValue* idx, BreadValue* 
 
     if (real_target.type == TYPE_DICT) {
         if (idx->type != TYPE_STRING) {
-            printf("Error: Dictionary key must be String\n");
+            BREAD_ERROR_SET_TYPE_MISMATCH("Dictionary key must be String");
             if (target_owned) bread_value_release(&real_target);
             return 0;
         }
         BreadValue* v = bread_dict_get(real_target.value.dict_val, bread_string_cstr(idx->value.string_val));
-        if (v) *out = bread_value_clone(*v);
+        if (v) {
+            *out = bread_value_clone(*v);
+        } else {
+            char error_msg[256];
+            snprintf(error_msg, sizeof(error_msg), 
+                    "Dictionary key '%s' not found", bread_string_cstr(idx->value.string_val));
+            BREAD_ERROR_SET_RUNTIME(error_msg);
+            if (target_owned) bread_value_release(&real_target);
+            return 0;
+        }
         if (target_owned) bread_value_release(&real_target);
         return 1;
     }
 
-    printf("Error: Type does not support indexing\n");
+    BREAD_ERROR_SET_RUNTIME("Type does not support indexing");
     if (target_owned) bread_value_release(&real_target);
     return 0;
 }
@@ -102,7 +114,7 @@ int bread_index_set_op(BreadValue* target, const BreadValue* idx, const BreadVal
 
     if (target->type == TYPE_ARRAY) {
         if (idx->type != TYPE_INT) {
-            printf("Error: Array index must be Int\n");
+            BREAD_ERROR_SET_TYPE_MISMATCH("Array index must be Int");
             return 0;
         }
         return bread_array_set_value(target->value.array_val, idx->value.int_val, value);
@@ -110,13 +122,13 @@ int bread_index_set_op(BreadValue* target, const BreadValue* idx, const BreadVal
 
     if (target->type == TYPE_DICT) {
         if (idx->type != TYPE_STRING) {
-            printf("Error: Dictionary key must be String\n");
+            BREAD_ERROR_SET_TYPE_MISMATCH("Dictionary key must be String");
             return 0;
         }
         return bread_dict_set_value(target->value.dict_val, idx, value);
     }
 
-    printf("Error: Type does not support indexing\n");
+    BREAD_ERROR_SET_RUNTIME("Type does not support indexing");
     return 0;
 }
 
@@ -161,14 +173,26 @@ int bread_member_op(const BreadValue* target, const char* member, int is_opt, Br
             return 1;
         }
 
-        printf("Error: Unsupported member access\n");
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg), 
+                "Member '%s' not supported for this type", member ? member : "");
+        BREAD_ERROR_SET_RUNTIME(error_msg);
         if (target_owned) bread_value_release(&real_target);
         return 0;
     }
 
     if (real_target.type == TYPE_DICT) {
         BreadValue* v = bread_dict_get(real_target.value.dict_val, member ? member : "");
-        if (v) *out = bread_value_clone(*v);
+        if (v) {
+            *out = bread_value_clone(*v);
+        } else {
+            char error_msg[256];
+            snprintf(error_msg, sizeof(error_msg), 
+                    "Dictionary key '%s' not found", member ? member : "");
+            BREAD_ERROR_SET_RUNTIME(error_msg);
+            if (target_owned) bread_value_release(&real_target);
+            return 0;
+        }
         if (target_owned) bread_value_release(&real_target);
         return 1;
     }
@@ -179,7 +203,10 @@ int bread_member_op(const BreadValue* target, const char* member, int is_opt, Br
         return 1;
     }
 
-    printf("Error: Unsupported member access\n");
+    char error_msg[256];
+    snprintf(error_msg, sizeof(error_msg), 
+            "Member '%s' not supported for this type", member ? member : "");
+    BREAD_ERROR_SET_RUNTIME(error_msg);
     if (target_owned) bread_value_release(&real_target);
     return 0;
 }
@@ -210,7 +237,7 @@ int bread_method_call_op(const BreadValue* target, const char* name, int argc, c
 
     if (name && strcmp(name, "toString") == 0) {
         if (argc != 0) {
-            printf("Error: toString() expects 0 arguments\n");
+            BREAD_ERROR_SET_RUNTIME("toString() expects 0 arguments");
             if (target_owned) bread_value_release(&real_target);
             return 0;
         }
@@ -236,7 +263,7 @@ int bread_method_call_op(const BreadValue* target, const char* name, int argc, c
                 snprintf(buf, sizeof(buf), "%lf", real_target.value.double_val);
                 break;
             default:
-                printf("Error: toString() not supported for this type\n");
+                BREAD_ERROR_SET_RUNTIME("toString() not supported for this type");
                 if (target_owned) bread_value_release(&real_target);
                 return 0;
         }
@@ -248,17 +275,17 @@ int bread_method_call_op(const BreadValue* target, const char* name, int argc, c
 
     if (name && strcmp(name, "append") == 0) {
         if (real_target.type != TYPE_ARRAY) {
-            printf("Error: append() is only supported on arrays\n");
+            BREAD_ERROR_SET_RUNTIME("append() is only supported on arrays");
             if (target_owned) bread_value_release(&real_target);
             return 0;
         }
         if (argc != 1 || !args) {
-            printf("Error: append() expects 1 argument\n");
+            BREAD_ERROR_SET_RUNTIME("append() expects 1 argument");
             if (target_owned) bread_value_release(&real_target);
             return 0;
         }
         if (!bread_array_append(real_target.value.array_val, args[0])) {
-            printf("Error: Out of memory\n");
+            BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory during array append");
             if (target_owned) bread_value_release(&real_target);
             return 0;
         }
@@ -267,7 +294,10 @@ int bread_method_call_op(const BreadValue* target, const char* name, int argc, c
         return 1;
     }
 
-    printf("Error: Unsupported method call\n");
+    char error_msg[256];
+    snprintf(error_msg, sizeof(error_msg), 
+            "Method '%s' not supported for this type", name ? name : "");
+    BREAD_ERROR_SET_RUNTIME(error_msg);
     if (target_owned) bread_value_release(&real_target);
     return 0;
 }
@@ -275,7 +305,7 @@ int bread_method_call_op(const BreadValue* target, const char* name, int argc, c
 int bread_dict_set_value(struct BreadDict* d, const BreadValue* key, const BreadValue* val) {
     if (!d || !key || !val) return 0;
     if (key->type != TYPE_STRING) {
-        printf("Error: Dictionary keys must be strings\n");
+        BREAD_ERROR_SET_TYPE_MISMATCH("Dictionary keys must be strings");
         return 0;
     }
     return bread_dict_set((BreadDict*)d, bread_string_cstr(key->value.string_val), *val);
@@ -295,7 +325,10 @@ int bread_array_set_value(struct BreadArray* a, int index, const BreadValue* v) 
     }
     
     if (index < 0 || index >= length) {
-        printf("Error: Array index %d out of bounds (length %d)\n", index, length);
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg), 
+                "Array index %d out of bounds (length %d)", index, length);
+        BREAD_ERROR_SET_INDEX_OUT_OF_BOUNDS(error_msg);
         return 0;
     }
     
