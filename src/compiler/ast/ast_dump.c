@@ -5,6 +5,7 @@
 #include "compiler/ast/ast_dump.h"
 
 #include "core/var.h"
+#include "core/type_descriptor.h"
 
 static void ast_dump_expr(const ASTExpr* e, FILE* out) {
     if (!out) return;

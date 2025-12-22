@@ -8,6 +8,7 @@
 #include "runtime/print.h"
 #include "runtime/error.h"
 #include "core/var.h"
+#include "core/type_descriptor.h"
 #include "core/function.h"
 #include "core/value.h"
 #include "runtime/runtime.h"

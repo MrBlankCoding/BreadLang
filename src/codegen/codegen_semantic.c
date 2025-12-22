@@ -209,7 +209,8 @@ VarType cg_infer_expr_type_simple(Cg* cg, ASTExpr* expr) {
             VarType left_type = cg_infer_expr_type_simple(cg, expr->as.binary.left);
             VarType right_type = cg_infer_expr_type_simple(cg, expr->as.binary.right);
             
-            // Arithmetic operators: both operands must be same numeric type
+            // Arithmetic operators: both operands must be same type
+            // Special-case: String + String is concatenation
             if (expr->as.binary.op == '+' || expr->as.binary.op == '-' || 
                 expr->as.binary.op == '*' || expr->as.binary.op == '/' || 
                 expr->as.binary.op == '%') {
@@ -217,6 +218,10 @@ VarType cg_infer_expr_type_simple(Cg* cg, ASTExpr* expr) {
                 if (left_type != right_type) {
                     cg_error(cg, "Type mismatch in binary operation", NULL);
                     return TYPE_NIL;
+                }
+
+                if (expr->as.binary.op == '+' && left_type == TYPE_STRING) {
+                    return TYPE_STRING;
                 }
                 
                 if (left_type != TYPE_INT && left_type != TYPE_DOUBLE) {
@@ -408,6 +413,11 @@ TypeDescriptor* cg_infer_expr_type_desc_simple(Cg* cg, ASTExpr* expr) {
                     type_descriptor_free(left);
                     type_descriptor_free(right);
                     return NULL;
+                }
+
+                if (expr->as.binary.op == '+' && left->base_type == TYPE_STRING) {
+                    type_descriptor_free(right);
+                    return left;
                 }
 
                 if (left->base_type != TYPE_INT && left->base_type != TYPE_DOUBLE) {

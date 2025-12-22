@@ -1,0 +1,2 @@
+const x: String = "World"
+print("HELLO" + x)
