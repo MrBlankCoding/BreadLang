@@ -336,6 +336,7 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
             LLVMBuildCondBr(cg->builder, cmp, body_block, end_block);
 
             LLVMPositionBuilderAtEnd(cg->builder, body_block);
+            (void)LLVMBuildCall2(cg->builder, cg->ty_push_scope, cg->fn_push_scope, NULL, 0, "");
             LLVMValueRef iter_tmp = cg_alloc_value(cg, "for.iter");
             LLVMValueRef set_iter_args[] = {cg_value_to_i8_ptr(cg, iter_tmp), i_val};
             (void)LLVMBuildCall2(cg->builder, cg->ty_value_set_int, cg->fn_value_set_int, set_iter_args, 2, "");
@@ -344,6 +345,7 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
 
             if (!cg_build_stmt_list(cg, cg_fn, val_size, stmt->as.for_stmt.body)) return 0;
             if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(cg->builder)) == NULL) {
+                (void)LLVMBuildCall2(cg->builder, cg->ty_pop_scope, cg->fn_pop_scope, NULL, 0, "");
                 LLVMBuildBr(cg->builder, inc_block);
             }
 
@@ -450,10 +452,12 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
             LLVMBuildCondBr(cg->builder, success_cmp, assign_block, end_block);
             
             LLVMPositionBuilderAtEnd(cg->builder, assign_block);
+            (void)LLVMBuildCall2(cg->builder, cg->ty_push_scope, cg->fn_push_scope, NULL, 0, "");
             LLVMValueRef assign_args[] = {name_ptr, cg_value_to_i8_ptr(cg, element_tmp)};
             (void)LLVMBuildCall2(cg->builder, cg->ty_var_assign, cg->fn_var_assign, assign_args, 2, "");
             if (!cg_build_stmt_list(cg, cg_fn, val_size, stmt->as.for_in_stmt.body)) return 0;
             if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(cg->builder)) == NULL) {
+                (void)LLVMBuildCall2(cg->builder, cg->ty_pop_scope, cg->fn_pop_scope, NULL, 0, "");
                 LLVMBuildBr(cg->builder, inc_block);
             }
             LLVMPositionBuilderAtEnd(cg->builder, inc_block);
@@ -604,15 +608,7 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
                 }
                 
                 // Store constructor function for runtime lookup
-                if (class->method_functions && class->method_count > 0) {
-                    // Find the init method and store its function
-                    for (int i = 0; i < class->method_count; i++) {
-                        if (strcmp(class->method_names[i], "init") == 0) {
-                            class->method_functions[i] = constructor_fn;
-                            break;
-                        }
-                    }
-                }
+                class->constructor_function = constructor_fn;
             }
             
             // Generate functions for other methods

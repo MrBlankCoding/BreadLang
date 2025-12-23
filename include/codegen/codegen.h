@@ -57,6 +57,7 @@ typedef struct CgClass {
     // Runtime method information
     LLVMValueRef* method_functions;  // Generated LLVM functions for methods
     char** method_names;             // Method names for lookup
+    LLVMValueRef constructor_function; // Generated LLVM function for constructor
 } CgClass;
 
 typedef struct {
@@ -260,6 +261,7 @@ CgFunction* cg_find_function(Cg* cg, const char* name);
 int cg_declare_class_from_ast(Cg* cg, const ASTStmtClassDecl* class_decl, const SourceLoc* loc);
 CgClass* cg_find_class(Cg* cg, const char* name);
 int cg_collect_all_fields(Cg* cg, CgClass* class_def, char*** all_field_names, int* total_field_count);
+int cg_collect_all_methods(Cg* cg, CgClass* class_def, char*** all_method_names, int* total_method_count);
 void cg_error(Cg* cg, const char* msg, const char* name);
 void cg_error_at(Cg* cg, const char* msg, const char* name, const SourceLoc* loc);
 void cg_type_error_at(Cg* cg, const char* msg, const TypeDescriptor* expected, const TypeDescriptor* actual, const SourceLoc* loc);

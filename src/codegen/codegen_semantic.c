@@ -194,6 +194,55 @@ CgClass* cg_find_class(Cg* cg, const char* name) {
     return NULL;
 }
 
+ static ASTStmtFuncDecl* cg_find_class_method_decl(Cg* cg, CgClass* class_def, const char* method_name) {
+     if (!cg || !class_def || !method_name) return NULL;
+
+     for (int i = 0; i < class_def->method_count; i++) {
+         ASTStmtFuncDecl* m = class_def->methods[i];
+         if (m && m->name && strcmp(m->name, method_name) == 0) {
+             return m;
+         }
+     }
+
+     if (class_def->parent_name) {
+         CgClass* parent = cg_find_class(cg, class_def->parent_name);
+         if (parent) return cg_find_class_method_decl(cg, parent, method_name);
+     }
+
+     return NULL;
+ }
+
+ static const char* cg_type_desc_get_nominal_name(const TypeDescriptor* t) {
+     if (!t) return NULL;
+     if (t->base_type == TYPE_CLASS) return t->params.class_type.name;
+     if (t->base_type == TYPE_STRUCT) return t->params.struct_type.name;
+     return NULL;
+ }
+
+ static TypeDescriptor* cg_common_superclass_desc(Cg* cg, const TypeDescriptor* a, const TypeDescriptor* b) {
+     if (!cg || !a || !b) return NULL;
+
+     const char* a_name = cg_type_desc_get_nominal_name(a);
+     const char* b_name = cg_type_desc_get_nominal_name(b);
+     if (!a_name || !b_name) return NULL;
+
+     CgClass* a_cls = cg_find_class(cg, a_name);
+     CgClass* b_cls = cg_find_class(cg, b_name);
+     if (!a_cls || !b_cls) return NULL;
+
+     // Walk a's ancestors, then search for first match in b's ancestry.
+     for (CgClass* a_it = a_cls; a_it; a_it = a_it->parent_name ? cg_find_class(cg, a_it->parent_name) : NULL) {
+         for (CgClass* b_it = b_cls; b_it; b_it = b_it->parent_name ? cg_find_class(cg, b_it->parent_name) : NULL) {
+             if (a_it->name && b_it->name && strcmp(a_it->name, b_it->name) == 0) {
+                 return type_descriptor_create_class(a_it->name, a_it->parent_name,
+                                                   a_it->field_count, a_it->field_names, a_it->field_types);
+             }
+         }
+     }
+
+     return NULL;
+ }
+
 // Helper function to collect all fields from a class hierarchy
 int cg_collect_all_fields(Cg* cg, CgClass* class_def, char*** all_field_names, int* total_field_count) {
     if (!cg || !class_def || !all_field_names || !total_field_count) return 0;
@@ -244,6 +293,78 @@ int cg_collect_all_fields(Cg* cg, CgClass* class_def, char*** all_field_names, i
     return 1;
 }
 
+// Helper function to collect all methods from a class hierarchy
+int cg_collect_all_methods(Cg* cg, CgClass* class_def, char*** all_method_names, int* total_method_count) {
+    if (!cg || !class_def || !all_method_names || !total_method_count) return 0;
+    
+    // Count total methods
+    int count = class_def->method_count;
+    CgClass* parent = class_def->parent_name ? cg_find_class(cg, class_def->parent_name) : NULL;
+    while (parent) {
+        count += parent->method_count;
+        parent = parent->parent_name ? cg_find_class(cg, parent->parent_name) : NULL;
+    }
+    
+    if (count == 0) {
+        *all_method_names = NULL;
+        *total_method_count = 0;
+        return 1;
+    }
+    
+    // Allocate array for all method names
+    char** methods = malloc(sizeof(char*) * count);
+    if (!methods) return 0;
+    
+    int index = 0;
+    
+    // Add current class methods first
+    for (int i = 0; i < class_def->method_count; i++) {
+        if (class_def->method_names[i]) {
+            methods[index] = strdup(class_def->method_names[i]);
+            if (!methods[index]) {
+                // Cleanup on failure
+                for (int j = 0; j < index; j++) free(methods[j]);
+                free(methods);
+                return 0;
+            }
+            index++;
+        }
+    }
+    
+    // Add parent methods (avoiding duplicates)
+    parent = class_def->parent_name ? cg_find_class(cg, class_def->parent_name) : NULL;
+    while (parent) {
+        for (int i = 0; i < parent->method_count; i++) {
+            if (parent->method_names[i]) {
+                // Check if method is already in the list (overridden)
+                int duplicate = 0;
+                for (int j = 0; j < index; j++) {
+                    if (strcmp(methods[j], parent->method_names[i]) == 0) {
+                        duplicate = 1;
+                        break;
+                    }
+                }
+                
+                if (!duplicate) {
+                    methods[index] = strdup(parent->method_names[i]);
+                    if (!methods[index]) {
+                        // Cleanup on failure
+                        for (int j = 0; j < index; j++) free(methods[j]);
+                        free(methods);
+                        return 0;
+                    }
+                    index++;
+                }
+            }
+        }
+        parent = parent->parent_name ? cg_find_class(cg, parent->parent_name) : NULL;
+    }
+    
+    *all_method_names = methods;
+    *total_method_count = index;
+    return 1;
+}
+
 int cg_declare_class_from_ast(Cg* cg, const ASTStmtClassDecl* class_decl, const SourceLoc* loc) {
     if (!cg || !class_decl || !class_decl->name) return 0;
     
@@ -270,6 +391,7 @@ int cg_declare_class_from_ast(Cg* cg, const ASTStmtClassDecl* class_decl, const 
     // Initialize runtime method information
     new_class->method_functions = NULL;
     new_class->method_names = NULL;
+    new_class->constructor_function = NULL; // Initialize constructor function
     if (new_class->method_count > 0) {
         new_class->method_functions = malloc(sizeof(LLVMValueRef) * new_class->method_count);
         new_class->method_names = malloc(sizeof(char*) * new_class->method_count);
@@ -326,13 +448,15 @@ VarType cg_infer_expr_type_simple(Cg* cg, ASTExpr* expr) {
                 expr->as.binary.op == '*' || expr->as.binary.op == '/' || 
                 expr->as.binary.op == '%') {
                 
+                // Special case for string concatenation
+                if (expr->as.binary.op == '+' && 
+                    left_type == TYPE_STRING && right_type == TYPE_STRING) {
+                    return TYPE_STRING;
+                }
+                
                 if (left_type != right_type) {
                     cg_error(cg, "Type mismatch in binary operation", NULL);
                     return TYPE_NIL;
-                }
-
-                if (expr->as.binary.op == '+' && left_type == TYPE_STRING) {
-                    return TYPE_STRING;
                 }
                 
                 if (left_type != TYPE_INT && left_type != TYPE_DOUBLE) {
@@ -359,6 +483,15 @@ VarType cg_infer_expr_type_simple(Cg* cg, ASTExpr* expr) {
                 return TYPE_BOOL;
             }
             
+            return TYPE_NIL;
+        }
+
+        case AST_EXPR_METHOD_CALL: {
+            VarType target_type = cg_infer_expr_type_simple(cg, expr->as.method_call.target);
+            if (target_type != TYPE_CLASS) return TYPE_NIL;
+
+            // Best-effort: infer from current class context is not available here, so return Nil.
+            // The full TypeDescriptor-based inference below handles proper lookup.
             return TYPE_NIL;
         }
         
@@ -539,9 +672,52 @@ TypeDescriptor* cg_infer_expr_type_desc_simple(Cg* cg, ASTExpr* expr) {
         }
 
         case AST_EXPR_METHOD_CALL: {
-            // For method calls, we need to look up the method and return its return type
-            // For now, assume methods return Int (this should be improved to look up actual method signatures)
-            return type_descriptor_create_primitive(TYPE_INT);
+            TypeDescriptor* target_type = cg_infer_expr_type_desc_simple(cg, expr->as.method_call.target);
+            if (!target_type) return NULL;
+
+            // Only class method signatures are tracked at compile time right now.
+            // Note: parse_type_descriptor treats unknown identifiers as TYPE_STRUCT; we
+            // resolve TYPE_STRUCT(name) to a class if a matching class exists.
+            const char* class_name = NULL;
+            if (target_type->base_type == TYPE_CLASS) {
+                class_name = target_type->params.class_type.name;
+            } else if (target_type->base_type == TYPE_STRUCT) {
+                class_name = target_type->params.struct_type.name;
+            } else {
+                type_descriptor_free(target_type);
+                return type_descriptor_create_primitive(TYPE_NIL);
+            }
+
+            const char* method_name = expr->as.method_call.name;
+            if (!class_name || !method_name) {
+                type_descriptor_free(target_type);
+                return type_descriptor_create_primitive(TYPE_NIL);
+            }
+
+            CgClass* class_def = cg_find_class(cg, class_name);
+            if (!class_def) {
+                type_descriptor_free(target_type);
+                return type_descriptor_create_primitive(TYPE_NIL);
+            }
+
+            // Special-case constructor calls: init always returns Nil.
+            if (strcmp(method_name, "init") == 0) {
+                type_descriptor_free(target_type);
+                return type_descriptor_create_primitive(TYPE_NIL);
+            }
+
+            ASTStmtFuncDecl* method_decl = cg_find_class_method_decl(cg, class_def, method_name);
+            if (!method_decl) {
+                type_descriptor_free(target_type);
+                return type_descriptor_create_primitive(TYPE_NIL);
+            }
+
+            type_descriptor_free(target_type);
+
+            if (method_decl->return_type_desc) {
+                return type_descriptor_clone(method_decl->return_type_desc);
+            }
+            return type_descriptor_create_primitive(method_decl->return_type);
         }
 
         case AST_EXPR_BINARY: {
@@ -557,18 +733,19 @@ TypeDescriptor* cg_infer_expr_type_desc_simple(Cg* cg, ASTExpr* expr) {
                 expr->as.binary.op == '*' || expr->as.binary.op == '/' ||
                 expr->as.binary.op == '%') {
 
-                // Phase 3: Enforce no implicit numeric coercion
+                // Special case for string concatenation
+                if (expr->as.binary.op == '+' && 
+                    left->base_type == TYPE_STRING && right->base_type == TYPE_STRING) {
+                    type_descriptor_free(right);
+                    return left;
+                }
+
                 if (!type_descriptor_equals(left, right)) {
-                    cg_type_error(cg, "Type mismatch in binary operation - no implicit coercion allowed", 
-                                left, right);
+                    cg_type_error_at(cg, "Type mismatch in binary operation - no implicit coercion allowed", 
+                                    left, right, &expr->loc);
                     type_descriptor_free(left);
                     type_descriptor_free(right);
                     return NULL;
-                }
-
-                if (expr->as.binary.op == '+' && left->base_type == TYPE_STRING) {
-                    type_descriptor_free(right);
-                    return left;
                 }
 
                 if (left->base_type != TYPE_INT && left->base_type != TYPE_DOUBLE) {
@@ -657,7 +834,15 @@ TypeDescriptor* cg_infer_expr_type_desc_simple(Cg* cg, ASTExpr* expr) {
                     return NULL;
                 }
                 if (!type_descriptor_equals(elem_type, t)) {
-                    cg_type_error(cg, "Array literal elements must have same type", elem_type, t);
+                    TypeDescriptor* common = cg_common_superclass_desc(cg, elem_type, t);
+                    if (common) {
+                        type_descriptor_free(elem_type);
+                        elem_type = common;
+                        type_descriptor_free(t);
+                        continue;
+                    }
+
+                    cg_type_error_at(cg, "Array literal elements must have same type", elem_type, t, &expr->loc);
                     type_descriptor_free(t);
                     type_descriptor_free(elem_type);
                     return NULL;
@@ -765,6 +950,37 @@ TypeDescriptor* cg_infer_expr_type_desc_simple(Cg* cg, ASTExpr* expr) {
                 // In a full implementation, we'd look up the actual field type from the struct definition
                 type_descriptor_free(target_type);
                 return type_descriptor_create_primitive(TYPE_INT);
+            }
+            
+            // For class field access, look up the field type
+            if (target_type->base_type == TYPE_CLASS) {
+                const char* class_name = target_type->params.class_type.name;
+                const char* field_name = expr->as.member.member;
+                
+                if (class_name && field_name) {
+                    // Find the class definition
+                    CgClass* class_def = cg_find_class(cg, class_name);
+                    if (class_def) {
+                        // Look for the field in this class and its parents
+                        CgClass* current = class_def;
+                        while (current) {
+                            for (int i = 0; i < current->field_count; i++) {
+                                if (current->field_names[i] && strcmp(current->field_names[i], field_name) == 0) {
+                                    // Found the field, return its type
+                                    TypeDescriptor* field_type = type_descriptor_clone(current->field_types[i]);
+                                    type_descriptor_free(target_type);
+                                    return field_type ? field_type : type_descriptor_create_primitive(TYPE_NIL);
+                                }
+                            }
+                            // Check parent class
+                            current = current->parent_name ? cg_find_class(cg, current->parent_name) : NULL;
+                        }
+                    }
+                }
+                
+                // Field not found, return nil
+                type_descriptor_free(target_type);
+                return type_descriptor_create_primitive(TYPE_NIL);
             }
             
             // For other types, return nil for now

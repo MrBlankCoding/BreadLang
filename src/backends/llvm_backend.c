@@ -324,6 +324,10 @@ static int bread_llvm_build_module_from_program(const ASTStmtList* program, LLVM
         if (!bread_error_has_error()) {
             BREAD_ERROR_SET_COMPILE_ERROR("Semantic analysis failed");
         }
+        printf("DEBUG: Semantic analysis failed\n");
+        if (bread_error_has_error()) {
+            bread_error_print_current();
+        }
         LLVMDisposeBuilder(builder);
         LLVMDisposeModule(mod);
         return 0;
@@ -419,15 +423,8 @@ static int bread_llvm_build_module_from_program(const ASTStmtList* program, LLVM
     // Generate method bodies for classes
     for (CgClass* c = cg.classes; c; c = c->next) {
         // Generate constructor body
-        if (c->constructor && c->method_functions) {
-            // Find constructor function
-            LLVMValueRef constructor_fn = NULL;
-            for (int i = 0; i < c->method_count; i++) {
-                if (strcmp(c->method_names[i], "init") == 0) {
-                    constructor_fn = c->method_functions[i];
-                    break;
-                }
-            }
+        if (c->constructor && c->constructor_function) {
+            LLVMValueRef constructor_fn = c->constructor_function;
             
             if (constructor_fn && LLVMCountBasicBlocks(constructor_fn) == 0) {
                 LLVMBasicBlockRef constructor_entry = LLVMAppendBasicBlock(constructor_fn, "entry");

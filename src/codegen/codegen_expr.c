@@ -142,18 +142,16 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
                     // Evaluate operands and store in temporary variables first
                     LLVMValueRef left = cg_build_expr(cg, cg_fn, val_size, expr->as.binary.left);
                     if (!left) return NULL;
-                    LLVMValueRef left_temp = cg_clone_value(cg, left, "left_temp");
                     
                     LLVMValueRef right = cg_build_expr(cg, cg_fn, val_size, expr->as.binary.right);
                     if (!right) return NULL;
-                    LLVMValueRef right_temp = cg_clone_value(cg, right, "right_temp");
                     
                     tmp = cg_alloc_value(cg, "bintmp");
                     LLVMValueRef op = LLVMConstInt(cg->i8, expr->as.binary.op, 0);
                     LLVMValueRef args[] = {
                         op,
-                        cg_value_to_i8_ptr(cg, left_temp),
-                        cg_value_to_i8_ptr(cg, right_temp),
+                        cg_value_to_i8_ptr(cg, left),
+                        cg_value_to_i8_ptr(cg, right),
                         cg_value_to_i8_ptr(cg, tmp)
                     };
                     (void)LLVMBuildCall2(cg->builder, cg->ty_binary_op, cg->fn_binary_op, args, 4, "");
@@ -264,12 +262,167 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
         }
 
         case AST_EXPR_METHOD_CALL: {
+            // Check if this is a super method call
+            int is_super_call = (expr->as.method_call.target && 
+                                expr->as.method_call.target->kind == AST_EXPR_SUPER);
+            
             LLVMValueRef target = cg_build_expr(cg, cg_fn, val_size, expr->as.method_call.target);
             if (!target) return NULL;
 
             tmp = cg_alloc_value(cg, "methodtmp");
 
             const char* name = expr->as.method_call.name ? expr->as.method_call.name : "";
+            
+            // For super calls, we need to call the parent class method through runtime
+            if (is_super_call && cg_fn && cg_fn->current_class && cg_fn->current_class->parent_name) {
+                // For super.init() calls, we'll use individual argument passing instead of arrays
+                if (strcmp(name, "init") == 0) {
+                    // Get parent class name
+                    LLVMValueRef parent_name_str = cg_get_string_global(cg, cg_fn->current_class->parent_name);
+                    LLVMValueRef parent_name_ptr = LLVMBuildBitCast(cg->builder, parent_name_str, cg->i8_ptr, "");
+                    
+                    // Get self parameter (the current instance)
+                    LLVMValueRef self_param = LLVMGetParam(cg_fn->fn, 1);
+                    
+                    // Handle different argument counts with individual parameters
+                    if (expr->as.method_call.arg_count == 0) {
+                        // No arguments
+                        LLVMTypeRef ty_super_init_0 = LLVMFunctionType(
+                            cg->void_ty,
+                            (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr, cg->i8_ptr},  // self, parent_name, result
+                            3,
+                            0
+                        );
+                        LLVMValueRef fn_super_init_0 = cg_declare_fn(cg, "bread_super_init_0", ty_super_init_0);
+                        
+                        LLVMValueRef super_args[] = {
+                            self_param,
+                            parent_name_ptr,
+                            cg_value_to_i8_ptr(cg, tmp)
+                        };
+                        (void)LLVMBuildCall2(cg->builder, ty_super_init_0, fn_super_init_0, super_args, 3, "");
+                    } else if (expr->as.method_call.arg_count == 1) {
+                        // One argument
+                        LLVMValueRef arg0 = cg_build_expr(cg, cg_fn, val_size, expr->as.method_call.args[0]);
+                        if (!arg0) return NULL;
+                        
+                        LLVMTypeRef ty_super_init_1 = LLVMFunctionType(
+                            cg->void_ty,
+                            (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr, cg->i8_ptr, cg->i8_ptr},  // self, parent_name, arg0, result
+                            4,
+                            0
+                        );
+                        LLVMValueRef fn_super_init_1 = cg_declare_fn(cg, "bread_super_init_1", ty_super_init_1);
+                        
+                        LLVMValueRef super_args[] = {
+                            self_param,
+                            parent_name_ptr,
+                            cg_value_to_i8_ptr(cg, arg0),
+                            cg_value_to_i8_ptr(cg, tmp)
+                        };
+                        (void)LLVMBuildCall2(cg->builder, ty_super_init_1, fn_super_init_1, super_args, 4, "");
+                    } else if (expr->as.method_call.arg_count == 2) {
+                        // Two arguments
+                        LLVMValueRef arg0 = cg_build_expr(cg, cg_fn, val_size, expr->as.method_call.args[0]);
+                        if (!arg0) return NULL;
+                        LLVMValueRef arg1 = cg_build_expr(cg, cg_fn, val_size, expr->as.method_call.args[1]);
+                        if (!arg1) return NULL;
+                        
+                        LLVMTypeRef ty_super_init_2 = LLVMFunctionType(
+                            cg->void_ty,
+                            (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr, cg->i8_ptr, cg->i8_ptr, cg->i8_ptr},  // self, parent_name, arg0, arg1, result
+                            5,
+                            0
+                        );
+                        LLVMValueRef fn_super_init_2 = cg_declare_fn(cg, "bread_super_init_2", ty_super_init_2);
+                        
+                        LLVMValueRef super_args[] = {
+                            self_param,
+                            parent_name_ptr,
+                            cg_value_to_i8_ptr(cg, arg0),
+                            cg_value_to_i8_ptr(cg, arg1),
+                            cg_value_to_i8_ptr(cg, tmp)
+                        };
+                        (void)LLVMBuildCall2(cg->builder, ty_super_init_2, fn_super_init_2, super_args, 5, "");
+                    } else if (expr->as.method_call.arg_count == 3) {
+                        // Three arguments
+                        LLVMValueRef arg0 = cg_build_expr(cg, cg_fn, val_size, expr->as.method_call.args[0]);
+                        if (!arg0) return NULL;
+                        LLVMValueRef arg1 = cg_build_expr(cg, cg_fn, val_size, expr->as.method_call.args[1]);
+                        if (!arg1) return NULL;
+                        LLVMValueRef arg2 = cg_build_expr(cg, cg_fn, val_size, expr->as.method_call.args[2]);
+                        if (!arg2) return NULL;
+                        
+                        LLVMTypeRef ty_super_init_3 = LLVMFunctionType(
+                            cg->void_ty,
+                            (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr, cg->i8_ptr, cg->i8_ptr, cg->i8_ptr, cg->i8_ptr},  // self, parent_name, arg0, arg1, arg2, result
+                            6,
+                            0
+                        );
+                        LLVMValueRef fn_super_init_3 = cg_declare_fn(cg, "bread_super_init_3", ty_super_init_3);
+                        
+                        LLVMValueRef super_args[] = {
+                            self_param,
+                            parent_name_ptr,
+                            cg_value_to_i8_ptr(cg, arg0),
+                            cg_value_to_i8_ptr(cg, arg1),
+                            cg_value_to_i8_ptr(cg, arg2),
+                            cg_value_to_i8_ptr(cg, tmp)
+                        };
+                        (void)LLVMBuildCall2(cg->builder, ty_super_init_3, fn_super_init_3, super_args, 6, "");
+                    } else {
+                        // Fall back to the array-based approach for more arguments
+                        // Create arguments array
+                        LLVMValueRef args_ptr = LLVMConstNull(cg->i8_ptr);
+                        if (expr->as.method_call.arg_count > 0) {
+                            LLVMTypeRef args_arr_ty = LLVMArrayType(cg->value_type, (unsigned)expr->as.method_call.arg_count);
+                            LLVMValueRef args_alloca = LLVMBuildAlloca(cg->builder, args_arr_ty, "super_init_args");
+                            LLVMSetAlignment(args_alloca, 16);
+
+                            for (int i = 0; i < expr->as.method_call.arg_count; i++) {
+                                LLVMValueRef arg_val = cg_build_expr(cg, cg_fn, val_size, expr->as.method_call.args[i]);
+                                if (!arg_val) return NULL;
+
+                                LLVMValueRef slot = LLVMBuildGEP2(
+                                    cg->builder,
+                                    args_arr_ty,
+                                    args_alloca,
+                                    (LLVMValueRef[]){LLVMConstInt(cg->i32, 0, 0), LLVMConstInt(cg->i32, i, 0)},
+                                    2,
+                                    "super_init_arg_slot");
+                                cg_copy_value_into(cg, slot, arg_val);
+                            }
+
+                            args_ptr = LLVMBuildBitCast(cg->builder, args_alloca, cg->i8_ptr, "");
+                        }
+                        
+                        LLVMTypeRef ty_super_init_simple = LLVMFunctionType(
+                            cg->void_ty,
+                            (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr, cg->i32, cg->i8_ptr, cg->i8_ptr},  // self, parent_name, argc, args, result
+                            5,
+                            0
+                        );
+                        LLVMValueRef fn_super_init_simple = cg_declare_fn(cg, "bread_super_init_simple", ty_super_init_simple);
+                        
+                        LLVMValueRef super_args[] = {
+                            self_param,
+                            parent_name_ptr,
+                            LLVMConstInt(cg->i32, expr->as.method_call.arg_count, 0),
+                            args_ptr,
+                            cg_value_to_i8_ptr(cg, tmp)
+                        };
+                        (void)LLVMBuildCall2(cg->builder, ty_super_init_simple, fn_super_init_simple, super_args, 5, "");
+                    }
+                    
+                    // Return nil for constructor calls
+                    LLVMValueRef nil_args[] = {cg_value_to_i8_ptr(cg, tmp)};
+                    (void)LLVMBuildCall2(cg->builder, cg->ty_value_set_nil, cg->fn_value_set_nil, nil_args, 1, "");
+                    return tmp;
+                }
+                // For other super method calls, fall through to regular method call handling
+            }
+            
+            // Regular method call handling
             LLVMValueRef name_glob = cg_get_string_global(cg, name);
             LLVMValueRef name_ptr = LLVMBuildBitCast(cg->builder, name_glob, cg->i8_ptr, "");
             LLVMValueRef is_opt = LLVMConstInt(cg->i32, expr->as.method_call.is_optional_chain ? 1 : 0, 0);
@@ -485,7 +638,7 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
                     6,
                     0
                 );
-                LLVMValueRef fn_class_new = cg_declare_fn(cg, "bread_class_new_with_methods", ty_class_new);
+                LLVMValueRef fn_class_new = cg_declare_fn(cg, "bread_class_create_instance", ty_class_new);
                 
                 LLVMValueRef field_count = LLVMConstInt(cg->i32, total_field_count, 0);
                 LLVMValueRef parent_name_ptr = callee_class->parent_name ? 

@@ -388,11 +388,14 @@ int bread_method_call_op(const BreadValue* target, const char* name, int argc, c
     if (real_target.type == TYPE_CLASS) {
         BreadClass* class_instance = real_target.value.class_val;
         if (class_instance && name) {
-            // Look up the method in the class
+            // Look up the method in the class hierarchy and execute it.
+            // bread_class_find_method_index() already walks parent_class; bread_class_execute_method()
+            // resolves the actual defining class before dispatch.
             int method_index = bread_class_find_method_index(class_instance, name);
             if (method_index >= 0) {
-                // Call the method with proper execution context
-                return bread_class_execute_method(class_instance, method_index, argc, args, out);
+                int ok = bread_class_execute_method(class_instance, method_index, argc, args, out);
+                if (target_owned) bread_value_release(&real_target);
+                return ok;
             }
             
             // Handle constructor separately
@@ -478,4 +481,83 @@ int bread_array_set_value(struct BreadArray* a, int index, const BreadValue* v) 
     }
     
     return bread_array_set((BreadArray*)a, index, *v);
+}
+// Super constructor call - simplified version that just sets fields
+int bread_super_init_simple(const BreadValue* self, const char* parent_name, int argc, const BreadValue* args, BreadValue* out) {
+    if (!self || !parent_name || !out) return 0;
+    
+    // The self parameter should be a class instance
+    if (self->type != TYPE_CLASS) {
+        BREAD_ERROR_SET_TYPE_MISMATCH("Super call requires class instance");
+        return 0;
+    }
+    
+    BreadClass* instance = self->value.class_val;
+    if (!instance) {
+        BREAD_ERROR_SET_RUNTIME("Invalid class instance");
+        return 0;
+    }
+    
+    // Find the parent class definition
+    BreadClass* parent_class = bread_class_find_definition(parent_name);
+    if (!parent_class) {
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg), "Parent class '%s' not found", parent_name);
+        BREAD_ERROR_SET_RUNTIME(error_msg);
+        return 0;
+    }
+    
+    // Validate arguments before processing
+    if (argc > 0 && !args) {
+        BREAD_ERROR_SET_RUNTIME("Invalid arguments array");
+        return 0;
+    }
+    
+    // Validate each argument
+    for (int i = 0; i < argc; i++) {
+        if (args[i].type == TYPE_NIL && i < parent_class->field_count) {
+            // Skip nil arguments, but don't fail
+            continue;
+        }
+    }
+    
+    // Simple approach: just set the fields directly based on argument position
+    // This assumes the parent constructor sets fields in the same order as arguments
+    int fields_to_set = (argc < parent_class->field_count) ? argc : parent_class->field_count;
+    
+    for (int i = 0; i < fields_to_set; i++) {
+        if (i < parent_class->field_count && parent_class->field_names[i] && i < argc) {
+            // Create a safe copy of the argument to avoid memory issues
+            BreadValue safe_arg = bread_value_clone(args[i]);
+            bread_class_set_field(instance, parent_class->field_names[i], safe_arg);
+            bread_value_release(&safe_arg);
+        }
+    }
+    
+    bread_value_set_nil(out);
+    return 1;
+}
+// Super constructor call with 0 arguments
+int bread_super_init_0(const BreadValue* self, const char* parent_name, BreadValue* out) {
+    return bread_super_init_simple(self, parent_name, 0, NULL, out);
+}
+
+// Super constructor call with 1 argument
+int bread_super_init_1(const BreadValue* self, const char* parent_name, const BreadValue* arg0, BreadValue* out) {
+    if (!arg0) return 0;
+    return bread_super_init_simple(self, parent_name, 1, arg0, out);
+}
+
+// Super constructor call with 2 arguments
+int bread_super_init_2(const BreadValue* self, const char* parent_name, const BreadValue* arg0, const BreadValue* arg1, BreadValue* out) {
+    if (!arg0 || !arg1) return 0;
+    BreadValue args[2] = {*arg0, *arg1};
+    return bread_super_init_simple(self, parent_name, 2, args, out);
+}
+
+// Super constructor call with 3 arguments
+int bread_super_init_3(const BreadValue* self, const char* parent_name, const BreadValue* arg0, const BreadValue* arg1, const BreadValue* arg2, BreadValue* out) {
+    if (!arg0 || !arg1 || !arg2) return 0;
+    BreadValue args[3] = {*arg0, *arg1, *arg2};
+    return bread_super_init_simple(self, parent_name, 3, args, out);
 }

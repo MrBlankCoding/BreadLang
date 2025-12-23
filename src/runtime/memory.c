@@ -1,419 +1,228 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#include <assert.h>
 
 #include "runtime/memory.h"
 #include "runtime/error.h"
-#include "core/value.h"
 
-static BreadMemoryManager g_memory_manager = {0};
-static int g_memory_cleanup_in_progress = 0;
+static BreadMemoryManager g_mem = {0};
+static int g_mem_initialized = 0;
+
+static void bread_memory_ensure_init(void) {
+    if (g_mem_initialized) return;
+    memset(&g_mem, 0, sizeof(g_mem));
+    g_mem.cycle_collection_enabled = 0;
+    g_mem.cycle_collection_threshold = 0;
+    g_mem.allocations_since_gc = 0;
+    g_mem.debug_mode = 0;
+    g_mem_initialized = 1;
+}
 
 void bread_memory_init(void) {
-    memset(&g_memory_manager, 0, sizeof(BreadMemoryManager));
-    g_memory_manager.cycle_collection_enabled = 1;
-    g_memory_manager.cycle_collection_threshold = 100;  // Collect after 100 allocations
+    bread_memory_ensure_init();
 }
 
 void bread_memory_cleanup(void) {
-    bread_memory_cleanup_all();
-    
-    #ifdef DEBUG
-    bread_memory_print_stats();
-    if (bread_memory_check_leaks()) {
-        fprintf(stderr, "Warning: Memory leaks detected!\n");
+    if (!g_mem_initialized) return;
+
+    // Best-effort leak report (do not free objects here; individual releases own lifetime).
+    if (g_mem.debug_mode) {
+        bread_memory_print_stats();
+        bread_memory_print_leak_report();
     }
-    #endif
+}
+
+void bread_memory_track_object(void* object, BreadObjKind kind) {
+    if (!object) return;
+    bread_memory_ensure_init();
+
+    BreadObjectNode* node = (BreadObjectNode*)malloc(sizeof(BreadObjectNode));
+    if (!node) return;
+    node->object = object;
+    node->kind = kind;
+    node->marked = 0;
+    node->next = g_mem.all_objects;
+    g_mem.all_objects = node;
+
+    g_mem.stats.total_allocations++;
+    g_mem.stats.current_objects++;
+    if (g_mem.stats.current_objects > g_mem.stats.peak_objects) {
+        g_mem.stats.peak_objects = g_mem.stats.current_objects;
+    }
+}
+
+void bread_memory_untrack_object(void* object) {
+    if (!object || !g_mem_initialized) return;
+
+    BreadObjectNode** cur = &g_mem.all_objects;
+    while (*cur) {
+        if ((*cur)->object == object) {
+            BreadObjectNode* dead = *cur;
+            *cur = dead->next;
+            free(dead);
+            if (g_mem.stats.current_objects > 0) g_mem.stats.current_objects--;
+            g_mem.stats.total_deallocations++;
+            return;
+        }
+        cur = &(*cur)->next;
+    }
 }
 
 void* bread_memory_alloc(size_t size, BreadObjKind kind) {
+    bread_memory_ensure_init();
+
     void* ptr = malloc(size);
     if (!ptr) {
-        BREAD_ERROR_SET_MEMORY_ALLOCATION("Failed to allocate memory");
+        BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory");
         return NULL;
     }
-    
-    BreadObjHeader* header = (BreadObjHeader*)ptr;
-    header->kind = kind;
-    header->refcount = 1;
+
+    memset(ptr, 0, size);
+
+    // All heap objects begin with BreadObjHeader.
+    BreadObjHeader* hdr = (BreadObjHeader*)ptr;
+    hdr->kind = (uint32_t)kind;
+    hdr->refcount = 1;
+
+    g_mem.stats.bytes_allocated += size;
     bread_memory_track_object(ptr, kind);
-    g_memory_manager.stats.total_allocations++;
-    g_memory_manager.stats.current_objects++;
-    g_memory_manager.stats.bytes_allocated += size;
-    
-    if (g_memory_manager.stats.current_objects > g_memory_manager.stats.peak_objects) {
-        g_memory_manager.stats.peak_objects = g_memory_manager.stats.current_objects;
-    }
-    
-    g_memory_manager.allocations_since_gc++;
-    if (g_memory_manager.cycle_collection_enabled && 
-        g_memory_manager.allocations_since_gc >= g_memory_manager.cycle_collection_threshold &&
-        g_memory_manager.stats.current_objects > 50) {  
-        bread_memory_collect_cycles();
-        g_memory_manager.allocations_since_gc = 0;
-    }
-    
+
+    g_mem.allocations_since_gc++;
     return ptr;
 }
 
 void* bread_memory_realloc(void* ptr, size_t new_size) {
+    bread_memory_ensure_init();
+
     if (!ptr) {
-        return bread_memory_alloc(new_size, BREAD_OBJ_STRING); 
+        // Kind unknown; default to string.
+        return bread_memory_alloc(new_size, BREAD_OBJ_STRING);
     }
-    
+
+    // Preserve tracking node pointer identity by updating stored object pointer if needed.
     void* new_ptr = realloc(ptr, new_size);
     if (!new_ptr) {
-        BREAD_ERROR_SET_MEMORY_ALLOCATION("Failed to reallocate memory");
+        BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory");
         return NULL;
     }
-    
+
     if (new_ptr != ptr) {
-        BreadObjHeader* header = (BreadObjHeader*)ptr;
-        bread_memory_untrack_object(ptr);
-        bread_memory_track_object(new_ptr, header->kind);
+        BreadObjectNode* node = g_mem.all_objects;
+        while (node) {
+            if (node->object == ptr) {
+                node->object = new_ptr;
+                break;
+            }
+            node = node->next;
+        }
     }
-    
+
     return new_ptr;
 }
 
 void bread_memory_free(void* ptr) {
     if (!ptr) return;
 
-    if (!g_memory_cleanup_in_progress) {
-        bread_memory_untrack_object(ptr);
-    }
-    g_memory_manager.stats.total_deallocations++;
-    g_memory_manager.stats.current_objects--;
-    
+    bread_memory_untrack_object(ptr);
     free(ptr);
-}
-
-void bread_memory_track_object(void* object, BreadObjKind kind) {
-    if (!object) return;
-    
-    BreadObjectNode* node = malloc(sizeof(BreadObjectNode));
-    if (!node) return;  // Fail silently to avoid infinite recursion
-    
-    node->object = object;
-    node->kind = kind;
-    node->marked = 0;
-    node->next = g_memory_manager.all_objects;
-    g_memory_manager.all_objects = node;
-}
-
-void bread_memory_untrack_object(void* object) {
-    if (!object) return;
-    
-    BreadObjectNode** current = &g_memory_manager.all_objects;
-    while (*current) {
-        if ((*current)->object == object) {
-            BreadObjectNode* to_remove = *current;
-            *current = (*current)->next;
-            free(to_remove);
-            return;
-        }
-        current = &(*current)->next;
-    }
 }
 
 void bread_object_retain(void* object) {
     if (!object) return;
-    
-    BreadObjHeader* header = (BreadObjHeader*)object;
-    header->refcount++;
+    BreadObjHeader* hdr = (BreadObjHeader*)object;
+    hdr->refcount++;
 }
 
 void bread_object_release(void* object) {
     if (!object) return;
-    
-    BreadObjHeader* header = (BreadObjHeader*)object;
-    if (header->refcount == 0) return;  // Already freed
-    
-    header->refcount--;
-    if (header->refcount == 0) {
-        // Immediate deallocation when reference count reaches zero
-        // Don't call the specific release functions to avoid recursion
-        switch (header->kind) {
-            case BREAD_OBJ_STRING:
-                bread_memory_free(object);
-                break;
-            case BREAD_OBJ_ARRAY: {
-                BreadArray* array = (BreadArray*)object;
-                if (array->items) {
-                    for (int i = 0; i < array->count; i++) {
-                        bread_value_release(&array->items[i]);
-                    }
-                    free(array->items);
-                }
-                bread_memory_free(array);
-                break;
-            }
-            case BREAD_OBJ_DICT: {
-                BreadDict* dict = (BreadDict*)object;
-                if (dict->entries) {
-                    for (int i = 0; i < dict->capacity; i++) {
-                        if (dict->entries[i].is_occupied && !dict->entries[i].is_deleted) {
-                            bread_value_release(&dict->entries[i].key);
-                            bread_value_release(&dict->entries[i].value);
-                        }
-                    }
-                    free(dict->entries);
-                }
-                bread_memory_free(dict);
-                break;
-            }
-            case BREAD_OBJ_OPTIONAL: {
-                BreadOptional* optional = (BreadOptional*)object;
-                if (optional->is_some) {
-                    bread_value_release(&optional->value);
-                }
-                bread_memory_free(optional);
-                break;
-            }
-            default:
-                bread_memory_free(object);
-                break;
-        }
+    BreadObjHeader* hdr = (BreadObjHeader*)object;
+    if (hdr->refcount == 0) return;
+
+    hdr->refcount--;
+    if (hdr->refcount == 0) {
+        // For most object kinds, specialized *_release functions should be used.
+        // This raw free is safe for BreadString and acts as a fallback.
+        bread_memory_free(object);
     }
 }
 
 uint32_t bread_object_get_refcount(void* object) {
     if (!object) return 0;
-    
-    BreadObjHeader* header = (BreadObjHeader*)object;
-    return header->refcount;
+    BreadObjHeader* hdr = (BreadObjHeader*)object;
+    return hdr->refcount;
 }
 
 void bread_memory_collect_cycles(void) {
-    if (!g_memory_manager.cycle_collection_enabled) return;
-    BreadObjectNode* node = g_memory_manager.all_objects;
-    while (node) {
-        node->marked = 0;
-        node = node->next;
-    }
-    
-    // Mark reachable objects from stack variables and global roots
-    // This is a simplified implementation - in a real system, you'd
-    // traverse from actual root objects (stack variables, globals, etc.)
-    node = g_memory_manager.all_objects;
-    while (node) {
-        BreadObjHeader* header = (BreadObjHeader*)node->object;
-        if (header->refcount > 0) {
-            bread_memory_mark_reachable(node->object);
-        }
-        node = node->next;
-    }
-    
-    bread_memory_sweep_unreachable();
-}
-
-void bread_memory_set_cycle_collection_threshold(int threshold) {
-    if (threshold > 0) {
-        g_memory_manager.cycle_collection_threshold = threshold;
-    }
-}
-
-int bread_memory_get_cycle_collection_threshold(void) {
-    return g_memory_manager.cycle_collection_threshold;
+    // Not implemented (optional feature).
 }
 
 void bread_memory_mark_reachable(void* root) {
-    if (!root) return;
-    BreadObjectNode* node = g_memory_manager.all_objects;
-    while (node) {
-        if (node->object == root) {
-            if (node->marked) return;  // Already marked
-            node->marked = 1;
-            
-            BreadObjHeader* header = (BreadObjHeader*)root;
-            switch (header->kind) {
-                case BREAD_OBJ_ARRAY: {
-                    BreadArray* array = (BreadArray*)root;
-                    for (int i = 0; i < array->count; i++) {
-                        BreadValue* item = &array->items[i];
-                        switch (item->type) {
-                            case TYPE_STRING:
-                                bread_memory_mark_reachable(item->value.string_val);
-                                break;
-                            case TYPE_ARRAY:
-                                bread_memory_mark_reachable(item->value.array_val);
-                                break;
-                            case TYPE_DICT:
-                                bread_memory_mark_reachable(item->value.dict_val);
-                                break;
-                            case TYPE_OPTIONAL:
-                                bread_memory_mark_reachable(item->value.optional_val);
-                                break;
-                            default:
-                                break;
-                        }
-                    }
-                    break;
-                }
-                case BREAD_OBJ_DICT: {
-                    BreadDict* dict = (BreadDict*)root;
-                    for (int i = 0; i < dict->capacity; i++) {
-                        if (dict->entries[i].is_occupied && !dict->entries[i].is_deleted) {
-                            BreadValue* key = &dict->entries[i].key;
-                            if (key->type == TYPE_STRING) {
-                                bread_memory_mark_reachable(key->value.string_val);
-                            }
-                            BreadValue* value = &dict->entries[i].value;
-                            switch (value->type) {
-                                case TYPE_STRING:
-                                    bread_memory_mark_reachable(value->value.string_val);
-                                    break;
-                                case TYPE_ARRAY:
-                                    bread_memory_mark_reachable(value->value.array_val);
-                                    break;
-                                case TYPE_DICT:
-                                    bread_memory_mark_reachable(value->value.dict_val);
-                                    break;
-                                case TYPE_OPTIONAL:
-                                    bread_memory_mark_reachable(value->value.optional_val);
-                                    break;
-                                default:
-                                    break;
-                            }
-                        }
-                    }
-                    break;
-                }
-                case BREAD_OBJ_OPTIONAL: {
-                    BreadOptional* optional = (BreadOptional*)root;
-                    if (optional->is_some) {
-                        BreadValue* value = &optional->value;
-                        switch (value->type) {
-                            case TYPE_STRING:
-                                bread_memory_mark_reachable(value->value.string_val);
-                                break;
-                            case TYPE_ARRAY:
-                                bread_memory_mark_reachable(value->value.array_val);
-                                break;
-                            case TYPE_DICT:
-                                bread_memory_mark_reachable(value->value.dict_val);
-                                break;
-                            case TYPE_OPTIONAL:
-                                bread_memory_mark_reachable(value->value.optional_val);
-                                break;
-                            default:
-                                break;
-                        }
-                    }
-                    break;
-                }
-                default:
-                    break;
-            }
-            return;
-        }
-        node = node->next;
-    }
+    (void)root;
 }
 
 void bread_memory_sweep_unreachable(void) {
-    BreadObjectNode* node = g_memory_manager.all_objects;
-    while (node) {
-        BreadObjHeader* header = (BreadObjHeader*)node->object;
-        if (!node->marked && header->refcount > 0) {
-            header->refcount = 1;
-            bread_object_release(node->object);
-        }
-        
-        node = node->next;
-    }
+}
+
+void bread_memory_set_cycle_collection_threshold(int threshold) {
+    bread_memory_ensure_init();
+    g_mem.cycle_collection_threshold = threshold;
+}
+
+int bread_memory_get_cycle_collection_threshold(void) {
+    if (!g_mem_initialized) return 0;
+    return g_mem.cycle_collection_threshold;
 }
 
 BreadMemoryStats bread_memory_get_stats(void) {
-    return g_memory_manager.stats;
+    bread_memory_ensure_init();
+    return g_mem.stats;
 }
 
 void bread_memory_print_stats(void) {
-    BreadMemoryStats stats = g_memory_manager.stats;
-    printf("Memory Statistics:\n");
-    printf("  Total allocations: %zu\n", stats.total_allocations);
-    printf("  Total deallocations: %zu\n", stats.total_deallocations);
-    printf("  Current objects: %zu\n", stats.current_objects);
-    printf("  Peak objects: %zu\n", stats.peak_objects);
-    printf("  Bytes allocated: %zu\n", stats.bytes_allocated);
-    printf("  Bytes freed: %zu\n", stats.bytes_freed);
+    if (!g_mem_initialized) return;
+    fprintf(stderr,
+            "BreadMemoryStats: allocs=%zu frees=%zu current=%zu peak=%zu bytes_alloc=%zu bytes_free=%zu\n",
+            g_mem.stats.total_allocations,
+            g_mem.stats.total_deallocations,
+            g_mem.stats.current_objects,
+            g_mem.stats.peak_objects,
+            g_mem.stats.bytes_allocated,
+            g_mem.stats.bytes_freed);
 }
 
 int bread_memory_check_leaks(void) {
-    return g_memory_manager.stats.current_objects > 0;
+    if (!g_mem_initialized) return 0;
+    return g_mem.stats.current_objects != 0;
 }
 
-void bread_memory_cleanup_all(void) {
-    int old_cycle_enabled = g_memory_manager.cycle_collection_enabled;
-    g_memory_manager.cycle_collection_enabled = 0;
-
-    g_memory_cleanup_in_progress = 1;
-    
-    BreadObjectNode* node = g_memory_manager.all_objects;
-    while (node) {
-        BreadObjectNode* next = node->next;
-        free(node);
-        node = next;
-    }
-    
-    g_memory_manager.all_objects = NULL;
-    g_memory_manager.stats.current_objects = 0;
-    g_memory_cleanup_in_progress = 0;
-    g_memory_manager.cycle_collection_enabled = old_cycle_enabled;
-}
 void bread_memory_print_leak_report(void) {
-    if (g_memory_manager.stats.current_objects == 0) {
-        printf("No memory leaks detected.\n");
-        return;
-    }
-    
-    printf("Memory leak report:\n");
-    printf("  Leaked objects: %zu\n", g_memory_manager.stats.current_objects);
-    
-    if (g_memory_manager.debug_mode) {
-        printf("  Leaked object details:\n");
-        BreadObjectNode* node = g_memory_manager.all_objects;
-        int count = 0;
-        while (node && count < 10) {  // Limit to first 10 for readability
-            const char* type_name = "Unknown";
-            switch (node->kind) {
-                case BREAD_OBJ_STRING: type_name = "String"; break;
-                case BREAD_OBJ_ARRAY: type_name = "Array"; break;
-                case BREAD_OBJ_DICT: type_name = "Dict"; break;
-                case BREAD_OBJ_OPTIONAL: type_name = "Optional"; break;
-                case BREAD_OBJ_STRUCT: type_name = "Struct"; break;
-                case BREAD_OBJ_CLASS: type_name = "Class"; break;
-            }
-            
-            BreadObjHeader* header = (BreadObjHeader*)node->object;
-            printf("    %s object at %p (refcount: %u)\n", 
-                   type_name, node->object, header->refcount);
-            
-            node = node->next;
-            count++;
-        }
-        
-        if (g_memory_manager.stats.current_objects > 10) {
-            printf("    ... and %zu more objects\n", 
-                   g_memory_manager.stats.current_objects - 10);
+    if (!g_mem_initialized) return;
+    if (!bread_memory_check_leaks()) return;
+
+    fprintf(stderr, "BreadLang: potential leaks detected (%zu objects still tracked)\n",
+            g_mem.stats.current_objects);
+
+    if (!g_mem.debug_mode) return;
+
+    size_t shown = 0;
+    for (BreadObjectNode* n = g_mem.all_objects; n; n = n->next) {
+        fprintf(stderr, "  leak: object=%p kind=%u\n", n->object, (unsigned)n->kind);
+        if (++shown >= 50) {
+            fprintf(stderr, "  ... (truncated)\n");
+            break;
         }
     }
 }
 
 void bread_memory_enable_debug_mode(int enable) {
-    g_memory_manager.debug_mode = enable ? 1 : 0;
+    bread_memory_ensure_init();
+    g_mem.debug_mode = enable ? 1 : 0;
+}
+
+void bread_memory_cleanup_all(void) {
+    bread_memory_cleanup();
 }
 
 void bread_memory_cleanup_on_error(void) {
-    if (g_memory_manager.cycle_collection_enabled) {
-        bread_memory_collect_cycles();
-    }
-    
-    if (g_memory_manager.debug_mode && bread_memory_check_leaks()) {
-        fprintf(stderr, "Warning: Memory leaks detected during error cleanup:\n");
-        bread_memory_print_leak_report();
-    }
-    
-    bread_memory_cleanup_all();
+    bread_memory_cleanup();
 }

@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdint.h>
 
 #include "compiler/ast/ast.h"
 #include "compiler/ast/ast_memory.h"
@@ -10,11 +11,15 @@
 #include "core/var.h"
 
 #define MAX_TOKEN_LEN 1024
+#define INITIAL_STRING_CAPACITY 64
+#define INITIAL_ARRAY_CAPACITY 8
 
 static void skip_whitespace(const char** code);
 static int is_ident_start(char c);
 static int is_ident_char(char c);
 static char* dup_range(const char* start, const char* end);
+
+ static int is_expression_brace(const char* look);
 
 static ASTExpr* parse_logical_or(const char** expr);
 static ASTExpr* parse_logical_and(const char** expr);
@@ -24,6 +29,398 @@ static ASTExpr* parse_factor(const char** expr);
 static ASTExpr* parse_unary(const char** expr);
 static ASTExpr* parse_primary(const char** expr);
 static ASTExpr* parse_postfix(const char** expr, ASTExpr* base);
+
+ static ASTExpr** parse_argument_list(const char** expr, int* out_count);
+ static ASTExpr* parse_identifier_expr(const char** expr);
+ static ASTExpr* parse_array_or_dict(const char** expr);
+
+static ASTExpr* create_binary_expr(ASTExpr* left, ASTExpr* right, char op) {
+    ASTExpr* out = ast_expr_new(AST_EXPR_BINARY);
+    if (!out) {
+        ast_free_expr(left);
+        ast_free_expr(right);
+        return NULL;
+    }
+    out->as.binary.op = op;
+    out->as.binary.left = left;
+    out->as.binary.right = right;
+    return out;
+}
+
+ static ASTExpr* parse_identifier_expr(const char** expr) {
+     skip_whitespace(expr);
+     if (!is_ident_start(**expr)) return NULL;
+
+     const char* start = *expr;
+     (*expr)++;
+     while (**expr && is_ident_char(**expr)) (*expr)++;
+
+     char* name = dup_range(start, *expr);
+     if (!name) {
+         BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory parsing identifier");
+         return NULL;
+     }
+
+     if (strcmp(name, "self") == 0) {
+         free(name);
+         return ast_expr_new(AST_EXPR_SELF);
+     }
+     if (strcmp(name, "super") == 0) {
+         free(name);
+         return ast_expr_new(AST_EXPR_SUPER);
+     }
+
+     skip_whitespace(expr);
+
+     if (**expr == '{') {
+         (*expr)++; // consume '{'
+
+         int cap = INITIAL_ARRAY_CAPACITY;
+         int count = 0;
+         char** field_names = malloc(sizeof(char*) * cap);
+         ASTExpr** field_values = malloc(sizeof(ASTExpr*) * cap);
+         if (!field_names || !field_values) {
+             free(field_names);
+             free(field_values);
+             free(name);
+             BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory");
+             return NULL;
+         }
+
+         skip_whitespace(expr);
+         while (**expr && **expr != '}') {
+             if (!is_ident_start(**expr)) {
+                 for (int i = 0; i < count; i++) {
+                     free(field_names[i]);
+                     ast_free_expr(field_values[i]);
+                 }
+                 free(field_names);
+                 free(field_values);
+                 free(name);
+                 BREAD_ERROR_SET_SYNTAX_ERROR("Expected field name in literal");
+                 return NULL;
+             }
+
+             const char* fstart = *expr;
+             (*expr)++;
+             while (**expr && is_ident_char(**expr)) (*expr)++;
+             char* field = dup_range(fstart, *expr);
+             if (!field) {
+                 for (int i = 0; i < count; i++) {
+                     free(field_names[i]);
+                     ast_free_expr(field_values[i]);
+                 }
+                 free(field_names);
+                 free(field_values);
+                 free(name);
+                 BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory");
+                 return NULL;
+             }
+
+             skip_whitespace(expr);
+             if (**expr != ':') {
+                 free(field);
+                 for (int i = 0; i < count; i++) {
+                     free(field_names[i]);
+                     ast_free_expr(field_values[i]);
+                 }
+                 free(field_names);
+                 free(field_values);
+                 free(name);
+                 BREAD_ERROR_SET_SYNTAX_ERROR("Expected ':' after field name in literal");
+                 return NULL;
+             }
+             (*expr)++; // ':'
+
+             ASTExpr* value = parse_expression(expr);
+             if (!value) {
+                 free(field);
+                 for (int i = 0; i < count; i++) {
+                     free(field_names[i]);
+                     ast_free_expr(field_values[i]);
+                 }
+                 free(field_names);
+                 free(field_values);
+                 free(name);
+                 return NULL;
+             }
+
+             if (count >= cap) {
+                 cap *= 2;
+                 char** new_names = realloc(field_names, sizeof(char*) * cap);
+                 ASTExpr** new_vals = realloc(field_values, sizeof(ASTExpr*) * cap);
+                 if (!new_names || !new_vals) {
+                     free(field);
+                     ast_free_expr(value);
+                     for (int i = 0; i < count; i++) {
+                         free(field_names[i]);
+                         ast_free_expr(field_values[i]);
+                     }
+                     free(new_names ? new_names : field_names);
+                     free(new_vals ? new_vals : field_values);
+                     free(name);
+                     BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory");
+                     return NULL;
+                 }
+                 field_names = new_names;
+                 field_values = new_vals;
+             }
+
+             field_names[count] = field;
+             field_values[count] = value;
+             count++;
+
+             skip_whitespace(expr);
+             if (**expr == ',') {
+                 (*expr)++;
+                 skip_whitespace(expr);
+                 continue;
+             }
+             break;
+         }
+
+         skip_whitespace(expr);
+         if (**expr != '}') {
+             for (int i = 0; i < count; i++) {
+                 free(field_names[i]);
+                 ast_free_expr(field_values[i]);
+             }
+             free(field_names);
+             free(field_values);
+             free(name);
+             BREAD_ERROR_SET_SYNTAX_ERROR("Missing closing '}' in literal");
+             return NULL;
+         }
+         (*expr)++; // consume '}'
+
+         ASTExpr* out = ast_expr_new(AST_EXPR_STRUCT_LITERAL);
+         if (!out) {
+             for (int i = 0; i < count; i++) {
+                 free(field_names[i]);
+                 ast_free_expr(field_values[i]);
+             }
+             free(field_names);
+             free(field_values);
+             free(name);
+             return NULL;
+         }
+         out->as.struct_literal.struct_name = name;
+         out->as.struct_literal.field_count = count;
+         out->as.struct_literal.field_names = field_names;
+         out->as.struct_literal.field_values = field_values;
+         return out;
+     }
+
+     if (**expr == '(') {
+         (*expr)++;
+         int count;
+         ASTExpr** args = parse_argument_list(expr, &count);
+         if (!args && count < 0) {
+             free(name);
+             return NULL;
+         }
+
+         ASTExpr* out = ast_expr_new(AST_EXPR_CALL);
+         if (!out) {
+             ast_free_expr_list(args, count);
+             free(name);
+             return NULL;
+         }
+         out->as.call.name = name;
+         out->as.call.arg_count = count;
+         out->as.call.args = args;
+         return out;
+     }
+
+     ASTExpr* out = ast_expr_new(AST_EXPR_VAR);
+     if (!out) {
+         free(name);
+         return NULL;
+     }
+     out->as.var_name = name;
+     return out;
+ }
+
+ static ASTExpr* parse_array_or_dict(const char** expr) {
+     // Expects current char to be '['
+     skip_whitespace(expr);
+     if (**expr != '[') return NULL;
+     (*expr)++; // consume '['
+     skip_whitespace(expr);
+
+     // Empty dict literal: [:]
+     if (**expr == ':') {
+         (*expr)++;
+         skip_whitespace(expr);
+         if (**expr != ']') {
+             BREAD_ERROR_SET_SYNTAX_ERROR("Missing closing ']' in dictionary literal");
+             return NULL;
+         }
+         (*expr)++;
+         ASTExpr* out = ast_expr_new(AST_EXPR_DICT);
+         if (!out) return NULL;
+         out->as.dict.entry_count = 0;
+         out->as.dict.entries = NULL;
+         return out;
+     }
+
+     // Empty array literal: []
+     if (**expr == ']') {
+         (*expr)++;
+         ASTExpr* out = ast_expr_new(AST_EXPR_ARRAY_LITERAL);
+         if (!out) return NULL;
+         out->as.array_literal.element_count = 0;
+         out->as.array_literal.elements = NULL;
+         out->as.array_literal.element_type = TYPE_NIL;
+         return out;
+     }
+
+     int entry_cap = INITIAL_ARRAY_CAPACITY;
+     int entry_count = 0;
+     ASTDictEntry* entries = NULL;
+
+     int elem_cap = INITIAL_ARRAY_CAPACITY;
+     int elem_count = 0;
+     ASTExpr** elems = NULL;
+
+     int is_dict = 0;
+
+     while (**expr && **expr != ']') {
+         ASTExpr* first = parse_expression(expr);
+         if (!first) {
+             goto fail;
+         }
+
+         skip_whitespace(expr);
+         if (!is_dict && **expr == ':') {
+             is_dict = 1;
+         }
+
+         if (is_dict) {
+             if (**expr != ':') {
+                 ast_free_expr(first);
+                 BREAD_ERROR_SET_SYNTAX_ERROR("Expected ':' in dictionary literal");
+                 goto fail;
+             }
+             (*expr)++;
+             ASTExpr* value = parse_expression(expr);
+             if (!value) {
+                 ast_free_expr(first);
+                 goto fail;
+             }
+
+             if (!entries) {
+                 entries = malloc(sizeof(ASTDictEntry) * entry_cap);
+                 if (!entries) {
+                     ast_free_expr(first);
+                     ast_free_expr(value);
+                     BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory");
+                     goto fail;
+                 }
+             }
+             if (entry_count >= entry_cap) {
+                 entry_cap *= 2;
+                 ASTDictEntry* new_entries = realloc(entries, sizeof(ASTDictEntry) * entry_cap);
+                 if (!new_entries) {
+                     ast_free_expr(first);
+                     ast_free_expr(value);
+                     BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory");
+                     goto fail;
+                 }
+                 entries = new_entries;
+             }
+             entries[entry_count].key = first;
+             entries[entry_count].value = value;
+             entry_count++;
+         } else {
+             if (!elems) {
+                 elems = malloc(sizeof(ASTExpr*) * elem_cap);
+                 if (!elems) {
+                     ast_free_expr(first);
+                     BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory");
+                     goto fail;
+                 }
+             }
+             if (elem_count >= elem_cap) {
+                 elem_cap *= 2;
+                 ASTExpr** new_elems = realloc(elems, sizeof(ASTExpr*) * elem_cap);
+                 if (!new_elems) {
+                     ast_free_expr(first);
+                     BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory");
+                     goto fail;
+                 }
+                 elems = new_elems;
+             }
+             elems[elem_count++] = first;
+         }
+
+         skip_whitespace(expr);
+         if (**expr == ',') {
+             (*expr)++;
+             skip_whitespace(expr);
+             continue;
+         }
+         break;
+     }
+
+     skip_whitespace(expr);
+     if (**expr != ']') {
+         BREAD_ERROR_SET_SYNTAX_ERROR("Missing closing ']' in array/dictionary literal");
+         goto fail;
+     }
+     (*expr)++;
+
+     if (is_dict) {
+         ASTExpr* out = ast_expr_new(AST_EXPR_DICT);
+         if (!out) goto fail;
+         out->as.dict.entry_count = entry_count;
+         out->as.dict.entries = entries;
+         if (elems) {
+             for (int i = 0; i < elem_count; i++) ast_free_expr(elems[i]);
+             free(elems);
+         }
+         return out;
+     }
+
+     ASTExpr* out = ast_expr_new(AST_EXPR_ARRAY_LITERAL);
+     if (!out) goto fail;
+     out->as.array_literal.element_count = elem_count;
+     out->as.array_literal.elements = elems;
+     out->as.array_literal.element_type = TYPE_NIL;
+     if (entries) {
+         for (int i = 0; i < entry_count; i++) {
+             ast_free_expr(entries[i].key);
+             ast_free_expr(entries[i].value);
+         }
+         free(entries);
+     }
+     return out;
+
+ fail:
+     if (entries) {
+         for (int i = 0; i < entry_count; i++) {
+             ast_free_expr(entries[i].key);
+             ast_free_expr(entries[i].value);
+         }
+         free(entries);
+     }
+     if (elems) {
+         for (int i = 0; i < elem_count; i++) ast_free_expr(elems[i]);
+         free(elems);
+     }
+     return NULL;
+ }
+
+static ASTExpr* create_unary_expr(ASTExpr* operand, char op) {
+    ASTExpr* out = ast_expr_new(AST_EXPR_UNARY);
+    if (!out) {
+        ast_free_expr(operand);
+        return NULL;
+    }
+    out->as.unary.op = op;
+    out->as.unary.operand = operand;
+    return out;
+}
 
 ASTExpr* parse_expression(const char** expr) {
     return parse_logical_or(expr);
@@ -53,51 +450,26 @@ ASTExpr* parse_expression_str_as_ast(const char** code) {
         if (**code == '"') {
             in_string = 1;
         } else if (paren_count == 0 && brace_count == 0 && bracket_count == 0 && **code == '{') {
-            // Disambiguate between a statement block opener (e.g. `if cond {`) and
-            // an expression literal that uses braces (e.g. `Point{ x: 1 }`, `{ "k": 1 }`, `{}`).
-            // Heuristic: if the next non-whitespace token looks like a literal entry (`ident:` or `"...":`)
-            // or an immediate closing brace, treat it as part of the expression.
-            const char* look = *code + 1;
-            while (*look == ' ' || *look == '\t' || *look == '\r') look++;
-            if (*look == '}') {
-                // `{}` literal
-                brace_count++;
-            } else if (is_ident_start(*look)) {
-                const char* id = look;
-                id++;
-                while (*id && is_ident_char(*id)) id++;
-                while (*id == ' ' || *id == '\t' || *id == '\r') id++;
-                if (*id != ':') {
-                    break;
-                }
-                brace_count++;
-            } else if (*look == '"') {
-                // string key: { "k": v }
-                look++;
-                while (*look && *look != '"') {
-                    if (*look == '\\' && *(look + 1)) look += 2;
-                    else look++;
-                }
-                if (*look != '"') break;
-                look++;
-                while (*look == ' ' || *look == '\t' || *look == '\r') look++;
-                if (*look != ':') break;
-                brace_count++;
-            } else {
+            if (!is_expression_brace(*code + 1)) {
                 break;
             }
-        } else if (**code == '(') paren_count++;
-        else if (**code == ')') {
+            brace_count++;
+        } else if (**code == '(') {
+            paren_count++;
+        } else if (**code == ')') {
             if (paren_count == 0) break;
             paren_count--;
-        } else if (**code == '{') brace_count++;
-        else if (**code == '}') {
+        } else if (**code == '{') {
+            brace_count++;
+        } else if (**code == '}') {
             if (brace_count == 0) break;
             brace_count--;
-        } else if (**code == '[') bracket_count++;
-        else if (**code == ']') {
+        } else if (**code == '[') {
+            bracket_count++;
+        } else if (**code == ']') {
             if (bracket_count > 0) bracket_count--;
-        } else if (paren_count == 0 && brace_count == 0 && bracket_count == 0 && (**code == '\n' || **code == ';' || **code == ',')) {
+        } else if (paren_count == 0 && brace_count == 0 && bracket_count == 0 && 
+                   (**code == '\n' || **code == ';' || **code == ',')) {
             break;
         }
         (*code)++;
@@ -119,6 +491,7 @@ ASTExpr* parse_expression_str_as_ast(const char** code) {
         free(expr_src);
         return NULL;
     }
+    
     skip_whitespace(&p);
     if (*p != '\0') {
         ast_free_expr(e);
@@ -134,6 +507,32 @@ ASTExpr* parse_expression_str_as_ast(const char** code) {
     return e;
 }
 
+static int is_expression_brace(const char* look) {
+    while (*look == ' ' || *look == '\t' || *look == '\r') look++;
+    if (*look == '}') return 1;
+    if (is_ident_start(*look)) {
+        const char* id = look;
+        id++;
+        while (*id && is_ident_char(*id)) id++;
+        while (*id == ' ' || *id == '\t' || *id == '\r') id++;
+        return (*id == ':');
+    }
+    
+    if (*look == '"') {
+        look++;
+        while (*look && *look != '"') {
+            if (*look == '\\' && *(look + 1)) look += 2;
+            else look++;
+        }
+        if (*look != '"') return 0;
+        look++;
+        while (*look == ' ' || *look == '\t' || *look == '\r') look++;
+        return (*look == ':');
+    }
+    
+    return 0;
+}
+
 static ASTExpr* parse_logical_or(const char** expr) {
     ASTExpr* left = parse_logical_and(expr);
     if (!left) return NULL;
@@ -146,16 +545,8 @@ static ASTExpr* parse_logical_or(const char** expr) {
             ast_free_expr(left);
             return NULL;
         }
-        ASTExpr* out = ast_expr_new(AST_EXPR_BINARY);
-        if (!out) {
-            ast_free_expr(left);
-            ast_free_expr(right);
-            return NULL;
-        }
-        out->as.binary.op = '|';
-        out->as.binary.left = left;
-        out->as.binary.right = right;
-        left = out;
+        left = create_binary_expr(left, right, '|');
+        if (!left) return NULL;
         skip_whitespace(expr);
     }
 
@@ -174,16 +565,8 @@ static ASTExpr* parse_logical_and(const char** expr) {
             ast_free_expr(left);
             return NULL;
         }
-        ASTExpr* out = ast_expr_new(AST_EXPR_BINARY);
-        if (!out) {
-            ast_free_expr(left);
-            ast_free_expr(right);
-            return NULL;
-        }
-        out->as.binary.op = '&';
-        out->as.binary.left = left;
-        out->as.binary.right = right;
-        left = out;
+        left = create_binary_expr(left, right, '&');
+        if (!left) return NULL;
         skip_whitespace(expr);
     }
 
@@ -200,24 +583,15 @@ static ASTExpr* parse_comparison(const char** expr) {
         (**expr == '<' && *(*expr + 1) == '=') ||
         (**expr == '>' && *(*expr + 1) == '=')) {
         char op = **expr;
-        if (op == '<') op = 'l';
-        else if (op == '>') op = 'g';
+        if (op == '<') op = 'l';  // <= encoded as 'l'
+        else if (op == '>') op = 'g';  // >= encoded as 'g'
         *expr += 2;
         ASTExpr* right = parse_term(expr);
         if (!right) {
             ast_free_expr(left);
             return NULL;
         }
-        ASTExpr* out = ast_expr_new(AST_EXPR_BINARY);
-        if (!out) {
-            ast_free_expr(left);
-            ast_free_expr(right);
-            return NULL;
-        }
-        out->as.binary.op = op;
-        out->as.binary.left = left;
-        out->as.binary.right = right;
-        return out;
+        return create_binary_expr(left, right, op);
     }
 
     if (**expr == '<' || **expr == '>') {
@@ -228,16 +602,7 @@ static ASTExpr* parse_comparison(const char** expr) {
             ast_free_expr(left);
             return NULL;
         }
-        ASTExpr* out = ast_expr_new(AST_EXPR_BINARY);
-        if (!out) {
-            ast_free_expr(left);
-            ast_free_expr(right);
-            return NULL;
-        }
-        out->as.binary.op = op;
-        out->as.binary.left = left;
-        out->as.binary.right = right;
-        return out;
+        return create_binary_expr(left, right, op);
     }
 
     return left;
@@ -248,8 +613,6 @@ static ASTExpr* parse_term(const char** expr) {
     if (!left) return NULL;
 
     skip_whitespace(expr);
-    
-    // Handle arithmetic operators
     while (**expr == '+' || **expr == '-') {
         char op = **expr;
         (*expr)++;
@@ -258,16 +621,8 @@ static ASTExpr* parse_term(const char** expr) {
             ast_free_expr(left);
             return NULL;
         }
-        ASTExpr* out = ast_expr_new(AST_EXPR_BINARY);
-        if (!out) {
-            ast_free_expr(left);
-            ast_free_expr(right);
-            return NULL;
-        }
-        out->as.binary.op = op;
-        out->as.binary.left = left;
-        out->as.binary.right = right;
-        left = out;
+        left = create_binary_expr(left, right, op);
+        if (!left) return NULL;
         skip_whitespace(expr);
     }
 
@@ -287,16 +642,8 @@ static ASTExpr* parse_factor(const char** expr) {
             ast_free_expr(left);
             return NULL;
         }
-        ASTExpr* out = ast_expr_new(AST_EXPR_BINARY);
-        if (!out) {
-            ast_free_expr(left);
-            ast_free_expr(right);
-            return NULL;
-        }
-        out->as.binary.op = op;
-        out->as.binary.left = left;
-        out->as.binary.right = right;
-        left = out;
+        left = create_binary_expr(left, right, op);
+        if (!left) return NULL;
         skip_whitespace(expr);
     }
 
@@ -305,41 +652,145 @@ static ASTExpr* parse_factor(const char** expr) {
 
 static ASTExpr* parse_unary(const char** expr) {
     skip_whitespace(expr);
-    if (**expr == '!') {
+    
+    if (**expr == '!' || **expr == '-') {
+        char op = **expr;
         (*expr)++;
         ASTExpr* operand = parse_unary(expr);
         if (!operand) return NULL;
-        ASTExpr* out = ast_expr_new(AST_EXPR_UNARY);
-        if (!out) {
-            ast_free_expr(operand);
-            return NULL;
-        }
-        out->as.unary.op = '!';
-        out->as.unary.operand = operand;
-        return out;
-    }
-
-    if (**expr == '-') {
-        (*expr)++;
-        ASTExpr* operand = parse_unary(expr);
-        if (!operand) return NULL;
-        ASTExpr* out = ast_expr_new(AST_EXPR_UNARY);
-        if (!out) {
-            ast_free_expr(operand);
-            return NULL;
-        }
-        out->as.unary.op = '-';
-        out->as.unary.operand = operand;
-        return out;
+        return create_unary_expr(operand, op);
     }
 
     ASTExpr* prim = parse_primary(expr);
     if (!prim) return NULL;
     return parse_postfix(expr, prim);
 }
+
+static ASTExpr* parse_string_literal(const char** expr) {
+    (*expr)++;  // Skip opening quote
+    
+    size_t capacity = INITIAL_STRING_CAPACITY;
+    char* buffer = malloc(capacity);
+    if (!buffer) {
+        BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory parsing string literal");
+        return NULL;
+    }
+    size_t length = 0;
+    
+    while (**expr && **expr != '"') {
+        if (length + 2 > capacity) {
+            capacity *= 2;
+            char* new_buffer = realloc(buffer, capacity);
+            if (!new_buffer) {
+                free(buffer);
+                BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory parsing string literal");
+                return NULL;
+            }
+            buffer = new_buffer;
+        }
+        
+        char c = **expr;
+        if (c == '\\' && *(*expr + 1)) {
+            (*expr)++;
+            char escaped = **expr;
+            
+            switch (escaped) {
+                case 'n': c = '\n'; break;
+                case 't': c = '\t'; break;
+                case 'r': c = '\r'; break;
+                case 'b': c = '\b'; break;
+                case 'f': c = '\f'; break;
+                case '"': c = '"'; break;
+                case '\\': c = '\\'; break;
+                case '/': c = '/'; break;
+                case 'u':
+                    buffer[length++] = '\\';
+                    c = 'u';
+                    break;
+                default:
+                    buffer[length++] = '\\';
+                    c = escaped;
+                    break;
+            }
+        }
+        
+        buffer[length++] = c;
+        (*expr)++;
+    }
+    
+    if (**expr != '"') {
+        free(buffer);
+        BREAD_ERROR_SET_SYNTAX_ERROR("Unterminated string literal");
+        return NULL;
+    }
+    (*expr)++;  // Skip closing quote
+    
+    if (length + 1 > capacity) {
+        char* new_buffer = realloc(buffer, length + 1);
+        if (!new_buffer) {
+            free(buffer);
+            BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory parsing string literal");
+            return NULL;
+        }
+        buffer = new_buffer;
+    }
+    buffer[length] = '\0';
+    
+    ASTExpr* e = ast_expr_new(AST_EXPR_STRING_LITERAL);
+    if (!e) {
+        free(buffer);
+        return NULL;
+    }
+    e->as.string_literal.value = buffer;
+    e->as.string_literal.length = length;
+    e->tag.is_known = 1;
+    e->tag.type = TYPE_STRING;
+    return e;
+}
+
+static ASTExpr* parse_number(const char** expr) {
+    const char* start = *expr;
+    int has_dot = 0;
+    
+    while (**expr && (isdigit((unsigned char)**expr) || **expr == '.')) {
+        if (**expr == '.') {
+            if (has_dot) break;
+            has_dot = 1;
+        }
+        (*expr)++;
+    }
+    
+    if (*expr == start) return NULL;
+    
+    char num_str[MAX_TOKEN_LEN];
+    size_t len = (size_t)(*expr - start);
+    if (len >= sizeof(num_str)) {
+        BREAD_ERROR_SET_SYNTAX_ERROR("Number too long");
+        return NULL;
+    }
+    memcpy(num_str, start, len);
+    num_str[len] = '\0';
+    
+    ASTExpr* e;
+    if (has_dot) {
+        double val = strtod(num_str, NULL);
+        e = ast_expr_new(AST_EXPR_DOUBLE);
+        if (!e) return NULL;
+        e->as.double_val = val;
+        e->tag.type = TYPE_DOUBLE;
+    } else {
+        int val = atoi(num_str);
+        e = ast_expr_new(AST_EXPR_INT);
+        if (!e) return NULL;
+        e->as.int_val = val;
+        e->tag.type = TYPE_INT;
+    }
+    e->tag.is_known = 1;
+    return e;
+}
+
 static ASTExpr* parse_primary(const char** expr) {
     skip_whitespace(expr);
-
     if (strncmp(*expr, "nil", 3) == 0 && !is_ident_char(*(*expr + 3))) {
         *expr += 3;
         return ast_expr_new(AST_EXPR_NIL);
@@ -380,596 +831,20 @@ static ASTExpr* parse_primary(const char** expr) {
     }
 
     if (**expr == '"') {
-        (*expr)++;
-        
-        // Initial buffer size (small to test reallocation)
-        size_t capacity = 32;
-        char* buffer = malloc(capacity);
-        if (!buffer) return NULL;
-        size_t length = 0;
-        
-        while (**expr && **expr != '"') {
-            // Ensure we have space for at least 2 more characters (current + null terminator)
-            if (length + 2 > capacity) {
-                capacity = (capacity == 0) ? 32 : capacity * 2;
-                char* new_buffer = realloc(buffer, capacity);
-                if (!new_buffer) {
-                    free(buffer);
-                    BREAD_ERROR_SET_SYNTAX_ERROR("Out of memory while parsing string literal");
-                    return NULL;
-                }
-                buffer = new_buffer;
-            }
-            
-            char c = **expr;
-            
-            // Handle escape sequences
-            if (c == '\\' && *(*expr + 1)) {
-                (*expr)++; // Skip backslash
-                char escaped = **expr;
-                
-                switch (escaped) {
-                    case 'n': c = '\n'; break;
-                    case 't': c = '\t'; break;
-                    case 'r': c = '\r'; break;
-                    case 'b': c = '\b'; break;
-                    case 'f': c = '\f'; break;
-                    case '"': c = '"'; break;
-                    case '\\': c = '\\'; break;
-                    case '/': c = '/'; break;  // JSON-style escaped forward slash
-                    case 'u': 
-                        // Simple unicode escape (\uXXXX) - just copy as is for now
-                        buffer[length++] = '\\';
-                        c = 'u';
-                        break;
-                    default:
-                        // Unknown escape sequence, keep both characters
-                        buffer[length++] = '\\';
-                        c = escaped;
-                        break;
-                }
-            }
-            
-            buffer[length++] = c;
-            (*expr)++;
-        }
-        
-        // Check for unterminated string
-        if (**expr != '"') {
-            free(buffer);
-            BREAD_ERROR_SET_SYNTAX_ERROR("Unterminated string literal");
-            return NULL;
-        }
-        
-        // Skip closing quote
-        (*expr)++;
-        
-        // Ensure we have space for null terminator
-        if (length + 1 > capacity) {
-            char* new_buffer = realloc(buffer, length + 1);
-            if (!new_buffer) {
-                free(buffer);
-                BREAD_ERROR_SET_SYNTAX_ERROR("Out of memory while parsing string literal");
-                return NULL;
-            }
-            buffer = new_buffer;
-        }
-        buffer[length] = '\0';
-        
-        ASTExpr* e = ast_expr_new(AST_EXPR_STRING_LITERAL);
-        if (!e) {
-            free(buffer);
-            return NULL;
-        }
-        e->as.string_literal.value = buffer;
-        e->as.string_literal.length = length;
-        e->tag.is_known = 1;
-        e->tag.type = TYPE_STRING;
-        return e;
+        return parse_string_literal(expr);
     }
 
-    const char* start = *expr;
-    int has_dot = 0;
-    while (**expr && (isdigit((unsigned char)**expr) || **expr == '.')) {
-        if (**expr == '.') {
-            if (has_dot) break;
-            has_dot = 1;
-        }
-        (*expr)++;
-    }
-
-    if (*expr > start) {
-        char num_str[MAX_TOKEN_LEN];
-        size_t len = (size_t)(*expr - start);
-        if (len >= sizeof(num_str)) {
-            BREAD_ERROR_SET_SYNTAX_ERROR("Number too long");
-            return NULL;
-        }
-        memcpy(num_str, start, len);
-        num_str[len] = '\0';
-
-        if (has_dot) {
-            double val = strtod(num_str, NULL);
-            ASTExpr* e = ast_expr_new(AST_EXPR_DOUBLE);
-            if (!e) return NULL;
-            e->as.double_val = val;
-            e->tag.is_known = 1;
-            e->tag.type = TYPE_DOUBLE;
-            return e;
-        }
-
-        int val = atoi(num_str);
-        ASTExpr* e = ast_expr_new(AST_EXPR_INT);
-        if (!e) return NULL;
-        e->as.int_val = val;
-        e->tag.is_known = 1;
-        e->tag.type = TYPE_INT;
-        return e;
+    if (isdigit((unsigned char)**expr) || 
+        (**expr == '.' && isdigit((unsigned char)*(*expr + 1)))) {
+        return parse_number(expr);
     }
 
     if (**expr == '[') {
-        (*expr)++;
-        skip_whitespace(expr);
-
-        if (**expr == ']') {
-            (*expr)++;
-            ASTExpr* e = ast_expr_new(AST_EXPR_ARRAY_LITERAL);
-            if (!e) return NULL;
-            e->as.array_literal.element_count = 0;
-            e->as.array_literal.elements = NULL;
-            e->as.array_literal.element_type = TYPE_NIL;
-            e->tag.is_known = 1;
-            e->tag.type = TYPE_ARRAY;
-            return e;
-        }
-
-        // Check for empty dictionary syntax [:]
-        if (**expr == ':' && *(*expr + 1) == ']') {
-            *expr += 2; // Skip ":]"
-            ASTExpr* e = ast_expr_new(AST_EXPR_DICT);
-            if (!e) return NULL;
-            e->as.dict.entry_count = 0;
-            e->as.dict.entries = NULL;
-            e->tag.is_known = 1;
-            e->tag.type = TYPE_DICT;
-            return e;
-        }
-
-        const char* look = *expr;
-        int depth = 0;
-        int brace_depth = 0;
-        int in_string = 0;
-        int esc = 0;
-        int is_dict = 0;
-        while (*look) {
-            char c = *look;
-            if (in_string) {
-                if (esc) esc = 0;
-                else if (c == '\\') esc = 1;
-                else if (c == '"') in_string = 0;
-                look++;
-                continue;
-            }
-            if (c == '"') { in_string = 1; look++; continue; }
-            if (c == '[') depth++;
-            else if (c == ']') {
-                if (depth == 0) break;
-                depth--;
-            } else if (c == '{') brace_depth++;
-            else if (c == '}') {
-                if (brace_depth > 0) brace_depth--;
-            } else if (c == ':' && depth == 0 && brace_depth == 0) {
-                is_dict = 1;
-                break;
-            } else if (c == ',' && depth == 0 && brace_depth == 0) {
-                break;
-            }
-            look++;
-        }
-
-        if (is_dict) {
-            ASTExpr* e = ast_expr_new(AST_EXPR_DICT);
-            if (!e) return NULL;
-            e->tag.is_known = 1;
-            e->tag.type = TYPE_DICT;
-
-            int cap = 0;
-            int count = 0;
-            ASTDictEntry* entries = NULL;
-
-            while (**expr) {
-                skip_whitespace(expr);
-                ASTExpr* key = parse_expression(expr);
-                if (!key) {
-                    for (int i = 0; i < count; i++) {
-                        ast_free_expr(entries[i].key);
-                        ast_free_expr(entries[i].value);
-                    }
-                    free(entries);
-                    ast_free_expr(e);
-                    return NULL;
-                }
-
-                skip_whitespace(expr);
-                if (**expr != ':') {
-                    ast_free_expr(key);
-                    for (int i = 0; i < count; i++) {
-                        ast_free_expr(entries[i].key);
-                        ast_free_expr(entries[i].value);
-                    }
-                    free(entries);
-                    ast_free_expr(e);
-                    printf("Error: Expected ':' in dictionary literal\n");
-                    return NULL;
-                }
-                (*expr)++;
-
-                ASTExpr* val = parse_expression(expr);
-                if (!val) {
-                    ast_free_expr(key);
-                    for (int i = 0; i < count; i++) {
-                        ast_free_expr(entries[i].key);
-                        ast_free_expr(entries[i].value);
-                    }
-                    free(entries);
-                    ast_free_expr(e);
-                    return NULL;
-                }
-
-                if (count >= cap) {
-                    int new_cap = cap == 0 ? 4 : cap * 2;
-                    ASTDictEntry* new_entries = realloc(entries, sizeof(ASTDictEntry) * (size_t)new_cap);
-                    if (!new_entries) {
-                        ast_free_expr(key);
-                        ast_free_expr(val);
-                        for (int i = 0; i < count; i++) {
-                            ast_free_expr(entries[i].key);
-                            ast_free_expr(entries[i].value);
-                        }
-                        free(entries);
-                        ast_free_expr(e);
-                        printf("Error: Out of memory\n");
-                        return NULL;
-                    }
-                    entries = new_entries;
-                    cap = new_cap;
-                }
-
-                entries[count].key = key;
-                entries[count].value = val;
-                count++;
-
-                skip_whitespace(expr);
-                if (**expr == ',') {
-                    (*expr)++;
-                    continue;
-                }
-                break;
-            }
-
-            skip_whitespace(expr);
-            if (**expr != ']') {
-                for (int i = 0; i < count; i++) {
-                    ast_free_expr(entries[i].key);
-                    ast_free_expr(entries[i].value);
-                }
-                free(entries);
-                ast_free_expr(e);
-                printf("Error: Missing closing ']' in dictionary literal\n");
-                return NULL;
-            }
-            (*expr)++;
-
-            e->as.dict.entry_count = count;
-            e->as.dict.entries = entries;
-            return e;
-        }
-
-        ASTExpr* e = ast_expr_new(AST_EXPR_ARRAY_LITERAL);
-        if (!e) return NULL;
-        e->tag.is_known = 1;
-        e->tag.type = TYPE_ARRAY;
-
-        int cap = 0;
-        int count = 0;
-        ASTExpr** items = NULL;
-        VarType element_type = TYPE_NIL; // Will be inferred from first element
-
-        while (**expr) {
-            ASTExpr* item = parse_expression(expr);
-            if (!item) {
-                ast_free_expr_list(items, count);
-                ast_free_expr(e);
-                return NULL;
-            }
-
-            // Type inference: use the type of the first element
-            if (count == 0 && item->tag.is_known) {
-                element_type = item->tag.type;
-            }
-
-            if (count >= cap) {
-                int new_cap = cap == 0 ? 4 : cap * 2;
-                ASTExpr** new_items = realloc(items, sizeof(ASTExpr*) * (size_t)new_cap);
-                if (!new_items) {
-                    ast_free_expr(item);
-                    ast_free_expr_list(items, count);
-                    ast_free_expr(e);
-                    printf("Error: Out of memory\n");
-                    return NULL;
-                }
-                items = new_items;
-                cap = new_cap;
-            }
-            items[count++] = item;
-
-            skip_whitespace(expr);
-            if (**expr == ',') {
-                (*expr)++;
-                skip_whitespace(expr);
-                continue;
-            }
-            break;
-        }
-
-        skip_whitespace(expr);
-        if (**expr != ']') {
-            ast_free_expr_list(items, count);
-            ast_free_expr(e);
-            printf("Error: Missing closing ']' in array literal\n");
-            return NULL;
-        }
-        (*expr)++;
-
-        e->as.array_literal.element_count = count;
-        e->as.array_literal.elements = items;
-        e->as.array_literal.element_type = element_type;
-        return e;
+        return parse_array_or_dict(expr);
     }
 
     if (is_ident_start(**expr)) {
-        const char* start_id = *expr;
-        (*expr)++;
-        while (**expr && is_ident_char(**expr)) (*expr)++;
-        char* name = dup_range(start_id, *expr);
-        if (!name) return NULL;
-
-        // Check for 'self' keyword
-        if (strcmp(name, "self") == 0) {
-            free(name);
-            ASTExpr* e = ast_expr_new(AST_EXPR_SELF);
-            if (!e) return NULL;
-            return e;
-        }
-
-        // Check for 'super' keyword
-        if (strcmp(name, "super") == 0) {
-            free(name);
-            ASTExpr* e = ast_expr_new(AST_EXPR_SUPER);
-            if (!e) return NULL;
-            return e;
-        }
-
-        const char* after_ident = *expr;
-        skip_whitespace(expr);
-        
-        // Check for struct literal: StructName { field: value, ... }
-        if (**expr == '{') {
-            (*expr)++;
-            
-            int cap = 0;
-            int count = 0;
-            char** field_names = NULL;
-            ASTExpr** field_values = NULL;
-
-            skip_whitespace(expr);
-            while (**expr && **expr != '}') {
-                skip_whitespace(expr);
-                if (**expr == '}') break;
-
-                // Parse field name
-                if (!is_ident_start(**expr)) {
-                    for (int i = 0; i < count; i++) {
-                        free(field_names[i]);
-                        ast_free_expr(field_values[i]);
-                    }
-                    free(field_names);
-                    free(field_values);
-                    free(name);
-                    BREAD_ERROR_SET_SYNTAX_ERROR("Expected field name in struct literal");
-                    return NULL;
-                }
-
-                const char* field_start = *expr;
-                (*expr)++;
-                while (**expr && is_ident_char(**expr)) (*expr)++;
-                char* field_name = dup_range(field_start, *expr);
-                if (!field_name) {
-                    for (int i = 0; i < count; i++) {
-                        free(field_names[i]);
-                        ast_free_expr(field_values[i]);
-                    }
-                    free(field_names);
-                    free(field_values);
-                    free(name);
-                    return NULL;
-                }
-
-                skip_whitespace(expr);
-                if (**expr != ':') {
-                    free(field_name);
-                    for (int i = 0; i < count; i++) {
-                        free(field_names[i]);
-                        ast_free_expr(field_values[i]);
-                    }
-                    free(field_names);
-                    free(field_values);
-                    free(name);
-                    BREAD_ERROR_SET_SYNTAX_ERROR("Expected ':' after field name in struct literal");
-                    return NULL;
-                }
-                (*expr)++;
-
-                // Parse field value
-                ASTExpr* field_value = parse_expression(expr);
-                if (!field_value) {
-                    free(field_name);
-                    for (int i = 0; i < count; i++) {
-                        free(field_names[i]);
-                        ast_free_expr(field_values[i]);
-                    }
-                    free(field_names);
-                    free(field_values);
-                    free(name);
-                    return NULL;
-                }
-
-                // Expand arrays if needed
-                if (count >= cap) {
-                    int new_cap = cap == 0 ? 4 : cap * 2;
-                    char** new_names = realloc(field_names, sizeof(char*) * (size_t)new_cap);
-                    ASTExpr** new_values = realloc(field_values, sizeof(ASTExpr*) * (size_t)new_cap);
-                    if (!new_names || !new_values) {
-                        free(new_names);
-                        free(new_values);
-                        free(field_name);
-                        ast_free_expr(field_value);
-                        for (int i = 0; i < count; i++) {
-                            free(field_names[i]);
-                            ast_free_expr(field_values[i]);
-                        }
-                        free(field_names);
-                        free(field_values);
-                        free(name);
-                        BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory parsing struct literal");
-                        return NULL;
-                    }
-                    field_names = new_names;
-                    field_values = new_values;
-                    cap = new_cap;
-                }
-
-                field_names[count] = field_name;
-                field_values[count] = field_value;
-                count++;
-
-                skip_whitespace(expr);
-                if (**expr == ',') {
-                    (*expr)++;
-                    continue;
-                }
-                break;
-            }
-
-            skip_whitespace(expr);
-            if (**expr != '}') {
-                for (int i = 0; i < count; i++) {
-                    free(field_names[i]);
-                    ast_free_expr(field_values[i]);
-                }
-                free(field_names);
-                free(field_values);
-                free(name);
-                BREAD_ERROR_SET_SYNTAX_ERROR("Missing closing '}' in struct literal");
-                return NULL;
-            }
-            (*expr)++;
-
-            // Create struct literal AST node
-            ASTExpr* e = ast_expr_new(AST_EXPR_STRUCT_LITERAL);
-            if (!e) {
-                for (int i = 0; i < count; i++) {
-                    free(field_names[i]);
-                    ast_free_expr(field_values[i]);
-                }
-                free(field_names);
-                free(field_values);
-                free(name);
-                return NULL;
-            }
-
-            e->as.struct_literal.struct_name = name;
-            e->as.struct_literal.field_count = count;
-            e->as.struct_literal.field_names = field_names;
-            e->as.struct_literal.field_values = field_values;
-            e->tag.is_known = 1;
-            e->tag.type = TYPE_STRUCT;
-            return e;
-        }
-        
-        // Check for function call: name(args...)
-        if (**expr == '(') {
-            (*expr)++;
-
-            int cap = 0;
-            int count = 0;
-            ASTExpr** args = NULL;
-
-            skip_whitespace(expr);
-            if (**expr != ')') {
-                while (**expr) {
-                    ASTExpr* arg = parse_expression(expr);
-                    if (!arg) {
-                        ast_free_expr_list(args, count);
-                        free(name);
-                        return NULL;
-                    }
-
-                    if (count >= cap) {
-                        int new_cap = cap == 0 ? 4 : cap * 2;
-                        ASTExpr** new_args = realloc(args, sizeof(ASTExpr*) * (size_t)new_cap);
-                        if (!new_args) {
-                            ast_free_expr(arg);
-                            ast_free_expr_list(args, count);
-                            free(name);
-                            printf("Error: Out of memory\n");
-                            return NULL;
-                        }
-                        args = new_args;
-                        cap = new_cap;
-                    }
-                    args[count++] = arg;
-
-                    skip_whitespace(expr);
-                    if (**expr == ',') {
-                        (*expr)++;
-                        skip_whitespace(expr);
-                        continue;
-                    }
-                    break;
-                }
-            }
-
-            skip_whitespace(expr);
-            if (**expr != ')') {
-                ast_free_expr_list(args, count);
-                free(name);
-                printf("Error: Missing closing parenthesis in function call\n");
-                return NULL;
-            }
-            (*expr)++;
-
-            ASTExpr* e = ast_expr_new(AST_EXPR_CALL);
-            if (!e) {
-                ast_free_expr_list(args, count);
-                free(name);
-                return NULL;
-            }
-            e->as.call.name = name;
-            e->as.call.arg_count = count;
-            e->as.call.args = args;
-            return e;
-        }
-
-        *expr = after_ident;
-
-        ASTExpr* e = ast_expr_new(AST_EXPR_VAR);
-        if (!e) {
-            free(name);
-            return NULL;
-        }
-        e->as.var_name = name;
-        return e;
+        return parse_identifier_expr(expr);
     }
 
     char error_msg[64];
@@ -981,7 +856,6 @@ static ASTExpr* parse_primary(const char** expr) {
 static ASTExpr* parse_postfix(const char** expr, ASTExpr* base) {
     while (1) {
         skip_whitespace(expr);
-
         if (**expr == '[') {
             (*expr)++;
             ASTExpr* idx = parse_expression(expr);
@@ -993,7 +867,7 @@ static ASTExpr* parse_postfix(const char** expr, ASTExpr* base) {
             if (**expr != ']') {
                 ast_free_expr(idx);
                 ast_free_expr(base);
-                printf("Error: Missing closing ']' in indexing\n");
+                BREAD_ERROR_SET_SYNTAX_ERROR("Missing closing ']' in indexing");
                 return NULL;
             }
             (*expr)++;
@@ -1023,7 +897,7 @@ static ASTExpr* parse_postfix(const char** expr, ASTExpr* base) {
         skip_whitespace(expr);
         if (!is_ident_start(**expr)) {
             ast_free_expr(base);
-            printf("Error: Expected member name after '.'\n");
+            BREAD_ERROR_SET_SYNTAX_ERROR("Expected member name after '.'");
             return NULL;
         }
 
@@ -1037,59 +911,17 @@ static ASTExpr* parse_postfix(const char** expr, ASTExpr* base) {
         }
 
         skip_whitespace(expr);
+        
+        // Method call
         if (**expr == '(') {
             (*expr)++;
-
-            int cap = 0;
-            int count = 0;
-            ASTExpr** args = NULL;
-
-            skip_whitespace(expr);
-            if (**expr != ')') {
-                while (**expr) {
-                    ASTExpr* arg = parse_expression(expr);
-                    if (!arg) {
-                        ast_free_expr_list(args, count);
-                        free(member);
-                        ast_free_expr(base);
-                        return NULL;
-                    }
-
-                    if (count >= cap) {
-                        int new_cap = cap == 0 ? 4 : cap * 2;
-                        ASTExpr** new_args = realloc(args, sizeof(ASTExpr*) * (size_t)new_cap);
-                        if (!new_args) {
-                            ast_free_expr(arg);
-                            ast_free_expr_list(args, count);
-                            free(member);
-                            ast_free_expr(base);
-                            printf("Error: Out of memory\n");
-                            return NULL;
-                        }
-                        args = new_args;
-                        cap = new_cap;
-                    }
-                    args[count++] = arg;
-
-                    skip_whitespace(expr);
-                    if (**expr == ',') {
-                        (*expr)++;
-                        skip_whitespace(expr);
-                        continue;
-                    }
-                    break;
-                }
-            }
-
-            skip_whitespace(expr);
-            if (**expr != ')') {
-                ast_free_expr_list(args, count);
+            int count;
+            ASTExpr** args = parse_argument_list(expr, &count);
+            if (!args && count < 0) {
                 free(member);
                 ast_free_expr(base);
-                printf("Error: Missing ')' in method call\n");
                 return NULL;
             }
-            (*expr)++;
 
             ASTExpr* out = ast_expr_new(AST_EXPR_METHOD_CALL);
             if (!out) {
@@ -1107,6 +939,7 @@ static ASTExpr* parse_postfix(const char** expr, ASTExpr* base) {
             continue;
         }
 
+        // Member access
         ASTExpr* out = ast_expr_new(AST_EXPR_MEMBER);
         if (!out) {
             free(member);
@@ -1122,7 +955,68 @@ static ASTExpr* parse_postfix(const char** expr, ASTExpr* base) {
     return base;
 }
 
-// Utility functions
+static ASTExpr** parse_argument_list(const char** expr, int* out_count) {
+    skip_whitespace(expr);
+    
+    if (**expr == ')') {
+        (*expr)++;
+        *out_count = 0;
+        return NULL;
+    }
+    
+    int cap = INITIAL_ARRAY_CAPACITY;
+    int count = 0;
+    ASTExpr** args = malloc(sizeof(ASTExpr*) * cap);
+    if (!args) {
+        BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory");
+        *out_count = -1;
+        return NULL;
+    }
+    
+    while (**expr && **expr != ')') {
+        ASTExpr* arg = parse_expression(expr);
+        if (!arg) {
+            ast_free_expr_list(args, count);
+            *out_count = -1;
+            return NULL;
+        }
+        
+        if (count >= cap) {
+            cap *= 2;
+            ASTExpr** new_args = realloc(args, sizeof(ASTExpr*) * cap);
+            if (!new_args) {
+                ast_free_expr(arg);
+                ast_free_expr_list(args, count);
+                BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory");
+                *out_count = -1;
+                return NULL;
+            }
+            args = new_args;
+        }
+        args[count++] = arg;
+        
+        skip_whitespace(expr);
+        if (**expr == ',') {
+            (*expr)++;
+            skip_whitespace(expr);
+            continue;
+        }
+        break;
+    }
+    
+    skip_whitespace(expr);
+    if (**expr != ')') {
+        ast_free_expr_list(args, count);
+        BREAD_ERROR_SET_SYNTAX_ERROR("Missing closing parenthesis");
+        *out_count = -1;
+        return NULL;
+    }
+    (*expr)++;
+    
+    *out_count = count;
+    return args;
+}
+
 static char* dup_range(const char* start, const char* end) {
     size_t len = (size_t)(end - start);
     char* s = malloc(len + 1);
@@ -1144,8 +1038,8 @@ static void skip_whitespace(const char** code) {
     while (**code) {
         if (isspace((unsigned char)**code)) {
             (*code)++;
-        }
-        else if (**code == '/' && *(*code + 1) == '/') {
+        } else if (**code == '/' && *(*code + 1) == '/') {
+            // Skip line comments
             while (**code && **code != '\n') {
                 (*code)++;
             }

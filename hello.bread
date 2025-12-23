@@ -1,0 +1,183 @@
+// ============================================
+// BreadLang OOP Comprehensive Stress Test
+// ============================================
+
+// Test 1: Basic Struct Definition and Usage
+print("=== Test 1: Basic Structs ===")
+
+struct Point {
+    x: Int
+    y: Int
+}
+
+struct Rectangle {
+    topLeft: Point
+    width: Int
+    height: Int
+}
+
+let origin: Point = Point{x: 0, y: 0}
+let corner: Point = Point{x: 100, y: 50}
+let rect: Rectangle = Rectangle{topLeft: origin, width: 100, height: 50}
+
+print("Origin: " + str(origin.x) + ", " + str(origin.y))
+print("Rectangle width: " + str(rect.width))
+print("Rectangle top-left: " + str(rect.topLeft.x) + ", " + str(rect.topLeft.y))
+
+// Test 2: Struct Mutation
+print("\n=== Test 2: Struct Mutation ===")
+
+let mutablePoint: Point = Point{x: 10, y: 20}
+print("Before: " + str(mutablePoint.x) + ", " + str(mutablePoint.y))
+mutablePoint.x = 30
+mutablePoint.y = 40
+print("After: " + str(mutablePoint.x) + ", " + str(mutablePoint.y))
+
+// Test 3: Basic Class with Methods
+print("\n=== Test 3: Basic Class ===")
+
+class Counter {
+    value: Int
+    name: String
+
+    def init(name: String, start: Int) {
+        self.name = name
+        self.value = start
+    }
+
+    def increment() -> Int {
+        self.value = self.value + 1
+        return self.value
+    }
+
+    def decrement() -> Int {
+        self.value = self.value - 1
+        return self.value
+    }
+
+    def reset() -> Int {
+        self.value = 0
+        return self.value
+    }
+
+    def getValue() -> Int {
+        return self.value
+    }
+}
+
+let counter: Counter = Counter("MyCounter", 10)
+print("Initial value: " + str(counter.getValue()))
+print("After increment: " + str(counter.increment()))
+print("After increment: " + str(counter.increment()))
+print("After decrement: " + str(counter.decrement()))
+counter.reset()
+print("After reset: " + str(counter.getValue()))
+
+// Test 4: Class Inheritance
+print("\n=== Test 4: Inheritance ===")
+
+class Animal {
+    name: String
+    age: Int
+    species: String
+
+    def init(name: String, age: Int, species: String) {
+        self.name = name
+        self.age = age
+        self.species = species
+    }
+
+    def speak() -> String {
+        return self.name + " makes a sound"
+    }
+
+    def getInfo() -> String {
+        return self.name + " (" + self.species + "), age " + str(self.age)
+    }
+
+    def birthday() -> Int {
+        self.age = self.age + 1
+        return self.age
+    }
+}
+
+class Dog extends Animal {
+    breed: String
+    isGoodBoy: Bool
+
+    def init(name: String, age: Int, breed: String) {
+        super.init(name, age, "Dog")
+        self.breed = breed
+        self.isGoodBoy = true
+    }
+
+    def speak() -> String {
+        return self.name + " says: Woof! Woof!"
+    }
+
+    def wagTail() -> String {
+        return self.name + " is wagging tail happily!"
+    }
+
+    def getBreed() -> String {
+        return self.breed
+    }
+}
+
+class Cat extends Animal {
+    livesRemaining: Int
+
+    def init(name: String, age: Int, lives: Int) {
+        super.init(name, age, "Cat")
+        self.livesRemaining = lives
+    }
+
+    def speak() -> String {
+        return self.name + " says: Meow!"
+    }
+
+    def loseLife() -> Int {
+        if self.livesRemaining > 0 {
+            self.livesRemaining = self.livesRemaining - 1
+        }
+        return self.livesRemaining
+    }
+
+    def getLives() -> Int {
+        return self.livesRemaining
+    }
+}
+
+let dog: Dog = Dog("Buddy", 3, "Golden Retriever")
+let cat: Cat = Cat("Whiskers", 5, 9)
+
+print(dog.getInfo())
+print(dog.speak())
+print(dog.wagTail())
+print("Breed: " + dog.getBreed())
+
+print(cat.getInfo())
+print(cat.speak())
+print("Lives: " + str(cat.getLives()))
+cat.loseLife()
+print("Lives after accident: " + str(cat.getLives()))
+
+// Test 5: Arrays of Objects
+print("\n=== Test 5: Collections of Objects ===")
+
+let animals: [Animal] = [dog, cat]
+
+for i in range(len(animals)) {
+    let a: Animal = animals[i]
+    print(a.speak())
+}
+
+let points: [Point] = [Point{x: 0, y: 0}, Point{x: 10, y: 20}, Point{x: 30, y: 40}]
+
+print("Points in array:")
+for i in range(len(points)) {
+    let p: Point = points[i]
+    print("  (" + str(p.x) + ", " + str(p.y) + ")")
+}
+
+print("\n=== All Tests Complete ===")

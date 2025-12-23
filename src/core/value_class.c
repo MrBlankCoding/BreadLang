@@ -16,12 +16,10 @@ BreadClass* bread_class_new(const char* class_name, const char* parent_name, int
     
     c->class_name = strdup(class_name);
     c->parent_name = parent_name ? strdup(parent_name) : NULL;
-    c->parent_class = NULL;  // Will be resolved later
+    c->parent_class = NULL;
     c->field_count = field_count;
     c->method_count = 0;
     c->constructor = NULL;
-    
-    // Initialize LLVM function pointer support
     c->compiled_methods = NULL;
     c->compiled_constructor = NULL;
     
@@ -79,6 +77,100 @@ BreadClass* bread_class_new_with_methods(const char* class_name, const char* par
     return c;
 }
 
+// Global registry of class definitions (templates)
+static BreadClass** class_registry = NULL;
+static int class_registry_count = 0;
+static int class_registry_capacity = 0;
+
+void bread_class_register_definition(BreadClass* class_def) {
+    if (!class_def) return;
+    
+    // Check if already registered
+    for (int i = 0; i < class_registry_count; i++) {
+        if (class_registry[i] && class_registry[i]->class_name && class_def->class_name &&
+            strcmp(class_registry[i]->class_name, class_def->class_name) == 0) {
+            bread_class_release(class_registry[i]);
+            class_registry[i] = class_def;
+            bread_class_retain(class_def);
+            return;
+        }
+    }
+    
+    // Add new registration
+    if (class_registry_count >= class_registry_capacity) {
+        int new_capacity = class_registry_capacity == 0 ? 4 : class_registry_capacity * 2;
+        BreadClass** new_registry = realloc(class_registry, new_capacity * sizeof(BreadClass*));
+        if (!new_registry) return;
+        class_registry = new_registry;
+        class_registry_capacity = new_capacity;
+    }
+    
+    class_registry[class_registry_count] = class_def;
+    bread_class_retain(class_def);
+    class_registry_count++;
+}
+
+void bread_class_resolve_inheritance(void) {
+    for (int i = 0; i < class_registry_count; i++) {
+        BreadClass* class = class_registry[i];
+        if (class && class->parent_name && !class->parent_class) {
+            BreadClass* parent = bread_class_find_definition(class->parent_name);
+            if (parent) {
+                class->parent_class = parent;
+                bread_class_retain(parent);
+            }
+        }
+    }
+}
+
+BreadClass* bread_class_find_definition(const char* class_name) {
+    for (int i = 0; i < class_registry_count; i++) {
+        if (class_registry[i] && class_registry[i]->class_name &&
+            strcmp(class_registry[i]->class_name, class_name) == 0) {
+            return class_registry[i];
+        }
+    }
+    return NULL;
+}
+
+BreadClass* bread_class_create_instance(const char* class_name, const char* parent_name, 
+                                       int field_count, char** field_names,
+                                       int method_count, char** method_names) {
+    BreadClass* class_def = bread_class_find_definition(class_name);
+    
+    if (class_def) {
+        BreadClass* instance = bread_class_new_with_methods(class_name, parent_name, 
+                                                           field_count, field_names,
+                                                           method_count, method_names);
+        if (!instance) return NULL;
+
+        // Inherit resolved parent pointer from the class definition so runtime method lookup
+        // can traverse inheritance for instances.
+        if (class_def->parent_class) {
+            instance->parent_class = class_def->parent_class;
+            bread_class_retain(instance->parent_class);
+        }
+        
+        // Copy compiled methods from the class definition
+        if (class_def->compiled_methods && instance->compiled_methods) {
+            for (int i = 0; i < instance->method_count && i < class_def->method_count; i++) {
+                if (instance->method_names[i] && class_def->method_names[i] &&
+                    strcmp(instance->method_names[i], class_def->method_names[i]) == 0) {
+                    instance->compiled_methods[i] = class_def->compiled_methods[i];
+                }
+            }
+        }
+        
+        if (class_def->compiled_constructor) {
+            instance->compiled_constructor = class_def->compiled_constructor;
+        }
+        
+        return instance;
+    }
+    
+    return bread_class_new_with_methods(class_name, parent_name, field_count, field_names, method_count, method_names);
+}
+
 void bread_class_set_field(BreadClass* c, const char* field_name, BreadValue value) {
     if (!c || !field_name) return;
     
@@ -87,7 +179,6 @@ void bread_class_set_field(BreadClass* c, const char* field_name, BreadValue val
         bread_value_release(&c->field_values[index]);
         c->field_values[index] = bread_value_clone(value);
     } else if (c->parent_class) {
-        // Try parent class
         bread_class_set_field(c->parent_class, field_name, value);
     }
 }
@@ -100,7 +191,6 @@ void bread_class_set_field_value_ptr(BreadClass* c, const char* field_name, cons
         bread_value_release(&c->field_values[index]);
         c->field_values[index] = bread_value_clone(*value);
     } else if (c->parent_class) {
-        // Try parent class
         bread_class_set_field_value_ptr(c->parent_class, field_name, value);
     }
 }
@@ -112,7 +202,6 @@ BreadValue* bread_class_get_field(BreadClass* c, const char* field_name) {
     if (index >= 0) {
         return &c->field_values[index];
     } else if (c->parent_class) {
-        // Try parent class
         return bread_class_get_field(c->parent_class, field_name);
     }
     
@@ -134,7 +223,6 @@ int bread_class_find_field_index(BreadClass* c, const char* field_name) {
 void bread_class_add_method(BreadClass* c, const char* method_name, BreadMethod method) {
     if (!c || !method_name || !method) return;
     
-    // Expand method arrays
     c->method_count++;
     c->method_names = realloc(c->method_names, c->method_count * sizeof(char*));
     c->methods = realloc(c->methods, c->method_count * sizeof(BreadMethod));
@@ -147,13 +235,11 @@ void bread_class_add_method(BreadClass* c, const char* method_name, BreadMethod 
     c->compiled_methods[c->method_count - 1] = NULL;
 }
 
-// Set compiled LLVM function for a method
 void bread_class_set_compiled_method(BreadClass* c, int method_index, BreadCompiledMethod compiled_fn) {
     if (!c || method_index < 0 || method_index >= c->method_count || !c->compiled_methods) return;
     c->compiled_methods[method_index] = compiled_fn;
 }
 
-// Set compiled LLVM function for constructor
 void bread_class_set_compiled_constructor(BreadClass* c, BreadCompiledMethod compiled_fn) {
     if (!c) return;
     c->compiled_constructor = compiled_fn;
@@ -162,14 +248,12 @@ void bread_class_set_compiled_constructor(BreadClass* c, BreadCompiledMethod com
 BreadMethod bread_class_get_method(BreadClass* c, const char* method_name) {
     if (!c || !method_name) return NULL;
     
-    // Search in this class
     for (int i = 0; i < c->method_count; i++) {
         if (strcmp(c->method_names[i], method_name) == 0) {
             return c->methods[i];
         }
     }
     
-    // Search in parent class
     if (c->parent_class) {
         return bread_class_get_method(c->parent_class, method_name);
     }
@@ -255,7 +339,6 @@ int bread_class_find_method_index(BreadClass* c, const char* method_name) {
         }
     }
     
-    // Search in parent class
     if (c->parent_class) {
         return bread_class_find_method_index(c->parent_class, method_name);
     }
@@ -263,187 +346,117 @@ int bread_class_find_method_index(BreadClass* c, const char* method_name) {
     return -1;
 }
 
-// Method execution context structure
-typedef struct {
-    BreadClass* self;
-    BreadValue* args;
-    int arg_count;
-    BreadValue* local_vars;
-    int local_var_count;
-} MethodExecutionContext;
+static BreadClass* bread_class_find_method_defining_class(BreadClass* c, const char* method_name, int* method_index) {
+    if (!c || !method_name || !method_index) return NULL;
+    
+    for (int i = 0; i < c->method_count; i++) {
+        if (c->method_names[i] && strcmp(c->method_names[i], method_name) == 0) {
+            *method_index = i;
+            return c;
+        }
+    }
+    
+    if (c->parent_class) {
+        return bread_class_find_method_defining_class(c->parent_class, method_name, method_index);
+    }
+    
+    return NULL;
+}
 
-// Execute a method with proper context
-int bread_class_execute_method(BreadClass* c, int method_index, int argc, const BreadValue* args, BreadValue* out) {
-    if (!c || method_index < 0 || method_index >= c->method_count || !out) {
+static int bread_class_call_compiled_method(BreadCompiledMethod compiled_fn, BreadClass* instance, 
+                                           int argc, const BreadValue* args, BreadValue* out) {
+    BreadValue ret_slot;
+    bread_value_set_nil(&ret_slot);
+    
+    BreadValue self_value;
+    bread_value_set_class(&self_value, instance);
+    
+    // Call compiled function based on argument count
+    switch (argc) {
+        case 0:
+            ((void(*)(void*, void*))compiled_fn)(&ret_slot, &self_value);
+            break;
+        case 1:
+            ((void(*)(void*, void*, void*))compiled_fn)(&ret_slot, &self_value, (void*)&args[0]);
+            break;
+        case 2:
+            ((void(*)(void*, void*, void*, void*))compiled_fn)(&ret_slot, &self_value, (void*)&args[0], (void*)&args[1]);
+            break;
+        case 3:
+            ((void(*)(void*, void*, void*, void*, void*))compiled_fn)(&ret_slot, &self_value, (void*)&args[0], (void*)&args[1], (void*)&args[2]);
+            break;
+        default:
+            bread_value_set_nil(out);
+            bread_value_release(&ret_slot);
+            bread_value_release(&self_value);
+            return 1;
+    }
+    
+    *out = ret_slot;
+    bread_value_release(&self_value);
+    return 1;
+}
+
+int bread_class_execute_method_direct(BreadClass* defining_class, int method_index, 
+                                     BreadClass* instance, int argc, const BreadValue* args, BreadValue* out) {
+    if (!defining_class || !instance || method_index < 0 || method_index >= defining_class->method_count || !out) {
         return 0;
     }
     
-    const char* method_name = c->method_names[method_index];
+    const char* method_name = defining_class->method_names[method_index];
     
-    // Handle constructor separately
     if (strcmp(method_name, "init") == 0) {
-        return bread_class_execute_constructor(c, argc, args, out);
+        return bread_class_execute_constructor(instance, argc, args, out);
     }
     
-    // JIT-ONLY: Try compiled method - NO FALLBACK
-    if (c->compiled_methods && c->compiled_methods[method_index]) {
-        BreadCompiledMethod compiled_fn = c->compiled_methods[method_index];
-        
-        // Execute compiled method with proper calling convention
-        BreadValue ret_slot;
-        bread_value_set_nil(&ret_slot);
-        
-        // Convert arguments to LLVM calling convention
-        void** llvm_args = NULL;
-        if (argc > 0) {
-            llvm_args = malloc(argc * sizeof(void*));
-            if (llvm_args) {
-                for (int i = 0; i < argc; i++) {
-                    llvm_args[i] = (void*)&args[i];
-                }
-            }
-        }
-        
-        // Call compiled function: void fn(void* ret_slot, void* self_ptr, void** args)
-        compiled_fn(&ret_slot, c, llvm_args);
-        
-        // Copy result
-        *out = bread_value_clone(ret_slot);
-        
-        // Cleanup
-        bread_value_release(&ret_slot);
-        free(llvm_args);
-        
-        return 1;
+    if (defining_class->compiled_methods && defining_class->compiled_methods[method_index]) {
+        return bread_class_call_compiled_method(defining_class->compiled_methods[method_index], 
+                                               instance, argc, args, out);
     }
     
-    // EXECUTABLE MODE FALLBACK: Provide basic method implementations
-    // This is needed when running as a standalone executable without JIT
-    
-    if (strcmp(method_name, "speak") == 0) {
-        // Check if this is a Dog class (has breed field) or Animal class
-        BreadValue breed_val;
-        if (bread_class_get_field_value_ptr(c, "breed", &breed_val) && breed_val.type == TYPE_STRING) {
-            // This is a Dog - return "Woof!"
-            bread_value_set_string(out, "Woof!");
-        } else {
-            // This is an Animal - return "Some sound"
-            bread_value_set_string(out, "Some sound");
-        }
-        return 1;
-    }
-    
-    if (strcmp(method_name, "wagTail") == 0) {
-        // Get name field and return wagging message
-        BreadValue name_val;
-        char message[256];
-        
-        if (bread_class_get_field_value_ptr(c, "name", &name_val) && name_val.type == TYPE_STRING) {
-            snprintf(message, sizeof(message), "%s is wagging tail", 
-                    bread_string_cstr(name_val.value.string_val));
-        } else {
-            snprintf(message, sizeof(message), "Dog is wagging tail");
-        }
-        
-        bread_value_set_string(out, message);
-        return 1;
-    }
-    
-    if (strcmp(method_name, "getInfo") == 0) {
-        // Get name and age fields and return info string
-        BreadValue name_val, age_val;
-        char info[256];
-        
-        int has_name = bread_class_get_field_value_ptr(c, "name", &name_val) && name_val.type == TYPE_STRING;
-        int has_age = bread_class_get_field_value_ptr(c, "age", &age_val) && age_val.type == TYPE_INT;
-        
-        if (has_name && has_age) {
-            snprintf(info, sizeof(info), "%s is %d years old", 
-                    bread_string_cstr(name_val.value.string_val), age_val.value.int_val);
-        } else if (has_name) {
-            snprintf(info, sizeof(info), "%s is of unknown age", 
-                    bread_string_cstr(name_val.value.string_val));
-        } else {
-            snprintf(info, sizeof(info), "Unknown animal");
-        }
-        
-        bread_value_set_string(out, info);
-        return 1;
-    }
-    
-    if (strcmp(method_name, "greet") == 0) {
-        // Get name field if it exists
-        BreadValue name_val;
-        char greeting[256];
-        
-        if (bread_class_get_field_value_ptr(c, "name", &name_val) && name_val.type == TYPE_STRING) {
-            snprintf(greeting, sizeof(greeting), "Hello, my name is %s!", 
-                    bread_string_cstr(name_val.value.string_val));
-        } else {
-            snprintf(greeting, sizeof(greeting), "Hello from %s class!", 
-                    c->class_name ? c->class_name : "unknown");
-        }
-        
-        bread_value_set_string(out, greeting);
-        return 1;
-    }
-    
-    if (strcmp(method_name, "get_age") == 0) {
-        // Return age field or default value
-        BreadValue age_val;
-        if (bread_class_get_field_value_ptr(c, "age", &age_val)) {
-            *out = bread_value_clone(age_val);
-        } else {
-            bread_value_set_int(out, 25); // Default value
-        }
-        return 1;
-    }
-    
-    // Method not found - this should not happen in a properly compiled program
-    fprintf(stderr, "RUNTIME ERROR: Method '%s::%s' not found (neither JIT compiled nor in executable fallback)\n", 
-            c->class_name ? c->class_name : "unknown", method_name);
+    fprintf(stderr, "RUNTIME ERROR: Method '%s::%s' not found\n", 
+            defining_class->class_name ? defining_class->class_name : "unknown", method_name);
     bread_value_set_nil(out);
     return 0;
 }
 
-// Execute constructor with proper field initialization
+int bread_class_execute_method(BreadClass* c, int method_index, int argc, const BreadValue* args, BreadValue* out) {
+    if (!c || method_index < 0 || !out) {
+        return 0;
+    }
+    
+    const char* method_name = NULL;
+    BreadClass* search_class = c;
+    int remaining_index = method_index;
+    
+    while (search_class) {
+        if (remaining_index < search_class->method_count) {
+            method_name = search_class->method_names[remaining_index];
+            break;
+        }
+        search_class = search_class->parent_class;
+    }
+    
+    if (!method_name) return 0;
+    
+    int actual_method_index;
+    BreadClass* defining_class = bread_class_find_method_defining_class(c, method_name, &actual_method_index);
+    
+    if (!defining_class) return 0;
+    
+    return bread_class_execute_method_direct(defining_class, actual_method_index, c, argc, args, out);
+}
+
 int bread_class_execute_constructor(BreadClass* c, int argc, const BreadValue* args, BreadValue* out) {
     if (!c || !out) {
         return 0;
     }
     
-    // JIT-ONLY: Try compiled constructor - NO FALLBACK
     if (c->compiled_constructor) {
-        BreadValue ret_slot;
-        bread_value_set_nil(&ret_slot);
-        
-        // Convert arguments to LLVM calling convention
-        void** llvm_args = NULL;
-        if (argc > 0) {
-            llvm_args = malloc(argc * sizeof(void*));
-            if (llvm_args) {
-                for (int i = 0; i < argc; i++) {
-                    llvm_args[i] = (void*)&args[i];
-                }
-            }
-        }
-        
-        // Call compiled constructor: void fn(void* ret_slot, void* self_ptr, void** args)
-        c->compiled_constructor(&ret_slot, c, llvm_args);
-        
-        // Copy result (constructors typically return nil)
-        *out = bread_value_clone(ret_slot);
-        
-        // Cleanup
-        bread_value_release(&ret_slot);
-        free(llvm_args);
-        
-        return 1;
+        return bread_class_call_compiled_method(c->compiled_constructor, c, argc, args, out);
     }
     
-    // EXECUTABLE MODE FALLBACK: Simple constructor implementation
-    // Map constructor arguments to fields by position - this works for most cases
-    
+    // Default constructor: map arguments to fields by position
     int fields_to_set = (argc < c->field_count) ? argc : c->field_count;
     
     for (int i = 0; i < fields_to_set; i++) {

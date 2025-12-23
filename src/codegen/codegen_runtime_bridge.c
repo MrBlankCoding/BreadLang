@@ -127,23 +127,15 @@ int cg_connect_class_to_runtime(Cg* cg, CgClass* cg_class, BreadClass* runtime_c
     }
     
     // Connect constructor - MUST be compiled, no fallback
-    if (cg_class->constructor && cg_class->method_functions) {
-        for (int i = 0; i < cg_class->method_count; i++) {
-            if (cg_class->method_names[i] && strcmp(cg_class->method_names[i], "init") == 0) {
-                LLVMValueRef constructor_fn = cg_class->method_functions[i];
-                if (constructor_fn) {
-                    BreadCompiledMethod compiled_constructor = llvm_to_runtime_method(
-                        constructor_fn, cg_class->name, "init");
-                    if (compiled_constructor) {
-                        bread_class_set_compiled_constructor(runtime_class, compiled_constructor);
-                        printf("JIT: Connected constructor for class '%s'\n", cg_class->name);
-                    } else {
-                        fprintf(stderr, "JIT ERROR: Failed to compile constructor for class '%s'\n", cg_class->name);
-                        return 0;
-                    }
-                }
-                break;
-            }
+    if (cg_class->constructor && cg_class->constructor_function) {
+        BreadCompiledMethod compiled_constructor = llvm_to_runtime_method(
+            cg_class->constructor_function, cg_class->name, "init");
+        if (compiled_constructor) {
+            bread_class_set_compiled_constructor(runtime_class, compiled_constructor);
+            printf("JIT: Connected constructor for class '%s'\n", cg_class->name);
+        } else {
+            fprintf(stderr, "JIT ERROR: Failed to compile constructor for class '%s'\n", cg_class->name);
+            return 0;
         }
     }
     
@@ -192,6 +184,9 @@ static void register_runtime_class(const char* class_name, BreadClass* runtime_c
     entry->runtime_class = runtime_class;
     entry->next = g_class_registry;
     g_class_registry = entry;
+    
+    // Register the class definition in the global registry
+    bread_class_register_definition(runtime_class);
     
     printf("JIT: Registered runtime class '%s'\n", class_name);
 }
@@ -249,7 +244,7 @@ int cg_connect_all_classes_to_runtime(Cg* cg) {
                 }
                 free(all_field_names);
             } else {
-                // Fallback to class's own fields only
+                // Fallback to class's own fields and methods only
                 runtime_class = bread_class_new_with_methods(
                     cg_class->name,
                     cg_class->parent_name,
@@ -275,6 +270,9 @@ int cg_connect_all_classes_to_runtime(Cg* cg) {
             }
         }
     }
+    
+    // Resolve inheritance relationships after all classes are registered
+    bread_class_resolve_inheritance();
     
     printf("JIT: Successfully connected %d classes to runtime\n", classes_connected);
     return 1;

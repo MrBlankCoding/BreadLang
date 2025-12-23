@@ -91,6 +91,12 @@ BreadClass* bread_class_new(const char* class_name, const char* parent_name, int
 BreadClass* bread_class_new_with_methods(const char* class_name, const char* parent_name, 
                                         int field_count, char** field_names,
                                         int method_count, char** method_names);
+void bread_class_register_definition(BreadClass* class_def);
+BreadClass* bread_class_find_definition(const char* class_name);
+void bread_class_resolve_inheritance(void);
+BreadClass* bread_class_create_instance(const char* class_name, const char* parent_name, 
+                                       int field_count, char** field_names,
+                                       int method_count, char** method_names);
 void bread_class_set_field(BreadClass* c, const char* field_name, BreadValue value);
 void bread_class_set_field_value_ptr(BreadClass* c, const char* field_name, const BreadValue* value);
 BreadValue* bread_class_get_field(BreadClass* c, const char* field_name);
@@ -101,6 +107,7 @@ void bread_class_add_method(BreadClass* c, const char* method_name, BreadMethod 
 BreadMethod bread_class_get_method(BreadClass* c, const char* method_name);
 BreadValue bread_class_call_method(BreadClass* c, const char* method_name, BreadValue* args, int arg_count);
 int bread_class_execute_method(BreadClass* c, int method_index, int argc, const BreadValue* args, BreadValue* out);
+int bread_class_execute_method_direct(BreadClass* defining_class, int method_index, BreadClass* instance, int argc, const BreadValue* args, BreadValue* out);
 int bread_class_execute_constructor(BreadClass* c, int argc, const BreadValue* args, BreadValue* out);
 void bread_class_set_compiled_method(BreadClass* c, int method_index, BreadCompiledMethod compiled_fn);
 void bread_class_set_compiled_constructor(BreadClass* c, BreadCompiledMethod compiled_fn);

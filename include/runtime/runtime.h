@@ -96,6 +96,11 @@ int bread_method_call_op(const BreadValue* target, const char* name, int argc, c
 int bread_dict_set_value(struct BreadDict* d, const BreadValue* key, const BreadValue* val);
 int bread_array_append_value(struct BreadArray* a, const BreadValue* v);
 int bread_array_set_value(struct BreadArray* a, int index, const BreadValue* v);
+
+// Class management functions
+BreadClass* bread_class_create_instance(const char* class_name, const char* parent_name, 
+                                       int field_count, char** field_names,
+                                       int method_count, char** method_names);
 int bread_var_decl(const char* name, VarType type, int is_const, const BreadValue* init);
 int bread_var_decl_if_missing(const char* name, VarType type, int is_const, const BreadValue* init);
 int bread_var_assign(const char* name, const BreadValue* value);

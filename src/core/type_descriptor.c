@@ -335,6 +335,22 @@ int type_descriptor_compatible(const TypeDescriptor* from, const TypeDescriptor*
     // Exact match is always compatible
     if (type_descriptor_equals(from, to)) return 1;
 
+    // Allow nominal interoperability between structs and classes by name.
+    // The type parser represents unknown user-defined nominal types as TYPE_STRUCT,
+    // but later stages may resolve them as TYPE_CLASS.
+    if (from->base_type == TYPE_STRUCT && to->base_type == TYPE_CLASS) {
+        if (from->params.struct_type.name && to->params.class_type.name &&
+            strcmp(from->params.struct_type.name, to->params.class_type.name) == 0) {
+            return 1;
+        }
+    }
+    if (from->base_type == TYPE_CLASS && to->base_type == TYPE_STRUCT) {
+        if (from->params.class_type.name && to->params.struct_type.name &&
+            strcmp(from->params.class_type.name, to->params.struct_type.name) == 0) {
+            return 1;
+        }
+    }
+
     // Structs are nominally typed by name. Field metadata may be absent or differ
     // between declared types and inferred literals; treat same-name structs as compatible.
     if (from->base_type == TYPE_STRUCT && to->base_type == TYPE_STRUCT) {
