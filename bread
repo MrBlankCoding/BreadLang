@@ -23,11 +23,6 @@ show_help() {
     echo "  examples                Run example programs"
     echo "  help                    Show this help message"
     echo ""
-    echo "Examples:"
-    echo "  $0 run main.bread"
-    echo "  $0 compile main.bread myapp"
-    echo "  $0 llvm main.bread main.ll"
-    echo ""
     echo "For more options, use the Makefile directly:"
     echo "  make help"
 }

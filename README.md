@@ -94,9 +94,6 @@ The enhanced Makefile provides convenient targets for common operations:
 ```bash
 make run FILE=program.bread          # JIT execution
 make jit FILE=program.bread          # JIT execution (alias)
-make run-main                        # Run main.bread example
-make run-methods                     # Run test_methods.bread example
-make examples                        # Run all example programs
 ```
 
 #### Compilation Targets

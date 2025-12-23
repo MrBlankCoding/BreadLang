@@ -21,11 +21,6 @@ help:
 		"  make compile-llvm FILE=<file> [OUT=<output>]  Compile to LLVM IR" \
 		"  make compile-obj FILE=<file> [OUT=<output>]   Compile to object file" \
 		"" \
-		"Example Targets:" \
-		"  make examples          Run all example programs" \
-		"  make run-main          Run main.bread (full example)" \
-		"  make run-methods       Run test_methods.bread (simple example)" \
-		"" \
 		"Test Targets:" \
 		"  make test              Run CTest" \
 		"  make test-all          Run custom test-all target" \
@@ -59,18 +54,6 @@ run: build
 	$(BREADLANG) --jit "$(FILE)"
 
 jit: run
-
-# Example execution targets
-run-main: build
-	@echo "Running main.bread (full example with inheritance)..."
-	$(BREADLANG) --jit main.bread
-
-run-methods: build
-	@echo "Running test_methods.bread (simple class example)..."
-	$(BREADLANG) --jit test_methods.bread
-
-examples: run-main run-methods
-	@echo "All examples completed successfully!"
 
 # Compilation targets
 compile-exe: build
