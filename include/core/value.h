@@ -103,6 +103,7 @@ BreadValue* bread_class_get_field(BreadClass* c, const char* field_name);
 int bread_class_get_field_value_ptr(BreadClass* c, const char* field_name, BreadValue* out);
 int bread_class_find_field_index(BreadClass* c, const char* field_name);
 int bread_class_find_method_index(BreadClass* c, const char* method_name);
+BreadClass* bread_class_find_method_defining_class(BreadClass* c, const char* method_name, int* method_index);
 void bread_class_add_method(BreadClass* c, const char* method_name, BreadMethod method);
 BreadMethod bread_class_get_method(BreadClass* c, const char* method_name);
 BreadValue bread_class_call_method(BreadClass* c, const char* method_name, BreadValue* args, int arg_count);

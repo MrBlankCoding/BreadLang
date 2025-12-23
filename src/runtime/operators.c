@@ -463,25 +463,15 @@ int bread_method_call_op(const BreadValue* target, const char* name, int argc,
                 cleanup_if_owned(&real_target, target_owned);
                 return result;
             }
-            
-            // Instance methods
-            int method_index = bread_class_find_method_index(class_instance, name);
-            if (method_index >= 0) {
-                result = bread_class_execute_method(class_instance, method_index, argc, args, out);
+
+            int defining_method_index = -1;
+            BreadClass* defining_class = bread_class_find_method_defining_class(
+                class_instance, name, &defining_method_index);
+            if (defining_class && defining_method_index >= 0) {
+                result = bread_class_execute_method_direct(
+                    defining_class, defining_method_index, class_instance, argc, args, out);
                 cleanup_if_owned(&real_target, target_owned);
                 return result;
-            }
-            
-            // Parent class methods
-            if (class_instance->parent_class) {
-                int parent_method_index = bread_class_find_method_index(
-                    class_instance->parent_class, name);
-                if (parent_method_index >= 0) {
-                    result = bread_class_execute_method(
-                        class_instance->parent_class, parent_method_index, argc, args, out);
-                    cleanup_if_owned(&real_target, target_owned);
-                    return result;
-                }
             }
         }
     }

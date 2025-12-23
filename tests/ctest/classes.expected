@@ -1,0 +1,30 @@
+Origin: 0, 0
+Rectangle width: 100
+Rectangle top-left: 0, 0
+Before: 10, 20
+After: 30, 40
+
+=== Test 2: Basic Class ===
+Initial value: 10
+After increment: 11
+After increment: 12
+After decrement: 11
+After reset: 0
+
+=== Test 3: Inheritance ===
+Buddy (Dog), age 3
+Buddy says: Woof! Woof!
+Buddy is wagging tail happily!
+Breed: Golden Retriever
+Whiskers (Cat), age 5
+Whiskers says: Meow!
+Lives: 9
+Lives after accident: 8
+
+=== Test 4: Collections of Objects ===
+Buddy says: Woof! Woof!
+Whiskers says: Meow!
+Points in array:
+  (0, 0)
+  (10, 20)
+  (30, 40)

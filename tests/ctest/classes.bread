@@ -1,3 +1,6 @@
+// Test for structs, classes, and inheritance features
+
+// Test 1: Basic structs
 struct Point {
     x: Int
     y: Int
@@ -23,7 +26,7 @@ mutablePoint.x = 30
 mutablePoint.y = 40
 print("After: " + str(mutablePoint.x) + ", " + str(mutablePoint.y))
 
-print("\n=== Test 3: Basic Class ===")
+print("\n=== Test 2: Basic Class ===")
 
 class Counter {
     value: Int
@@ -62,8 +65,8 @@ print("After decrement: " + str(counter.decrement()))
 counter.reset()
 print("After reset: " + str(counter.getValue()))
 
-// Test 4: Class Inheritance
-print("\n=== Test 4: Inheritance ===")
+// Test 3: Class Inheritance
+print("\n=== Test 3: Inheritance ===")
 
 class Animal {
     name: String
@@ -151,8 +154,8 @@ print("Lives: " + str(cat.getLives()))
 cat.loseLife()
 print("Lives after accident: " + str(cat.getLives()))
 
-// Test 5: Arrays of Objects
-print("\n=== Test 5: Collections of Objects ===")
+// Test 4: Arrays of Objects
+print("\n=== Test 4: Collections of Objects ===")
 
 let animals: [Animal] = [dog, cat]
 
@@ -168,5 +171,3 @@ for i in range(len(points)) {
     let p: Point = points[i]
     print("  (" + str(p.x) + ", " + str(p.y) + ")")
 }
-
-print("\n=== All Tests Complete ===")

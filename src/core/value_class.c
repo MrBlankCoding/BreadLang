@@ -153,10 +153,14 @@ BreadClass* bread_class_create_instance(const char* class_name, const char* pare
         
         // Copy compiled methods from the class definition
         if (class_def->compiled_methods && instance->compiled_methods) {
-            for (int i = 0; i < instance->method_count && i < class_def->method_count; i++) {
-                if (instance->method_names[i] && class_def->method_names[i] &&
-                    strcmp(instance->method_names[i], class_def->method_names[i]) == 0) {
-                    instance->compiled_methods[i] = class_def->compiled_methods[i];
+            for (int i = 0; i < instance->method_count; i++) {
+                if (!instance->method_names || !instance->method_names[i]) continue;
+                for (int j = 0; j < class_def->method_count; j++) {
+                    if (!class_def->method_names || !class_def->method_names[j]) continue;
+                    if (strcmp(instance->method_names[i], class_def->method_names[j]) == 0) {
+                        instance->compiled_methods[i] = class_def->compiled_methods[j];
+                        break;
+                    }
                 }
             }
         }
@@ -338,15 +342,11 @@ int bread_class_find_method_index(BreadClass* c, const char* method_name) {
             return i;
         }
     }
-    
-    if (c->parent_class) {
-        return bread_class_find_method_index(c->parent_class, method_name);
-    }
-    
+
     return -1;
 }
 
-static BreadClass* bread_class_find_method_defining_class(BreadClass* c, const char* method_name, int* method_index) {
+BreadClass* bread_class_find_method_defining_class(BreadClass* c, const char* method_name, int* method_index) {
     if (!c || !method_name || !method_index) return NULL;
     
     for (int i = 0; i < c->method_count; i++) {
@@ -424,27 +424,8 @@ int bread_class_execute_method(BreadClass* c, int method_index, int argc, const 
     if (!c || method_index < 0 || !out) {
         return 0;
     }
-    
-    const char* method_name = NULL;
-    BreadClass* search_class = c;
-    int remaining_index = method_index;
-    
-    while (search_class) {
-        if (remaining_index < search_class->method_count) {
-            method_name = search_class->method_names[remaining_index];
-            break;
-        }
-        search_class = search_class->parent_class;
-    }
-    
-    if (!method_name) return 0;
-    
-    int actual_method_index;
-    BreadClass* defining_class = bread_class_find_method_defining_class(c, method_name, &actual_method_index);
-    
-    if (!defining_class) return 0;
-    
-    return bread_class_execute_method_direct(defining_class, actual_method_index, c, argc, args, out);
+
+    return bread_class_execute_method_direct(c, method_index, c, argc, args, out);
 }
 
 int bread_class_execute_constructor(BreadClass* c, int argc, const BreadValue* args, BreadValue* out) {
