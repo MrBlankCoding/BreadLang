@@ -538,8 +538,11 @@ TypeDescriptor* cg_infer_expr_type_desc_simple(Cg* cg, ASTExpr* expr) {
             return type_descriptor_create_primitive(TYPE_NIL);
         }
 
-        case AST_EXPR_METHOD_CALL:
-            return type_descriptor_create_primitive(TYPE_NIL);
+        case AST_EXPR_METHOD_CALL: {
+            // For method calls, we need to look up the method and return its return type
+            // For now, assume methods return Int (this should be improved to look up actual method signatures)
+            return type_descriptor_create_primitive(TYPE_INT);
+        }
 
         case AST_EXPR_BINARY: {
             TypeDescriptor* left = cg_infer_expr_type_desc_simple(cg, expr->as.binary.left);
@@ -745,8 +748,29 @@ TypeDescriptor* cg_infer_expr_type_desc_simple(Cg* cg, ASTExpr* expr) {
             type_descriptor_free(target);
             return out;
         }
-        case AST_EXPR_MEMBER:
-            return type_descriptor_create_primitive(TYPE_INT);
+        case AST_EXPR_MEMBER: {
+            // For member access, we need to infer the type based on the target and member
+            TypeDescriptor* target_type = cg_infer_expr_type_desc_simple(cg, expr->as.member.target);
+            if (!target_type) return type_descriptor_create_primitive(TYPE_NIL);
+            
+            // Special case for built-in properties
+            if (expr->as.member.member && strcmp(expr->as.member.member, "length") == 0) {
+                type_descriptor_free(target_type);
+                return type_descriptor_create_primitive(TYPE_INT);
+            }
+            
+            // For struct field access, we need to look up the field type
+            if (target_type->base_type == TYPE_STRUCT) {
+                // For now, assume all struct fields are Int (this should be improved)
+                // In a full implementation, we'd look up the actual field type from the struct definition
+                type_descriptor_free(target_type);
+                return type_descriptor_create_primitive(TYPE_INT);
+            }
+            
+            // For other types, return nil for now
+            type_descriptor_free(target_type);
+            return type_descriptor_create_primitive(TYPE_NIL);
+        }
 
         case AST_EXPR_STRUCT_LITERAL: {
             // For struct literals, we need to look up the struct type

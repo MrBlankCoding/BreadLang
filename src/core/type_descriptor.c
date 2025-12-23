@@ -359,6 +359,17 @@ int type_descriptor_compatible(const TypeDescriptor* from, const TypeDescriptor*
         return 1;
     }
     
+    // Array compatibility: check element type compatibility
+    if (from->base_type == TYPE_ARRAY && to->base_type == TYPE_ARRAY) {
+        return type_descriptor_compatible(from->params.array.element_type, to->params.array.element_type);
+    }
+    
+    // Dictionary compatibility: check key and value type compatibility
+    if (from->base_type == TYPE_DICT && to->base_type == TYPE_DICT) {
+        return type_descriptor_compatible(from->params.dict.key_type, to->params.dict.key_type) &&
+               type_descriptor_compatible(from->params.dict.value_type, to->params.dict.value_type);
+    }
+    
     // Special case: empty dict {nil:nil} can be assigned to any dict type
     if (from->base_type == TYPE_DICT && to->base_type == TYPE_DICT &&
         from->params.dict.key_type && from->params.dict.key_type->base_type == TYPE_NIL &&

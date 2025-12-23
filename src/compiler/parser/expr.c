@@ -207,6 +207,118 @@ static ExprResult parse_primary(const char** expr) {
         return r;
     }
 
+    // Struct literal: StructName{field: value, ...}
+    if (is_ident_start(**expr)) {
+        const char* start_id = *expr;
+        (*expr)++;
+        while (**expr && is_ident_char(**expr)) (*expr)++;
+        
+        // Check if this is followed by '{'
+        const char* after_ident = *expr;
+        skip_whitespace(expr);
+        if (**expr == '{') {
+            // This is a struct literal
+            char* struct_name = dup_range(start_id, after_ident);
+            if (!struct_name) {
+                printf("Error: Out of memory\n");
+                return create_error_result();
+            }
+            
+            (*expr)++; // consume '{'
+            skip_whitespace(expr);
+            
+            // For now, create a dictionary to represent the struct
+            BreadDict* d = bread_dict_new();
+            if (!d) {
+                printf("Error: Out of memory\n");
+                free(struct_name);
+                return create_error_result();
+            }
+            
+            // Parse field: value pairs
+            while (**expr && **expr != '}') {
+                skip_whitespace(expr);
+                if (**expr == '}') break;
+                
+                // Parse field name
+                if (!is_ident_start(**expr)) {
+                    printf("Error: Expected field name in struct literal\n");
+                    bread_dict_release(d);
+                    free(struct_name);
+                    return create_error_result();
+                }
+                
+                const char* field_start = *expr;
+                (*expr)++;
+                while (**expr && is_ident_char(**expr)) (*expr)++;
+                char* field_name = dup_range(field_start, *expr);
+                if (!field_name) {
+                    printf("Error: Out of memory\n");
+                    bread_dict_release(d);
+                    free(struct_name);
+                    return create_error_result();
+                }
+                
+                skip_whitespace(expr);
+                if (**expr != ':') {
+                    printf("Error: Expected ':' after field name in struct literal\n");
+                    free(field_name);
+                    bread_dict_release(d);
+                    free(struct_name);
+                    return create_error_result();
+                }
+                (*expr)++; // consume ':'
+                
+                ExprResult val_r = parse_expression(expr);
+                if (val_r.is_error) {
+                    free(field_name);
+                    bread_dict_release(d);
+                    free(struct_name);
+                    return val_r;
+                }
+                
+                BreadValue v = bread_value_from_expr_result(val_r);
+                if (!bread_dict_set(d, field_name, v)) {
+                    printf("Error: Out of memory\n");
+                    free(field_name);
+                    release_expr_result(&val_r);
+                    bread_dict_release(d);
+                    free(struct_name);
+                    return create_error_result();
+                }
+                free(field_name);
+                release_expr_result(&val_r);
+                
+                skip_whitespace(expr);
+                if (**expr == ',') {
+                    (*expr)++;
+                    continue;
+                }
+                break;
+            }
+            
+            skip_whitespace(expr);
+            if (**expr != '}') {
+                printf("Error: Missing closing '}' in struct literal\n");
+                bread_dict_release(d);
+                free(struct_name);
+                return create_error_result();
+            }
+            (*expr)++; // consume '}'
+            
+            free(struct_name);
+            ExprResult out;
+            memset(&out, 0, sizeof(out));
+            out.is_error = 0;
+            out.type = TYPE_DICT; // Represent struct as dict for now
+            out.value.dict_val = d;
+            return out;
+        } else {
+            // Reset pointer - this is just a variable reference
+            *expr = start_id;
+        }
+    }
+
     // Array or dictionary literal: [1, 2] or ["k": v]
     if (**expr == '[') {
         (*expr)++; // consume '['

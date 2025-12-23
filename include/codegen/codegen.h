@@ -88,6 +88,8 @@ typedef struct {
     LLVMValueRef fn_index_op;
     LLVMValueRef fn_index_set_op;
     LLVMValueRef fn_member_op;
+    LLVMTypeRef ty_member_set_op;
+    LLVMValueRef fn_member_set_op;
     LLVMValueRef fn_method_call_op;
     LLVMValueRef fn_dict_set_value;
     LLVMValueRef fn_array_append_value;

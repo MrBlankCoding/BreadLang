@@ -259,6 +259,48 @@ int bread_member_op(const BreadValue* target, const char* member, int is_opt, Br
     return 0;
 }
 
+int bread_member_set_op(BreadValue* target, const char* member, const BreadValue* value) {
+    if (!target || !value) return 0;
+
+    BreadValue real_target = *target;
+
+    if (real_target.type == TYPE_STRUCT) {
+        BreadStruct* s = real_target.value.struct_val;
+        if (!s) {
+            BREAD_ERROR_SET_RUNTIME("Cannot set field of null struct");
+            return 0;
+        }
+        
+        bread_struct_set_field(s, member ? member : "", *value);
+        return 1;
+    }
+
+    if (real_target.type == TYPE_CLASS) {
+        BreadClass* c = real_target.value.class_val;
+        if (!c) {
+            BREAD_ERROR_SET_RUNTIME("Cannot set field of null class");
+            return 0;
+        }
+        
+        bread_class_set_field(c, member ? member : "", *value);
+        return 1;
+    }
+
+    if (real_target.type == TYPE_DICT) {
+        if (!bread_dict_set(real_target.value.dict_val, member ? member : "", *value)) {
+            BREAD_ERROR_SET_RUNTIME("Failed to set dictionary value");
+            return 0;
+        }
+        return 1;
+    }
+
+    char error_msg[256];
+    snprintf(error_msg, sizeof(error_msg), 
+            "Member assignment not supported for this type");
+    BREAD_ERROR_SET_RUNTIME(error_msg);
+    return 0;
+}
+
 int bread_method_call_op(const BreadValue* target, const char* name, int argc, const BreadValue* args, int is_opt, BreadValue* out) {
     if (!target || !out) return 0;
 

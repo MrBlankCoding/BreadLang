@@ -1302,6 +1302,10 @@ ASTStmt* parse_stmt(const char** code) {
 
         ASTExpr* lhs_index_target = NULL;
         ASTExpr* lhs_index_expr = NULL;
+        ASTExpr* lhs_member_target = NULL;
+        char* lhs_member_name = NULL;
+        
+        // Check for array indexing: obj[index] = value
         if (strchr(var_name, '[')) {
             const char* lhs_src = var_name;
             const char* lhs_ptr = lhs_src;
@@ -1316,6 +1320,21 @@ ASTStmt* parse_stmt(const char** code) {
                 ast_free_expr(lhs);
             }
         }
+        // Check for member access: obj.field = value
+        else if (strchr(var_name, '.')) {
+            const char* lhs_src = var_name;
+            const char* lhs_ptr = lhs_src;
+            ASTExpr* lhs = parse_expression_str_as_ast(&lhs_ptr);
+            if (lhs && lhs->kind == AST_EXPR_MEMBER) {
+                lhs_member_target = lhs->as.member.target;
+                lhs_member_name = lhs->as.member.member;
+                lhs->as.member.target = NULL;
+                lhs->as.member.member = NULL;
+                ast_free_expr(lhs);
+            } else if (lhs) {
+                ast_free_expr(lhs);
+            }
+        }
 
         (*code)++;
         skip_whitespace(code);
@@ -1323,6 +1342,8 @@ ASTStmt* parse_stmt(const char** code) {
         if (!rhs) {
             ast_free_expr(lhs_index_target);
             ast_free_expr(lhs_index_expr);
+            ast_free_expr(lhs_member_target);
+            free(lhs_member_name);
             free(var_name);
             return NULL;
         }
@@ -1339,6 +1360,22 @@ ASTStmt* parse_stmt(const char** code) {
             s->as.index_assign.target = lhs_index_target;
             s->as.index_assign.index = lhs_index_expr;
             s->as.index_assign.value = rhs;
+            free(var_name);
+            return s;
+        }
+        
+        if (lhs_member_target && lhs_member_name) {
+            ASTStmt* s = ast_stmt_new(AST_STMT_MEMBER_ASSIGN);
+            if (!s) {
+                ast_free_expr(lhs_member_target);
+                free(lhs_member_name);
+                ast_free_expr(rhs);
+                free(var_name);
+                return NULL;
+            }
+            s->as.member_assign.target = lhs_member_target;
+            s->as.member_assign.member = lhs_member_name;
+            s->as.member_assign.value = rhs;
             free(var_name);
             return s;
         }

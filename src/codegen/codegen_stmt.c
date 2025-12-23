@@ -82,50 +82,24 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
         }
 
         case AST_STMT_MEMBER_ASSIGN: {
-            // Handle member assignment like self.field = value
+            // Handle member assignment like obj.field = value
             LLVMValueRef value = cg_build_expr(cg, cg_fn, val_size, stmt->as.member_assign.value);
             if (!value) return 0;
 
-            // For now, treat member assignment as a special case of field assignment
-            // This would need proper implementation for self.field = value in methods
+            LLVMValueRef target = cg_build_expr(cg, cg_fn, val_size, stmt->as.member_assign.target);
+            if (!target) return 0;
             
-            // Check if target is self
-            if (stmt->as.member_assign.target && 
-                stmt->as.member_assign.target->kind == AST_EXPR_SELF && 
-                cg_fn && cg_fn->is_method && cg_fn->self_param) {
-                
-                // This is a self.field = value assignment in a method
-                const char* member = stmt->as.member_assign.member ? stmt->as.member_assign.member : "";
-                LLVMValueRef member_glob = cg_get_string_global(cg, member);
-                LLVMValueRef member_ptr = LLVMBuildBitCast(cg->builder, member_glob, cg->i8_ptr, "");
-                
-                // Call runtime function to set field on self
-                LLVMValueRef args[] = {
-                    cg_value_to_i8_ptr(cg, cg_fn->self_param),
-                    member_ptr,
-                    cg_value_to_i8_ptr(cg, value)
-                };
-                
-                // Use member operation for field assignment
-                // Note: This would need a dedicated field assignment runtime function
-                (void)LLVMBuildCall2(cg->builder, cg->ty_member_op, cg->fn_member_op, args, 3, "");
-            } else {
-                // General member assignment - evaluate target and use member operation
-                LLVMValueRef target = cg_build_expr(cg, cg_fn, val_size, stmt->as.member_assign.target);
-                if (!target) return 0;
-                
-                const char* member = stmt->as.member_assign.member ? stmt->as.member_assign.member : "";
-                LLVMValueRef member_glob = cg_get_string_global(cg, member);
-                LLVMValueRef member_ptr = LLVMBuildBitCast(cg->builder, member_glob, cg->i8_ptr, "");
-                
-                LLVMValueRef args[] = {
-                    cg_value_to_i8_ptr(cg, target),
-                    member_ptr,
-                    cg_value_to_i8_ptr(cg, value)
-                };
-                
-                (void)LLVMBuildCall2(cg->builder, cg->ty_member_op, cg->fn_member_op, args, 3, "");
-            }
+            const char* member = stmt->as.member_assign.member ? stmt->as.member_assign.member : "";
+            LLVMValueRef member_glob = cg_get_string_global(cg, member);
+            LLVMValueRef member_ptr = LLVMBuildBitCast(cg->builder, member_glob, cg->i8_ptr, "");
+            
+            LLVMValueRef args[] = {
+                cg_value_to_i8_ptr(cg, target),
+                member_ptr,
+                cg_value_to_i8_ptr(cg, value)
+            };
+            
+            (void)LLVMBuildCall2(cg->builder, cg->ty_member_set_op, cg->fn_member_set_op, args, 3, "");
             
             return 1;
         }

@@ -188,6 +188,8 @@ static void cg_init(Cg* cg, LLVMModuleRef mod, LLVMBuilderRef builder) {
     cg->fn_index_set_op = cg_declare_fn(cg, "bread_index_set_op", cg->ty_index_set_op);
     cg->ty_member_op = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr, cg->i32, cg->i8_ptr}, 4, 0);
     cg->fn_member_op = cg_declare_fn(cg, "bread_member_op", cg->ty_member_op);
+    cg->ty_member_set_op = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr, cg->i8_ptr}, 3, 0);
+    cg->fn_member_set_op = cg_declare_fn(cg, "bread_member_set_op", cg->ty_member_set_op);
     cg->ty_method_call_op = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr, cg->i32, cg->i8_ptr, cg->i32, cg->i8_ptr}, 6, 0);
     cg->fn_method_call_op = cg_declare_fn(cg, "bread_method_call_op", cg->ty_method_call_op);
     cg->ty_dict_set_value = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr, cg->i8_ptr}, 3, 0);

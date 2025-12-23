@@ -537,6 +537,7 @@ static ASTExpr* parse_primary(const char** expr) {
 
         const char* look = *expr;
         int depth = 0;
+        int brace_depth = 0;
         int in_string = 0;
         int esc = 0;
         int is_dict = 0;
@@ -554,10 +555,13 @@ static ASTExpr* parse_primary(const char** expr) {
             else if (c == ']') {
                 if (depth == 0) break;
                 depth--;
-            } else if (c == ':' && depth == 0) {
+            } else if (c == '{') brace_depth++;
+            else if (c == '}') {
+                if (brace_depth > 0) brace_depth--;
+            } else if (c == ':' && depth == 0 && brace_depth == 0) {
                 is_dict = 1;
                 break;
-            } else if (c == ',' && depth == 0) {
+            } else if (c == ',' && depth == 0 && brace_depth == 0) {
                 break;
             }
             look++;
