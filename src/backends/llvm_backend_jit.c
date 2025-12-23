@@ -166,7 +166,10 @@ int bread_llvm_jit_function(Function* fn) {
     target_fn->scope->vars = NULL;
     target_fn->scope->parent = NULL;
 
-    // Push a new scope when entering the JIT function
+    // Record base runtime scope depth and push a new scope when entering the JIT function
+    LLVMValueRef base_depth = LLVMBuildCall2(builder, cg.ty_scope_depth, cg.fn_scope_depth, NULL, 0, "");
+    target_fn->runtime_scope_base_depth_slot = LLVMBuildAlloca(builder, cg.i32, "jit.fn.scope.base");
+    LLVMBuildStore(builder, base_depth, target_fn->runtime_scope_base_depth_slot);
     (void)LLVMBuildCall2(builder, cg.ty_push_scope, cg.fn_push_scope, NULL, 0, "");
 
     LLVMValueRef val_size = cg_value_size(&cg);
@@ -191,8 +194,13 @@ int bread_llvm_jit_function(Function* fn) {
     
     // ONLY IF THERE IS NO TERMINATOR, ADD A RETURN
     if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(builder)) == NULL) {
-        // Pop the scope before returning from the JIT function
-        (void)LLVMBuildCall2(builder, cg.ty_pop_scope, cg.fn_pop_scope, NULL, 0, "");
+        // Strict cleanup: pop back to base depth before returning
+        LLVMValueRef loaded_base = base_depth;
+        if (target_fn->runtime_scope_base_depth_slot) {
+            loaded_base = LLVMBuildLoad2(builder, cg.i32, target_fn->runtime_scope_base_depth_slot, "");
+        }
+        LLVMValueRef pop_args[] = { loaded_base };
+        (void)LLVMBuildCall2(builder, cg.ty_pop_to_scope_depth, cg.fn_pop_to_scope_depth, pop_args, 1, "");
         LLVMBuildRetVoid(builder);
     }
 

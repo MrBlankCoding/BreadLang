@@ -1,0 +1,30 @@
+Rectangle:
+  A blue rectangle
+  Area: 15
+  Perimeter: 16
+Circle:
+  A red circle
+  Area: 50.2654
+  Circumference: 25.1327
+
+Student:
+  Name: Alice
+  Major: CS
+  Year: junior
+  Average Grade: 90.5
+
+Fibonacci (first 6 numbers):
+  0
+  1
+  1
+  2
+  3
+  5
+
+Type System:
+  int: 42
+  double: 3.14159
+  string: Hello
+  bool: true
+  array: [array]
+  dict: {dict}

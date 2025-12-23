@@ -239,14 +239,24 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
             LLVMBuildCondBr(cg->builder, cond_i1, then_block, else_block);
 
             LLVMPositionBuilderAtEnd(cg->builder, then_block);
+            LLVMValueRef then_scope_base = LLVMBuildCall2(cg->builder, cg->ty_scope_depth, cg->fn_scope_depth, NULL, 0, "");
+            (void)LLVMBuildCall2(cg->builder, cg->ty_push_scope, cg->fn_push_scope, NULL, 0, "");
             if (!cg_build_stmt_list(cg, cg_fn, val_size, stmt->as.if_stmt.then_branch)) return 0;
             if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(cg->builder)) == NULL) {
+                LLVMValueRef pop_args[] = { then_scope_base };
+                (void)LLVMBuildCall2(cg->builder, cg->ty_pop_to_scope_depth, cg->fn_pop_to_scope_depth, pop_args, 1, "");
                 LLVMBuildBr(cg->builder, merge_block);
             }
 
             LLVMPositionBuilderAtEnd(cg->builder, else_block);
             if (stmt->as.if_stmt.else_branch) {
+                LLVMValueRef else_scope_base = LLVMBuildCall2(cg->builder, cg->ty_scope_depth, cg->fn_scope_depth, NULL, 0, "");
+                (void)LLVMBuildCall2(cg->builder, cg->ty_push_scope, cg->fn_push_scope, NULL, 0, "");
                 if (!cg_build_stmt_list(cg, cg_fn, val_size, stmt->as.if_stmt.else_branch)) return 0;
+                if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(cg->builder)) == NULL) {
+                    LLVMValueRef pop_args[] = { else_scope_base };
+                    (void)LLVMBuildCall2(cg->builder, cg->ty_pop_to_scope_depth, cg->fn_pop_to_scope_depth, pop_args, 1, "");
+                }
             }
             if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(cg->builder)) == NULL) {
                 LLVMBuildBr(cg->builder, merge_block);
@@ -263,6 +273,7 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
 
             LLVMBasicBlockRef prev_loop_end = cg->current_loop_end;
             LLVMBasicBlockRef prev_loop_continue = cg->current_loop_continue;
+            LLVMValueRef prev_loop_scope_base = cg->current_loop_scope_base_depth_slot;
             cg->current_loop_end = end_block;
             cg->current_loop_continue = cond_block;
 
@@ -292,13 +303,22 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
             LLVMBuildCondBr(cg->builder, cond_i1, body_block, end_block);
 
             LLVMPositionBuilderAtEnd(cg->builder, body_block);
+            LLVMValueRef while_scope_base = LLVMBuildCall2(cg->builder, cg->ty_scope_depth, cg->fn_scope_depth, NULL, 0, "");
+            (void)LLVMBuildCall2(cg->builder, cg->ty_push_scope, cg->fn_push_scope, NULL, 0, "");
+            cg->current_loop_scope_base_depth_slot = NULL;
+            LLVMValueRef while_base_slot = LLVMBuildAlloca(cg->builder, cg->i32, "while.scope.base");
+            LLVMBuildStore(cg->builder, while_scope_base, while_base_slot);
+            cg->current_loop_scope_base_depth_slot = while_base_slot;
             if (!cg_build_stmt_list(cg, cg_fn, val_size, stmt->as.while_stmt.body)) return 0;
             if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(cg->builder)) == NULL) {
+                LLVMValueRef pop_args[] = { while_scope_base };
+                (void)LLVMBuildCall2(cg->builder, cg->ty_pop_to_scope_depth, cg->fn_pop_to_scope_depth, pop_args, 1, "");
                 LLVMBuildBr(cg->builder, cond_block);
             }
 
             cg->current_loop_end = prev_loop_end;
             cg->current_loop_continue = prev_loop_continue;
+            cg->current_loop_scope_base_depth_slot = prev_loop_scope_base;
 
             LLVMPositionBuilderAtEnd(cg->builder, end_block);
             return 1;
@@ -368,6 +388,7 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
 
             LLVMBasicBlockRef prev_loop_end = cg->current_loop_end;
             LLVMBasicBlockRef prev_loop_continue = cg->current_loop_continue;
+            LLVMValueRef prev_loop_scope_base = cg->current_loop_scope_base_depth_slot;
             cg->current_loop_end = end_block;
             cg->current_loop_continue = inc_block;
 
@@ -398,7 +419,11 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
             LLVMBuildCondBr(cg->builder, cmp, body_block, end_block);
 
             LLVMPositionBuilderAtEnd(cg->builder, body_block);
+            LLVMValueRef for_scope_base = LLVMBuildCall2(cg->builder, cg->ty_scope_depth, cg->fn_scope_depth, NULL, 0, "");
             (void)LLVMBuildCall2(cg->builder, cg->ty_push_scope, cg->fn_push_scope, NULL, 0, "");
+            LLVMValueRef for_base_slot = LLVMBuildAlloca(cg->builder, cg->i32, "for.scope.base");
+            LLVMBuildStore(cg->builder, for_scope_base, for_base_slot);
+            cg->current_loop_scope_base_depth_slot = for_base_slot;
             LLVMValueRef iter_tmp = cg_alloc_value(cg, "for.iter");
             LLVMValueRef set_iter_args[] = {cg_value_to_i8_ptr(cg, iter_tmp), i_val};
             (void)LLVMBuildCall2(cg->builder, cg->ty_value_set_int, cg->fn_value_set_int, set_iter_args, 2, "");
@@ -407,7 +432,8 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
 
             if (!cg_build_stmt_list(cg, cg_fn, val_size, stmt->as.for_stmt.body)) return 0;
             if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(cg->builder)) == NULL) {
-                (void)LLVMBuildCall2(cg->builder, cg->ty_pop_scope, cg->fn_pop_scope, NULL, 0, "");
+                LLVMValueRef pop_args[] = { for_scope_base };
+                (void)LLVMBuildCall2(cg->builder, cg->ty_pop_to_scope_depth, cg->fn_pop_to_scope_depth, pop_args, 1, "");
                 LLVMBuildBr(cg->builder, inc_block);
             }
 
@@ -418,6 +444,7 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
 
             cg->current_loop_end = prev_loop_end;
             cg->current_loop_continue = prev_loop_continue;
+            cg->current_loop_scope_base_depth_slot = prev_loop_scope_base;
 
             LLVMPositionBuilderAtEnd(cg->builder, end_block);
             return 1;
@@ -436,6 +463,7 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
 
             LLVMBasicBlockRef prev_loop_end = cg->current_loop_end;
             LLVMBasicBlockRef prev_loop_continue = cg->current_loop_continue;
+            LLVMValueRef prev_loop_scope_base = cg->current_loop_scope_base_depth_slot;
             cg->current_loop_end = end_block;
             cg->current_loop_continue = inc_block;
 
@@ -514,12 +542,17 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
             LLVMBuildCondBr(cg->builder, success_cmp, assign_block, end_block);
             
             LLVMPositionBuilderAtEnd(cg->builder, assign_block);
+            LLVMValueRef forin_scope_base = LLVMBuildCall2(cg->builder, cg->ty_scope_depth, cg->fn_scope_depth, NULL, 0, "");
             (void)LLVMBuildCall2(cg->builder, cg->ty_push_scope, cg->fn_push_scope, NULL, 0, "");
+            LLVMValueRef forin_base_slot = LLVMBuildAlloca(cg->builder, cg->i32, "forin.scope.base");
+            LLVMBuildStore(cg->builder, forin_scope_base, forin_base_slot);
+            cg->current_loop_scope_base_depth_slot = forin_base_slot;
             LLVMValueRef assign_args[] = {name_ptr, cg_value_to_i8_ptr(cg, element_tmp)};
             (void)LLVMBuildCall2(cg->builder, cg->ty_var_assign, cg->fn_var_assign, assign_args, 2, "");
             if (!cg_build_stmt_list(cg, cg_fn, val_size, stmt->as.for_in_stmt.body)) return 0;
             if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(cg->builder)) == NULL) {
-                (void)LLVMBuildCall2(cg->builder, cg->ty_pop_scope, cg->fn_pop_scope, NULL, 0, "");
+                LLVMValueRef pop_args[] = { forin_scope_base };
+                (void)LLVMBuildCall2(cg->builder, cg->ty_pop_to_scope_depth, cg->fn_pop_to_scope_depth, pop_args, 1, "");
                 LLVMBuildBr(cg->builder, inc_block);
             }
             LLVMPositionBuilderAtEnd(cg->builder, inc_block);
@@ -533,6 +566,7 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
             
             cg->current_loop_end = prev_loop_end;
             cg->current_loop_continue = prev_loop_continue;
+            cg->current_loop_scope_base_depth_slot = prev_loop_scope_base;
 
             type_descriptor_free(iterable_type);
             LLVMPositionBuilderAtEnd(cg->builder, end_block);
@@ -562,6 +596,7 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
             new_cg_fn->scope = cg_scope_new(NULL);
             new_cg_fn->next = cg->functions;
             new_cg_fn->ret_slot = NULL;
+            new_cg_fn->runtime_scope_base_depth_slot = NULL;
             cg->functions = new_cg_fn;
             
             return 1;
@@ -574,23 +609,13 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
                 return 0;
             }
             cg_copy_value_into(cg, cg_fn->ret_slot, val);
-            
-            // Only pop the scope if we can safely do so
-            LLVMValueRef can_pop = LLVMBuildCall2(cg->builder, cg->ty_can_pop_scope, cg->fn_can_pop_scope, NULL, 0, "");
-            LLVMValueRef can_pop_bool = LLVMBuildICmp(cg->builder, LLVMIntNE, can_pop, LLVMConstInt(cg->i32, 0, 0), "");
-            
-            LLVMBasicBlockRef current_block = LLVMGetInsertBlock(cg->builder);
-            LLVMValueRef fn = LLVMGetBasicBlockParent(current_block);
-            LLVMBasicBlockRef pop_block = LLVMAppendBasicBlock(fn, "pop_scope");
-            LLVMBasicBlockRef return_block = LLVMAppendBasicBlock(fn, "return");
-            
-            LLVMBuildCondBr(cg->builder, can_pop_bool, pop_block, return_block);
-            
-            LLVMPositionBuilderAtEnd(cg->builder, pop_block);
-            (void)LLVMBuildCall2(cg->builder, cg->ty_pop_scope, cg->fn_pop_scope, NULL, 0, "");
-            LLVMBuildBr(cg->builder, return_block);
-            
-            LLVMPositionBuilderAtEnd(cg->builder, return_block);
+
+            if (cg_fn->runtime_scope_base_depth_slot) {
+                LLVMValueRef base_depth = LLVMBuildLoad2(cg->builder, cg->i32, cg_fn->runtime_scope_base_depth_slot, "");
+                LLVMValueRef pop_args[] = { base_depth };
+                (void)LLVMBuildCall2(cg->builder, cg->ty_pop_to_scope_depth, cg->fn_pop_to_scope_depth, pop_args, 1, "");
+            }
+
             LLVMBuildRetVoid(cg->builder);
             return 1;
         }
@@ -599,6 +624,11 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
                 fprintf(stderr, "Error: break outside of loop\n");
                 return 0;
             }
+            if (cg->current_loop_scope_base_depth_slot) {
+                LLVMValueRef base_depth = LLVMBuildLoad2(cg->builder, cg->i32, cg->current_loop_scope_base_depth_slot, "");
+                LLVMValueRef pop_args[] = { base_depth };
+                (void)LLVMBuildCall2(cg->builder, cg->ty_pop_to_scope_depth, cg->fn_pop_to_scope_depth, pop_args, 1, "");
+            }
             LLVMBuildBr(cg->builder, cg->current_loop_end);
             return 1;
         }
@@ -606,6 +636,11 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
             if (!cg->current_loop_continue) {
                 fprintf(stderr, "Error: continue outside of loop\n");
                 return 0;
+            }
+            if (cg->current_loop_scope_base_depth_slot) {
+                LLVMValueRef base_depth = LLVMBuildLoad2(cg->builder, cg->i32, cg->current_loop_scope_base_depth_slot, "");
+                LLVMValueRef pop_args[] = { base_depth };
+                (void)LLVMBuildCall2(cg->builder, cg->ty_pop_to_scope_depth, cg->fn_pop_to_scope_depth, pop_args, 1, "");
             }
             LLVMBuildBr(cg->builder, cg->current_loop_continue);
             return 1;
@@ -666,6 +701,11 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
                 cg_constructor.current_class = class;
                 cg_constructor.self_param = LLVMGetParam(constructor_fn, 1);
                 cg_constructor.is_method = 1;
+
+                LLVMValueRef ctor_base_depth = LLVMBuildCall2(cg->builder, cg->ty_scope_depth, cg->fn_scope_depth, NULL, 0, "");
+                cg_constructor.runtime_scope_base_depth_slot = LLVMBuildAlloca(cg->builder, cg->i32, "ctor.scope.base");
+                LLVMBuildStore(cg->builder, ctor_base_depth, cg_constructor.runtime_scope_base_depth_slot);
+                (void)LLVMBuildCall2(cg->builder, cg->ty_push_scope, cg->fn_push_scope, NULL, 0, "");
                 
                 // Add parameters to scope
                 for (int i = 0; i < class->constructor->param_count; i++) {
@@ -680,6 +720,9 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
                 
                 // Ensure constructor returns
                 if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(cg->builder))) {
+                    LLVMValueRef loaded_base = LLVMBuildLoad2(cg->builder, cg->i32, cg_constructor.runtime_scope_base_depth_slot, "");
+                    LLVMValueRef pop_args[] = { loaded_base };
+                    (void)LLVMBuildCall2(cg->builder, cg->ty_pop_to_scope_depth, cg->fn_pop_to_scope_depth, pop_args, 1, "");
                     LLVMBuildRetVoid(cg->builder);
                 }
                 
@@ -729,6 +772,11 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
                 cg_method.current_class = class;
                 cg_method.self_param = LLVMGetParam(method_fn, 1);
                 cg_method.is_method = 1;
+
+                LLVMValueRef method_base_depth = LLVMBuildCall2(cg->builder, cg->ty_scope_depth, cg->fn_scope_depth, NULL, 0, "");
+                cg_method.runtime_scope_base_depth_slot = LLVMBuildAlloca(cg->builder, cg->i32, "method.scope.base");
+                LLVMBuildStore(cg->builder, method_base_depth, cg_method.runtime_scope_base_depth_slot);
+                (void)LLVMBuildCall2(cg->builder, cg->ty_push_scope, cg->fn_push_scope, NULL, 0, "");
                 
                 // Add parameters to scope
                 for (int j = 0; j < method->param_count; j++) {
@@ -749,6 +797,10 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
                     LLVMValueRef args[] = { cg_value_to_i8_ptr(cg, nil_val) };
                     LLVMBuildCall2(cg->builder, cg->ty_value_set_nil, cg->fn_value_set_nil, args, 1, "");
                     cg_copy_value_into(cg, return_slot, nil_val);
+
+                    LLVMValueRef loaded_base = LLVMBuildLoad2(cg->builder, cg->i32, cg_method.runtime_scope_base_depth_slot, "");
+                    LLVMValueRef pop_args[] = { loaded_base };
+                    (void)LLVMBuildCall2(cg->builder, cg->ty_pop_to_scope_depth, cg->fn_pop_to_scope_depth, pop_args, 1, "");
                     LLVMBuildRetVoid(cg->builder);
                 }
                 

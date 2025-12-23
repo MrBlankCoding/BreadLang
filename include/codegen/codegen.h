@@ -37,6 +37,7 @@ typedef struct CgFunction {
     struct CgFunction* next;
     CgScope* scope;
     LLVMValueRef ret_slot;
+    LLVMValueRef runtime_scope_base_depth_slot;
     
     // Method context for self/super support
     struct CgClass* current_class;  // Current class if this is a method
@@ -111,6 +112,10 @@ typedef struct {
     LLVMValueRef fn_pop_scope;
     LLVMTypeRef ty_can_pop_scope;
     LLVMValueRef fn_can_pop_scope;
+    LLVMTypeRef ty_scope_depth;
+    LLVMValueRef fn_scope_depth;
+    LLVMTypeRef ty_pop_to_scope_depth;
+    LLVMValueRef fn_pop_to_scope_depth;
     LLVMValueRef fn_bread_memory_init;
     LLVMValueRef fn_bread_memory_cleanup;
     LLVMValueRef fn_bread_string_intern_init;
@@ -218,6 +223,7 @@ typedef struct {
     
     LLVMBasicBlockRef current_loop_end;
     LLVMBasicBlockRef current_loop_continue;
+    LLVMValueRef current_loop_scope_base_depth_slot;
 
     CgFunction* functions;
     CgStruct* structs;

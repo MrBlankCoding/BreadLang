@@ -152,6 +152,14 @@ void bread_pop_scope(void) {
 int bread_can_pop_scope(void) {
     return can_pop_scope();
 }
+
+int bread_scope_depth(void) {
+    return scope_depth_current();
+}
+
+void bread_pop_to_scope_depth(int target_depth) {
+    pop_to_scope_depth(target_depth);
+}
 // convert unboxed primitives to bread value
 BreadValue bread_box_int(int value) {
     BreadValue result;

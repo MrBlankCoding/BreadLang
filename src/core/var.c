@@ -7,6 +7,7 @@
 #include "compiler/parser/expr.h"
 #include "core/value.h"
 #include "runtime/runtime.h"
+ #include "runtime/error.h"
 
 #define MAX_VARS 256
 #define MAX_LINE 1024
@@ -41,7 +42,7 @@ void init_variables() {
 
 void push_scope() {
     if (scope_depth >= MAX_SCOPES) {
-        printf("Error: Scope stack overflow\n");
+        BREAD_ERROR_SET_RUNTIME("Scope stack overflow");
         return;
     }
     scopes[scope_depth].count = 0;
@@ -50,7 +51,7 @@ void push_scope() {
 
 void pop_scope() {
     if (scope_depth <= 1) {
-        printf("Error: Cannot pop global scope\n");
+        BREAD_ERROR_SET_RUNTIME("Cannot pop global scope");
         return;
     }
     VarScope* scope = &scopes[scope_depth - 1];
@@ -63,6 +64,24 @@ void pop_scope() {
 
 int can_pop_scope() {
     return scope_depth > 1;
+}
+
+int scope_depth_current(void) {
+    return scope_depth;
+}
+
+void pop_to_scope_depth(int target_depth) {
+    if (target_depth < 1) {
+        BREAD_ERROR_SET_RUNTIME("Invalid target scope depth");
+        return;
+    }
+    if (target_depth > scope_depth) {
+        BREAD_ERROR_SET_RUNTIME("Cannot pop to a deeper scope depth");
+        return;
+    }
+    while (scope_depth > target_depth) {
+        pop_scope();
+    }
 }
 
 Variable* get_variable(const char* name) {
@@ -82,7 +101,7 @@ Variable* get_variable(const char* name) {
 
 int declare_variable_raw(const char* name, VarType type, VarValue value, int is_const) {
     if (scope_depth <= 0) {
-        printf("Error: Variable system not initialized\n");
+        BREAD_ERROR_SET_RUNTIME("Variable system not initialized");
         return 0;
     }
 
@@ -90,13 +109,15 @@ int declare_variable_raw(const char* name, VarType type, VarValue value, int is_
 
     for (int i = 0; i < scope->count; i++) {
         if (strcmp(scope->vars[i].name, name) == 0) {
-            printf("Error: Variable '%s' already declared\n", name);
+            char error_msg[512];
+            snprintf(error_msg, sizeof(error_msg), "Variable '%s' already declared", name);
+            BREAD_ERROR_SET_RUNTIME(error_msg);
             return 0;
         }
     }
 
     if (scope->count >= MAX_VARS) {
-        printf("Error: Too many variables in scope\n");
+        BREAD_ERROR_SET_RUNTIME("Too many variables in scope");
         return 0;
     }
 

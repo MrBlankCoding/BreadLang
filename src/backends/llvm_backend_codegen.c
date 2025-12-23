@@ -38,6 +38,7 @@ void cg_init(Cg* cg, LLVMModuleRef mod, LLVMBuilderRef builder) {
     cg->tmp_counter = 0;
     cg->current_loop_end = NULL;
     cg->current_loop_continue = NULL;
+    cg->current_loop_scope_base_depth_slot = NULL;
     cg->value_type = LLVMArrayType(cg->i8, sizeof(BreadValue));
     cg->value_ptr_type = LLVMPointerType(cg->value_type, 0);
     
@@ -101,6 +102,11 @@ void cg_init(Cg* cg, LLVMModuleRef mod, LLVMBuilderRef builder) {
     cg->fn_pop_scope = cg_declare_fn(cg, "bread_pop_scope", cg->ty_pop_scope);
     cg->ty_can_pop_scope = LLVMFunctionType(cg->i32, NULL, 0, 0);
     cg->fn_can_pop_scope = cg_declare_fn(cg, "bread_can_pop_scope", cg->ty_can_pop_scope);
+
+    cg->ty_scope_depth = LLVMFunctionType(cg->i32, NULL, 0, 0);
+    cg->fn_scope_depth = cg_declare_fn(cg, "bread_scope_depth", cg->ty_scope_depth);
+    cg->ty_pop_to_scope_depth = LLVMFunctionType(cg->void_ty, (LLVMTypeRef[]){cg->i32}, 1, 0);
+    cg->fn_pop_to_scope_depth = cg_declare_fn(cg, "bread_pop_to_scope_depth", cg->ty_pop_to_scope_depth);
 
     cg->ty_bread_memory_init = LLVMFunctionType(cg->void_ty, NULL, 0, 0);
     cg->fn_bread_memory_init = cg_declare_fn(cg, "bread_memory_init", cg->ty_bread_memory_init);
@@ -309,7 +315,10 @@ int bread_llvm_generate_function_bodies(Cg* cg, LLVMBuilderRef builder, LLVMValu
 
             f->ret_slot = LLVMGetParam(f->fn, 0);
 
-            // Push a new scope for this function
+            // Record base runtime scope depth and push a new scope for this function
+            LLVMValueRef base_depth = LLVMBuildCall2(builder, cg->ty_scope_depth, cg->fn_scope_depth, NULL, 0, "");
+            f->runtime_scope_base_depth_slot = LLVMBuildAlloca(builder, cg->i32, "fn.scope.base");
+            LLVMBuildStore(builder, base_depth, f->runtime_scope_base_depth_slot);
             (void)LLVMBuildCall2(builder, cg->ty_push_scope, cg->fn_push_scope, NULL, 0, "");
             for (int i = 0; i < f->param_count; i++) {
                 LLVMValueRef param_val = LLVMGetParam(f->fn, (unsigned)(i + 1));
@@ -342,22 +351,13 @@ int bread_llvm_generate_function_bodies(Cg* cg, LLVMBuilderRef builder, LLVMValu
             }
             
             if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(builder)) == NULL) {
-                // Only pop the function scope if we can safely do so (only if no explicit return)
-                LLVMValueRef can_pop = LLVMBuildCall2(builder, cg->ty_can_pop_scope, cg->fn_can_pop_scope, NULL, 0, "");
-                LLVMValueRef can_pop_bool = LLVMBuildICmp(builder, LLVMIntNE, can_pop, LLVMConstInt(cg->i32, 0, 0), "");
-                
-                LLVMBasicBlockRef current_block = LLVMGetInsertBlock(builder);
-                LLVMValueRef fn = LLVMGetBasicBlockParent(current_block);
-                LLVMBasicBlockRef pop_block = LLVMAppendBasicBlock(fn, "pop_scope_end");
-                LLVMBasicBlockRef return_block = LLVMAppendBasicBlock(fn, "return_end");
-                
-                LLVMBuildCondBr(builder, can_pop_bool, pop_block, return_block);
-                
-                LLVMPositionBuilderAtEnd(builder, pop_block);
-                (void)LLVMBuildCall2(builder, cg->ty_pop_scope, cg->fn_pop_scope, NULL, 0, "");
-                LLVMBuildBr(builder, return_block);
-                
-                LLVMPositionBuilderAtEnd(builder, return_block);
+                // Strict cleanup: pop back to base depth before returning
+                LLVMValueRef loaded_base = base_depth;
+                if (f->runtime_scope_base_depth_slot) {
+                    loaded_base = LLVMBuildLoad2(builder, cg->i32, f->runtime_scope_base_depth_slot, "");
+                }
+                LLVMValueRef pop_args[] = { loaded_base };
+                (void)LLVMBuildCall2(builder, cg->ty_pop_to_scope_depth, cg->fn_pop_to_scope_depth, pop_args, 1, "");
                 LLVMBuildRetVoid(builder);
             }
         }

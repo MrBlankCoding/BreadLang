@@ -111,6 +111,42 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
                 return cg_clone_value(cg, var->alloca, expr->as.var_name);
             }
 
+            // In methods, treat bare identifiers that match class fields as implicit self.<field> access.
+            if (cg_fn && cg_fn->is_method && cg_fn->current_class && expr->as.var_name) {
+                int is_field = 0;
+                for (CgClass* cls = cg_fn->current_class; cls && !is_field; ) {
+                    for (int i = 0; i < cls->field_count; i++) {
+                        if (cls->field_names[i] && strcmp(cls->field_names[i], expr->as.var_name) == 0) {
+                            is_field = 1;
+                            break;
+                        }
+                    }
+
+                    if (!is_field && cls->parent_name) {
+                        cls = cg_find_class(cg, cls->parent_name);
+                    } else {
+                        break;
+                    }
+                }
+
+                if (is_field) {
+                    LLVMValueRef self_param = cg_fn->self_param ? cg_fn->self_param : LLVMGetParam(cg_fn->fn, 1);
+                    tmp = cg_alloc_value(cg, "membertmp");
+                    LLVMValueRef member_glob = cg_get_string_global(cg, expr->as.var_name);
+                    LLVMValueRef member_ptr = LLVMBuildBitCast(cg->builder, member_glob, cg->i8_ptr, "");
+                    LLVMValueRef is_opt = LLVMConstInt(cg->i32, 0, 0);
+
+                    LLVMValueRef args[] = {
+                        self_param,
+                        member_ptr,
+                        is_opt,
+                        cg_value_to_i8_ptr(cg, tmp)
+                    };
+                    (void)LLVMBuildCall2(cg->builder, cg->ty_member_op, cg->fn_member_op, args, 4, "");
+                    return tmp;
+                }
+            }
+
             tmp = cg_alloc_value(cg, expr->as.var_name);
             LLVMValueRef name_str = cg_get_string_global(cg, expr->as.var_name);
             LLVMValueRef name_ptr = LLVMBuildBitCast(cg->builder, name_str, cg->i8_ptr, "");
@@ -861,35 +897,10 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
                 return NULL;
             }
 
-            if (LLVMCountBasicBlocks(callee_fn->fn) == 0) {
-                LLVMBasicBlockRef current_block = LLVMGetInsertBlock(cg->builder);
-                LLVMBasicBlockRef entry = LLVMAppendBasicBlock(callee_fn->fn, "entry");
-                LLVMPositionBuilderAtEnd(cg->builder, entry);
-
-                callee_fn->ret_slot = LLVMGetParam(callee_fn->fn, 0);
-
-                for (int i = 0; i < callee_fn->param_count; i++) {
-                    LLVMValueRef param_val = LLVMGetParam(callee_fn->fn, (unsigned)(i + 1));
-                    LLVMValueRef alloca = cg_alloc_value(cg, callee_fn->param_names[i]);
-                    cg_scope_add_var(callee_fn->scope, callee_fn->param_names[i], alloca);
-                    
-                    // Copy parameter value into local variable
-                    LLVMValueRef copy_args[] = {
-                        LLVMBuildBitCast(cg->builder, param_val, cg->i8_ptr, ""),
-                        LLVMBuildBitCast(cg->builder, alloca, cg->i8_ptr, "")
-                    };
-                    (void)LLVMBuildCall2(cg->builder, cg->ty_value_copy, cg->fn_value_copy, copy_args, 2, "");
-                }
-
-                if (!cg_build_stmt_list(cg, callee_fn, val_size, callee_fn->body)) {
-                    LLVMPositionBuilderAtEnd(cg->builder, current_block);
-                    return NULL;
-                }
-                if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(cg->builder)) == NULL) {
-                    LLVMBuildRetVoid(cg->builder);
-                }
-                LLVMPositionBuilderAtEnd(cg->builder, current_block);
-            }
+            // NOTE: Function bodies are generated in a separate pass
+            // (bread_llvm_generate_function_bodies). Do not lazily generate bodies here,
+            // because that path bypasses the runtime scope prologue/epilogue and can leak
+            // function-local variables into the caller scope.
 
             int total_args = expr->as.call.arg_count + 1;
             LLVMValueRef* args = (LLVMValueRef*)malloc(sizeof(LLVMValueRef) * (size_t)total_args);

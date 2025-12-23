@@ -1,0 +1,157 @@
+// Test for various language features shown in hello.bread
+
+// Class inheritance and method overriding
+class Shape {
+    name: String
+    color: String
+    
+    def init(name: String, color: String) {
+        self.name = name
+        self.color = color
+    }
+    
+    def describe() -> String {
+        return "A " + color + " " + name
+    }
+    
+    def area() -> Double {
+        return 0.0
+    }
+}
+
+class Rectangle extends Shape {
+    width: Double
+    height: Double
+    
+    def init(color: String, width: Double, height: Double) {
+        super.init("rectangle", color)
+        self.width = width
+        self.height = height
+    }
+    
+    def area() -> Double {
+        return width * height
+    }
+    
+    def perimeter() -> Double {
+        return 2.0 * (width + height)
+    }
+}
+
+class Circle extends Shape {
+    radius: Double
+    
+    def init(color: String, radius: Double) {
+        super.init("circle", color)
+        self.radius = radius
+    }
+    
+    def area() -> Double {
+        return 3.14159 * radius * radius
+    }
+    
+    def circumference() -> Double {
+        return 2.0 * 3.14159 * radius
+    }
+}
+
+// Test the classes
+let rect: Rectangle = Rectangle("blue", 5.0, 3.0)
+let circ: Circle = Circle("red", 4.0)
+
+print("Rectangle:")
+print("  " + rect.describe())
+print("  Area: " + str(rect.area()))
+print("  Perimeter: " + str(rect.perimeter()))
+print("Circle:")
+print("  " + circ.describe())
+print("  Area: " + str(circ.area()))
+print("  Circumference: " + str(circ.circumference()))
+
+// Test structs and collections
+struct Student {
+    name: String
+    grades: [Int]
+    metadata: [String: String]
+}
+
+def calculateAverage(numbers: [Int]) -> Double {
+    if len(numbers) == 0 {
+        return 0.0
+    }
+    
+    let sum: Int = 0
+    let i: Int = 0
+    while i < len(numbers) {
+        sum = sum + numbers[i]
+        i = i + 1
+    }
+    
+    return float(sum) / float(len(numbers))
+}
+
+let students: [Student] = []
+students.append(Student{
+    name: "Alice",
+    grades: [95, 87, 92, 88],
+    metadata: ["major": "CS", "year": "junior"]
+})
+
+let alice: Student = students[0]
+let aliceAvg: Double = calculateAverage(alice.grades)
+
+print("\nStudent:")
+print("  Name: " + alice.name)
+print("  Major: " + alice.metadata["major"])
+print("  Year: " + alice.metadata["year"])
+print("  Average Grade: " + str(aliceAvg))
+
+// Test algorithms
+def fibonacci(n: Int) -> [Int] {
+    let result: [Int] = []
+    
+    if n <= 0 {
+        return result
+    }
+    
+    result.append(0)
+    if n == 1 {
+        return result
+    }
+    
+    result.append(1)
+    
+    let i: Int = 2
+    while i < n {
+        let prev: Int = result[i - 1]
+        let prevPrev: Int = result[i - 2]
+        result.append(prev + prevPrev)
+        i = i + 1
+    }
+    
+    return result
+}
+
+print("\nFibonacci (first 6 numbers):")
+let fib: [Int] = fibonacci(6)
+let i: Int = 0
+while i < len(fib) {
+    print("  " + str(fib[i]))
+    i = i + 1
+}
+
+// Test type system
+print("\nType System:")
+let int_val: Int = 42
+let double_val: Double = 3.14159
+let string_val: String = "Hello"
+let bool_val: Bool = true
+let array_val: [Int] = [1, 2, 3]
+let dict_val: [String: Int] = ["x": 10, "y": 20]
+
+print("  int: " + str(int_val))
+print("  double: " + str(double_val))
+print("  string: " + string_val)
+print("  bool: " + str(bool_val))
+print("  array: " + str(array_val))
+print("  dict: " + str(dict_val))
