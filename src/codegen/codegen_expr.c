@@ -434,15 +434,23 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
                 LLVMValueRef class_name_str = cg_get_string_global(cg, callee_class->name);
                 LLVMValueRef class_name_ptr = LLVMBuildBitCast(cg->builder, class_name_str, cg->i8_ptr, "");
                 
-                // Create field names array
+                // Create field names array (including inherited fields)
                 LLVMTypeRef i8_ptr_ptr = LLVMPointerType(cg->i8_ptr, 0);
                 LLVMValueRef field_names_ptr = LLVMConstNull(i8_ptr_ptr);
-                if (callee_class->field_count > 0) {
-                    LLVMTypeRef field_names_arr_ty = LLVMArrayType(cg->i8_ptr, (unsigned)callee_class->field_count);
+                
+                // Collect all fields including inherited ones
+                char** all_field_names;
+                int total_field_count;
+                if (!cg_collect_all_fields(cg, callee_class, &all_field_names, &total_field_count)) {
+                    return NULL;
+                }
+                
+                if (total_field_count > 0) {
+                    LLVMTypeRef field_names_arr_ty = LLVMArrayType(cg->i8_ptr, (unsigned)total_field_count);
                     LLVMValueRef field_names_arr = LLVMBuildAlloca(cg->builder, field_names_arr_ty, "class_field_names");
                     
-                    for (int i = 0; i < callee_class->field_count; i++) {
-                        LLVMValueRef field_name_str = cg_get_string_global(cg, callee_class->field_names[i]);
+                    for (int i = 0; i < total_field_count; i++) {
+                        LLVMValueRef field_name_str = cg_get_string_global(cg, all_field_names[i]);
                         LLVMValueRef field_name_ptr = LLVMBuildBitCast(cg->builder, field_name_str, cg->i8_ptr, "");
                         LLVMValueRef field_slot = LLVMBuildGEP2(
                             cg->builder,
@@ -464,21 +472,58 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
                     field_names_ptr = LLVMBuildBitCast(cg->builder, first, i8_ptr_ptr, "");
                 }
                 
-                // Create the class using a runtime function
+                // Free the temporary field names array
+                for (int i = 0; i < total_field_count; i++) {
+                    free(all_field_names[i]);
+                }
+                free(all_field_names);
+                
+                // Create the class using a runtime function with method information
                 LLVMTypeRef ty_class_new = LLVMFunctionType(
                     cg->i8_ptr,  // Returns BreadClass*
-                    (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr, cg->i32, i8_ptr_ptr},  // name, parent_name, field_count, field_names
-                    4,
+                    (LLVMTypeRef[]){cg->i8_ptr, cg->i8_ptr, cg->i32, i8_ptr_ptr, cg->i32, i8_ptr_ptr},  // name, parent_name, field_count, field_names, method_count, method_names
+                    6,
                     0
                 );
-                LLVMValueRef fn_class_new = cg_declare_fn(cg, "bread_class_new", ty_class_new);
+                LLVMValueRef fn_class_new = cg_declare_fn(cg, "bread_class_new_with_methods", ty_class_new);
                 
-                LLVMValueRef field_count = LLVMConstInt(cg->i32, callee_class->field_count, 0);
+                LLVMValueRef field_count = LLVMConstInt(cg->i32, total_field_count, 0);
                 LLVMValueRef parent_name_ptr = callee_class->parent_name ? 
                     LLVMBuildBitCast(cg->builder, cg_get_string_global(cg, callee_class->parent_name), cg->i8_ptr, "") :
                     LLVMConstNull(cg->i8_ptr);
+                
+                // Create method names array
+                LLVMValueRef method_names_ptr = LLVMConstNull(i8_ptr_ptr);
+                LLVMValueRef method_count = LLVMConstInt(cg->i32, callee_class->method_count, 0);
+                if (callee_class->method_count > 0) {
+                    LLVMTypeRef method_names_arr_ty = LLVMArrayType(cg->i8_ptr, (unsigned)callee_class->method_count);
+                    LLVMValueRef method_names_arr = LLVMBuildAlloca(cg->builder, method_names_arr_ty, "class_method_names");
+                    
+                    for (int i = 0; i < callee_class->method_count; i++) {
+                        LLVMValueRef method_name_str = cg_get_string_global(cg, callee_class->method_names[i]);
+                        LLVMValueRef method_name_ptr = LLVMBuildBitCast(cg->builder, method_name_str, cg->i8_ptr, "");
+                        LLVMValueRef method_slot = LLVMBuildGEP2(
+                            cg->builder,
+                            method_names_arr_ty,
+                            method_names_arr,
+                            (LLVMValueRef[]){LLVMConstInt(cg->i32, 0, 0), LLVMConstInt(cg->i32, i, 0)},
+                            2,
+                            "method_name_slot");
+                        LLVMBuildStore(cg->builder, method_name_ptr, method_slot);
+                    }
+
+                    LLVMValueRef first = LLVMBuildGEP2(
+                        cg->builder,
+                        method_names_arr_ty,
+                        method_names_arr,
+                        (LLVMValueRef[]){LLVMConstInt(cg->i32, 0, 0), LLVMConstInt(cg->i32, 0, 0)},
+                        2,
+                        "method_names_first");
+                    method_names_ptr = LLVMBuildBitCast(cg->builder, first, i8_ptr_ptr, "");
+                }
+                
                 LLVMValueRef class_ptr = LLVMBuildCall2(cg->builder, ty_class_new, fn_class_new,
-                    (LLVMValueRef[]){class_name_ptr, parent_name_ptr, field_count, field_names_ptr}, 4, "class_instance");
+                    (LLVMValueRef[]){class_name_ptr, parent_name_ptr, field_count, field_names_ptr, method_count, method_names_ptr}, 6, "class_instance");
                 
                 // Set the result value to the class BEFORE calling constructor
                 LLVMTypeRef ty_value_set_class = LLVMFunctionType(
@@ -836,6 +881,24 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
             (void)LLVMBuildCall2(cg->builder, ty_value_set_class, fn_value_set_class, class_args, 2, "");
             
             return tmp;
+        }
+        
+        case AST_EXPR_SELF: {
+            // Return the current instance (self parameter)
+            if (!cg_fn || !cg_fn->self_param) {
+                fprintf(stderr, "Error: 'self' used outside of method context\n");
+                return NULL;
+            }
+            return cg_clone_value(cg, cg_fn->self_param, "self");
+        }
+        
+        case AST_EXPR_SUPER: {
+            // Return the parent class instance (same as self, but for parent class access)
+            if (!cg_fn || !cg_fn->self_param || !cg_fn->current_class || !cg_fn->current_class->parent_name) {
+                fprintf(stderr, "Error: 'super' used outside of method context or class has no parent\n");
+                return NULL;
+            }
+            return cg_clone_value(cg, cg_fn->self_param, "super");
         }
         default:
             fprintf(stderr, "Codegen not implemented for expr kind %d\n", expr->kind);

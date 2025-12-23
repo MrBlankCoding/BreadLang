@@ -730,6 +730,22 @@ static ASTExpr* parse_primary(const char** expr) {
         char* name = dup_range(start_id, *expr);
         if (!name) return NULL;
 
+        // Check for 'self' keyword
+        if (strcmp(name, "self") == 0) {
+            free(name);
+            ASTExpr* e = ast_expr_new(AST_EXPR_SELF);
+            if (!e) return NULL;
+            return e;
+        }
+
+        // Check for 'super' keyword
+        if (strcmp(name, "super") == 0) {
+            free(name);
+            ASTExpr* e = ast_expr_new(AST_EXPR_SUPER);
+            if (!e) return NULL;
+            return e;
+        }
+
         const char* after_ident = *expr;
         skip_whitespace(expr);
         
@@ -1121,5 +1137,16 @@ static int is_ident_char(char c) {
 }
 
 static void skip_whitespace(const char** code) {
-    while (**code && isspace((unsigned char)**code)) (*code)++;
+    while (**code) {
+        if (isspace((unsigned char)**code)) {
+            (*code)++;
+        }
+        else if (**code == '/' && *(*code + 1) == '/') {
+            while (**code && **code != '\n') {
+                (*code)++;
+            }
+        } else {
+            break;
+        }
+    }
 }

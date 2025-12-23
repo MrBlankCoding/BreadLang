@@ -30,6 +30,8 @@ typedef enum {
     AST_EXPR_DOUBLE,
     AST_EXPR_STRING,
     AST_EXPR_VAR,
+    AST_EXPR_SELF,
+    AST_EXPR_SUPER,
     AST_EXPR_BINARY,
     AST_EXPR_UNARY,
     AST_EXPR_CALL,
@@ -128,6 +130,7 @@ typedef enum {
     AST_STMT_VAR_DECL,
     AST_STMT_VAR_ASSIGN,
     AST_STMT_INDEX_ASSIGN,
+    AST_STMT_MEMBER_ASSIGN,
     AST_STMT_PRINT,
     AST_STMT_EXPR,
     AST_STMT_IF,
@@ -160,6 +163,12 @@ typedef struct {
     ASTExpr* index;
     ASTExpr* value;
 } ASTStmtIndexAssign;
+
+typedef struct {
+    ASTExpr* target;
+    char* member;
+    ASTExpr* value;
+} ASTStmtMemberAssign;
 
 typedef struct {
     ASTExpr* expr;
@@ -234,6 +243,7 @@ struct ASTStmt {
         ASTStmtVarDecl var_decl;
         ASTStmtVarAssign var_assign;
         ASTStmtIndexAssign index_assign;
+        ASTStmtMemberAssign member_assign;
         ASTStmtPrint print;
         ASTStmtExpr expr;
         ASTStmtIf if_stmt;

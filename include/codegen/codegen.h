@@ -36,6 +36,11 @@ typedef struct CgFunction {
     struct CgFunction* next;
     CgScope* scope;
     LLVMValueRef ret_slot;
+    
+    // Method context for self/super support
+    struct CgClass* current_class;  // Current class if this is a method
+    LLVMValueRef self_param;        // Self parameter for methods
+    int is_method;                  // Flag indicating if this is a method
 } CgFunction;
 
 typedef struct CgClass {
@@ -252,6 +257,7 @@ int cg_declare_function_from_ast(Cg* cg, const ASTStmtFuncDecl* func_decl, const
 CgFunction* cg_find_function(Cg* cg, const char* name);
 int cg_declare_class_from_ast(Cg* cg, const ASTStmtClassDecl* class_decl, const SourceLoc* loc);
 CgClass* cg_find_class(Cg* cg, const char* name);
+int cg_collect_all_fields(Cg* cg, CgClass* class_def, char*** all_field_names, int* total_field_count);
 void cg_error(Cg* cg, const char* msg, const char* name);
 void cg_error_at(Cg* cg, const char* msg, const char* name, const SourceLoc* loc);
 void cg_type_error_at(Cg* cg, const char* msg, const TypeDescriptor* expected, const TypeDescriptor* actual, const SourceLoc* loc);

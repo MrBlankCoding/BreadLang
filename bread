@@ -1,0 +1,89 @@
+#!/bin/bash
+
+# BreadLang convenience script
+# This script provides a simple interface to the BreadLang compiler
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BREADLANG="$SCRIPT_DIR/build/breadlang"
+
+show_help() {
+    echo "BreadLang Convenience Script"
+    echo ""
+    echo "Usage: $0 <command> [options]"
+    echo ""
+    echo "Commands:"
+    echo "  run <file>              Run BreadLang file with JIT compilation"
+    echo "  compile <file> [output] Compile BreadLang file to executable"
+    echo "  llvm <file> [output]    Compile BreadLang file to LLVM IR"
+    echo "  build                   Build the BreadLang compiler"
+    echo "  clean                   Clean build artifacts"
+    echo "  test                    Run tests"
+    echo "  examples                Run example programs"
+    echo "  help                    Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  $0 run main.bread"
+    echo "  $0 compile main.bread myapp"
+    echo "  $0 llvm main.bread main.ll"
+    echo ""
+    echo "For more options, use the Makefile directly:"
+    echo "  make help"
+}
+
+case "${1:-}" in
+    "run")
+        if [ -z "$2" ]; then
+            echo "Error: FILE argument required for run command"
+            echo "Usage: $0 run <file>"
+            exit 1
+        fi
+        make -C "$SCRIPT_DIR" run FILE="$2"
+        ;;
+    "compile")
+        if [ -z "$2" ]; then
+            echo "Error: FILE argument required for compile command"
+            echo "Usage: $0 compile <file> [output]"
+            exit 1
+        fi
+        if [ -n "$3" ]; then
+            make -C "$SCRIPT_DIR" compile-exe FILE="$2" OUT="$3"
+        else
+            make -C "$SCRIPT_DIR" compile-exe FILE="$2"
+        fi
+        ;;
+    "llvm")
+        if [ -z "$2" ]; then
+            echo "Error: FILE argument required for llvm command"
+            echo "Usage: $0 llvm <file> [output]"
+            exit 1
+        fi
+        if [ -n "$3" ]; then
+            make -C "$SCRIPT_DIR" compile-llvm FILE="$2" OUT="$3"
+        else
+            make -C "$SCRIPT_DIR" compile-llvm FILE="$2"
+        fi
+        ;;
+    "build")
+        make -C "$SCRIPT_DIR" build
+        ;;
+    "clean")
+        make -C "$SCRIPT_DIR" clean
+        ;;
+    "test")
+        make -C "$SCRIPT_DIR" test
+        ;;
+    "examples")
+        make -C "$SCRIPT_DIR" examples
+        ;;
+    "help"|"-h"|"--help"|"")
+        show_help
+        ;;
+    *)
+        echo "Error: Unknown command '$1'"
+        echo ""
+        show_help
+        exit 1
+        ;;
+esac

@@ -12,6 +12,7 @@
 #include "compiler/ast/ast.h"
 #include "core/function.h"
 #include "backends/llvm_backend.h"
+#include "codegen/codegen_runtime_bridge.h"
 
 #define MAX_FILE_SIZE 1048576  // 1MB max file size
 #define VERSION "1.0.0"
@@ -89,12 +90,19 @@ static void print_usage(const char* prog) {
     printf("  --emit-llvm           Emit LLVM IR to a .ll file\n");
     printf("  --emit-obj            Emit an object file\n");
     printf("  --emit-exe            Emit a native executable (default)\n");
+    printf("  --jit                 Execute using JIT compilation\n");
     printf("  -o <file>             Output path for emit operations\n");
     printf("  --verbose             Enable verbose output\n");
+    printf("\nMakefile Integration:\n");
+    printf("  make run FILE=program.bread              # JIT execution\n");
+    printf("  make compile-exe FILE=program.bread      # Create executable\n");
+    printf("  make compile-llvm FILE=program.bread     # Emit LLVM IR\n");
+    printf("  make compile-obj FILE=program.bread      # Emit object file\n");
     printf("\nExamples:\n");
-    printf("  %s -o myapp program.bread                # Build a native executable\n", prog);
-    printf("  %s --emit-llvm -o out.ll program.bread   # Emit LLVM IR\n", prog);
-    printf("  %s --emit-exe -o myapp program.bread     # Create standalone executable\n", prog);
+    printf("  %s --jit program.bread                   # JIT execution\n", prog);
+    printf("  %s --emit-exe -o myapp program.bread     # Create executable\n", prog);
+    printf("  make run FILE=program.bread              # JIT via Makefile\n");
+    printf("  make compile-exe FILE=program.bread OUT=myapp  # Compile via Makefile\n");
     printf("\nFor more information, visit: https://github.com/breadlang/breadlang\n");
 }
 
@@ -112,6 +120,7 @@ int main(int argc, char* argv[]) {
     int emit_llvm = 0;
     int emit_obj = 0;
     int emit_exe = 0;
+    int jit_exec = 0;
     int verbose = 0;
     const char* filename = NULL;
     const char* out_path = NULL;
@@ -136,6 +145,10 @@ int main(int argc, char* argv[]) {
          }
          if (strcmp(argv[i], "--emit-exe") == 0) {
              emit_exe = 1;
+             continue;
+         }
+         if (strcmp(argv[i], "--jit") == 0) {
+             jit_exec = 1;
              continue;
          }
          if (strcmp(argv[i], "-o") == 0) {
@@ -279,10 +292,15 @@ int main(int argc, char* argv[]) {
     
     // Code generation and execution
     int result = 0;
-    if (!emit_llvm && !emit_obj && !emit_exe) {
+    if (!emit_llvm && !emit_obj && !emit_exe && !jit_exec) {
         emit_exe = 1;
     }
-    if (emit_llvm) {
+    if (jit_exec) {
+        if (verbose) {
+            printf("Executing with JIT compilation...\n");
+        }
+        result = bread_llvm_jit_exec(program);
+    } else if (emit_llvm) {
         const char* dst = out_path ? out_path : "out.ll";
         if (!bread_llvm_emit_ll(program, dst)) {
             fprintf(stderr, "\n");
@@ -316,6 +334,11 @@ int main(int argc, char* argv[]) {
     
     ast_free_stmt_list(program);
     free(code);
+    
+    // Cleanup codegen runtime bridge resources
+    cg_cleanup_class_registry();
+    cg_cleanup_jit_engine();
+    
     bread_error_cleanup();
     bread_builtin_cleanup();
     bread_string_intern_cleanup();

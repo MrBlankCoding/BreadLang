@@ -136,6 +136,19 @@ static void analyze_expr_stability(ASTExpr* expr) {
         case AST_EXPR_VAR:
             // Variable stability depends on mutability and scope
             info->stability = STABILITY_UNSTABLE; // Conservative default
+            info->is_constant = 0;
+            break;
+            
+        case AST_EXPR_SELF:
+            // Self reference is stable within method context
+            info->stability = STABILITY_STABLE;
+            info->is_constant = 0;
+            break;
+            
+        case AST_EXPR_SUPER:
+            // Super reference is stable within method context
+            info->stability = STABILITY_STABLE;
+            info->is_constant = 0;
             info->usage_count = 1;
             
             // Look up variable in symbol table to check:
@@ -319,6 +332,15 @@ static void analyze_stmt_stability(ASTStmt* stmt) {
             // Mark the target as mutated
             if (stmt->as.index_assign.target->kind == AST_EXPR_VAR) {
                 track_var_mutation(stmt->as.index_assign.target->as.var_name);
+            }
+            break;
+            
+        case AST_STMT_MEMBER_ASSIGN:
+            analyze_expr_stability(stmt->as.member_assign.target);
+            analyze_expr_stability(stmt->as.member_assign.value);
+            // Mark the target as mutated
+            if (stmt->as.member_assign.target->kind == AST_EXPR_VAR) {
+                track_var_mutation(stmt->as.member_assign.target->as.var_name);
             }
             break;
             

@@ -79,6 +79,16 @@ static void analyze_expr_escape(ASTExpr* expr, int is_assignment_target) {
             }
             break;
             
+        case AST_EXPR_SELF:
+            // Self reference doesn't escape by itself
+            mark_escape(info, ESCAPE_NONE);
+            break;
+            
+        case AST_EXPR_SUPER:
+            // Super reference doesn't escape by itself
+            mark_escape(info, ESCAPE_NONE);
+            break;
+            
         case AST_EXPR_BINARY:
             analyze_expr_escape(expr->as.binary.left, 0);
             analyze_expr_escape(expr->as.binary.right, 0);
@@ -294,6 +304,11 @@ static void analyze_stmt_escape(ASTStmt* stmt) {
             analyze_expr_escape(stmt->as.index_assign.target, 0);
             analyze_expr_escape(stmt->as.index_assign.index, 0);
             analyze_expr_escape(stmt->as.index_assign.value, 0);
+            break;
+            
+        case AST_STMT_MEMBER_ASSIGN:
+            analyze_expr_escape(stmt->as.member_assign.target, 0);
+            analyze_expr_escape(stmt->as.member_assign.value, 0);
             break;
             
         case AST_STMT_EXPR:

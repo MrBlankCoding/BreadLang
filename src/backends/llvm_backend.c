@@ -4,10 +4,12 @@
 
 #include "backends/llvm_backend.h"
 #include "runtime/error.h"
+#include "runtime/runtime.h"  // For BreadValue definition
 #include "compiler/analysis/type_stability.h"
 #include "compiler/analysis/escape_analysis.h"
 #include "compiler/optimization/optimization.h"
 #include "codegen/optimized_codegen.h"
+#include "codegen/codegen_runtime_bridge.h"  // For class connection
 #include <llvm-c/Core.h>
 #include <llvm-c/Analysis.h>
 #include <llvm-c/ExecutionEngine.h>
@@ -142,7 +144,9 @@ static void cg_init(Cg* cg, LLVMModuleRef mod, LLVMBuilderRef builder) {
     cg->tmp_counter = 0;
     cg->current_loop_end = NULL;
     cg->current_loop_continue = NULL;
-    cg->value_type = LLVMArrayType(cg->i8, 128);
+    
+    // Use actual BreadValue size instead of hardcoded 128 bytes
+    cg->value_type = LLVMArrayType(cg->i8, sizeof(BreadValue));
     cg->value_ptr_type = LLVMPointerType(cg->value_type, 0);
     
     // Initialize semantic analysis fields
@@ -521,6 +525,12 @@ static int bread_llvm_build_module_from_program(const ASTStmtList* program, LLVM
     }
     
     LLVMPositionBuilderAtEnd(builder, main_block);
+    
+    // Connect all codegen classes to runtime after code generation is complete
+    if (!cg_connect_all_classes_to_runtime(&cg)) {
+        fprintf(stderr, "Warning: Failed to connect classes to runtime, using AST execution only\n");
+    }
+    
     // LLVM optimization passes disabled (legacy pass manager removed)
 
     LLVMDisposeBuilder(builder);
@@ -860,6 +870,9 @@ int bread_llvm_jit_exec(const ASTStmtList* program) {
         LLVMDisposeMessage(err);
         return 1;
     }
+
+    // Set the JIT module and engine for the runtime bridge
+    cg_set_jit_module(mod, engine);
 
     uint64_t main_ptr = LLVMGetFunctionAddress(engine, "main");
     if (!main_ptr) {

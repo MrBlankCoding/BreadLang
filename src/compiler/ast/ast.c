@@ -62,5 +62,16 @@ ASTStmtList* ast_parse_program(const char* code) {
 }
 
 static void skip_whitespace(const char** code) {
-    while (**code && isspace((unsigned char)**code)) (*code)++;
+    while (**code) {
+        if (isspace((unsigned char)**code)) {
+            (*code)++;
+        }
+        else if (**code == '/' && *(*code + 1) == '/') {
+            while (**code && **code != '\n') {
+                (*code)++;
+            }
+        } else {
+            break;
+        }
+    }
 }

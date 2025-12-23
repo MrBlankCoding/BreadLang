@@ -47,6 +47,9 @@ struct BreadStruct {
 // Forward declaration for method function pointer
 typedef struct BreadValue (*BreadMethod)(struct BreadClass* self, struct BreadValue* args, int arg_count);
 
+// LLVM function pointer type for compiled methods
+typedef void (*BreadCompiledMethod)(void* ret_slot, void* self_ptr, void** args);
+
 struct BreadClass {
     BreadObjHeader header;
     char* class_name;
@@ -59,6 +62,10 @@ struct BreadClass {
     char** method_names;
     BreadMethod* methods;
     BreadMethod constructor;  // NULL if no explicit constructor
+    
+    // LLVM compiled function support
+    BreadCompiledMethod* compiled_methods;  // Array of compiled LLVM function pointers
+    BreadCompiledMethod compiled_constructor;  // Compiled constructor function
 };
 
 BreadValue bread_value_from_expr_result(ExprResult r);
@@ -81,6 +88,9 @@ void bread_struct_retain(BreadStruct* s);
 void bread_struct_release(BreadStruct* s);
 
 BreadClass* bread_class_new(const char* class_name, const char* parent_name, int field_count, char** field_names);
+BreadClass* bread_class_new_with_methods(const char* class_name, const char* parent_name, 
+                                        int field_count, char** field_names,
+                                        int method_count, char** method_names);
 void bread_class_set_field(BreadClass* c, const char* field_name, BreadValue value);
 void bread_class_set_field_value_ptr(BreadClass* c, const char* field_name, const BreadValue* value);
 BreadValue* bread_class_get_field(BreadClass* c, const char* field_name);
@@ -92,6 +102,8 @@ BreadMethod bread_class_get_method(BreadClass* c, const char* method_name);
 BreadValue bread_class_call_method(BreadClass* c, const char* method_name, BreadValue* args, int arg_count);
 int bread_class_execute_method(BreadClass* c, int method_index, int argc, const BreadValue* args, BreadValue* out);
 int bread_class_execute_constructor(BreadClass* c, int argc, const BreadValue* args, BreadValue* out);
+void bread_class_set_compiled_method(BreadClass* c, int method_index, BreadCompiledMethod compiled_fn);
+void bread_class_set_compiled_constructor(BreadClass* c, BreadCompiledMethod compiled_fn);
 void bread_class_retain(BreadClass* c);
 void bread_class_release(BreadClass* c);
 void bread_struct_release(BreadStruct* s);

@@ -194,6 +194,56 @@ CgClass* cg_find_class(Cg* cg, const char* name) {
     return NULL;
 }
 
+// Helper function to collect all fields from a class hierarchy
+int cg_collect_all_fields(Cg* cg, CgClass* class_def, char*** all_field_names, int* total_field_count) {
+    if (!cg || !class_def || !all_field_names || !total_field_count) return 0;
+    
+    *total_field_count = 0;
+    *all_field_names = NULL;
+    
+    // Count total fields including inherited ones
+    CgClass* current = class_def;
+    while (current) {
+        *total_field_count += current->field_count;
+        current = current->parent_name ? cg_find_class(cg, current->parent_name) : NULL;
+    }
+    
+    if (*total_field_count == 0) return 1;
+    
+    // Allocate array for all field names
+    *all_field_names = malloc(sizeof(char*) * (*total_field_count));
+    if (!*all_field_names) return 0;
+    
+    // Collect field names (parent fields first, then child fields)
+    int index = 0;
+    
+    // First, collect parent fields recursively
+    if (class_def->parent_name) {
+        CgClass* parent = cg_find_class(cg, class_def->parent_name);
+        if (parent) {
+            char** parent_fields;
+            int parent_count;
+            if (cg_collect_all_fields(cg, parent, &parent_fields, &parent_count)) {
+                for (int i = 0; i < parent_count; i++) {
+                    (*all_field_names)[index++] = strdup(parent_fields[i]);
+                }
+                // Free the temporary parent fields array
+                for (int i = 0; i < parent_count; i++) {
+                    free(parent_fields[i]);
+                }
+                free(parent_fields);
+            }
+        }
+    }
+    
+    // Then add this class's own fields
+    for (int i = 0; i < class_def->field_count; i++) {
+        (*all_field_names)[index++] = strdup(class_def->field_names[i]);
+    }
+    
+    return 1;
+}
+
 int cg_declare_class_from_ast(Cg* cg, const ASTStmtClassDecl* class_decl, const SourceLoc* loc) {
     if (!cg || !class_decl || !class_decl->name) return 0;
     
@@ -1035,6 +1085,10 @@ int cg_analyze_stmt(Cg* cg, ASTStmt* stmt) {
             if (!cg_analyze_expr(cg, stmt->as.index_assign.target)) return 0;
             if (!cg_analyze_expr(cg, stmt->as.index_assign.index)) return 0;
             if (!cg_analyze_expr(cg, stmt->as.index_assign.value)) return 0;
+            break;
+        case AST_STMT_MEMBER_ASSIGN:
+            if (!cg_analyze_expr(cg, stmt->as.member_assign.target)) return 0;
+            if (!cg_analyze_expr(cg, stmt->as.member_assign.value)) return 0;
             break;
         case AST_STMT_PRINT:
             if (!cg_analyze_expr(cg, stmt->as.print.expr)) return 0;

@@ -865,20 +865,32 @@ ASTStmt* parse_stmt(const char** code) {
                 method_decl->body = body;
                 method_decl->opt_info = NULL;
                 
-                // Add to methods array
-                if (method_count >= method_cap) {
-                    int new_cap = method_cap == 0 ? 4 : method_cap * 2;
-                    ASTStmtFuncDecl** new_methods = realloc(methods, new_cap * sizeof(ASTStmtFuncDecl*));
-                    if (!new_methods) {
+                // Check if this is the constructor (init method)
+                if (strcmp(method_name, "init") == 0) {
+                    if (constructor) {
+                        // Multiple constructors not allowed
                         free(method_decl);
                         free(class_name);
                         free(parent_name);
                         return NULL;
                     }
-                    methods = new_methods;
-                    method_cap = new_cap;
+                    constructor = method_decl;
+                } else {
+                    // Add to methods array
+                    if (method_count >= method_cap) {
+                        int new_cap = method_cap == 0 ? 4 : method_cap * 2;
+                        ASTStmtFuncDecl** new_methods = realloc(methods, new_cap * sizeof(ASTStmtFuncDecl*));
+                        if (!new_methods) {
+                            free(method_decl);
+                            free(class_name);
+                            free(parent_name);
+                            return NULL;
+                        }
+                        methods = new_methods;
+                        method_cap = new_cap;
+                    }
+                    methods[method_count++] = method_decl;
                 }
-                methods[method_count++] = method_decl;
                 
             } else {
                 // Parse field
@@ -1365,5 +1377,16 @@ static char* dup_range(const char* start, const char* end) {
 }
 
 static void skip_whitespace(const char** code) {
-    while (**code && isspace((unsigned char)**code)) (*code)++;
+    while (**code) {
+        if (isspace((unsigned char)**code)) {
+            (*code)++;
+        }
+        else if (**code == '/' && *(*code + 1) == '/') {
+            while (**code && **code != '\n') {
+                (*code)++;
+            }
+        } else {
+            break;
+        }
+    }
 }

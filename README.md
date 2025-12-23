@@ -27,7 +27,10 @@ BreadLang is a modern, statically-typed programming language with LLVM JIT compi
 git clone <repository-url>
 cd breadlang
 
-# Build with CMake
+# Build with Make (recommended)
+make build
+
+# Or build with CMake directly
 mkdir build && cd build
 cmake ..
 make
@@ -41,11 +44,74 @@ Create a file `hello.bread`:
 print("Hello, World!")
 ```
 
-Compile and run:
+#### Quick Execution (JIT)
 
 ```bash
-./build/breadlang -o hello hello.bread
+# Using convenience script (recommended)
+./bread run hello.bread
+
+# Using Makefile
+make run FILE=hello.bread
+
+# Or using the binary directly
+./build/breadlang --jit hello.bread
+```
+
+#### Compile to Executable
+
+```bash
+# Using convenience script (recommended)
+./bread compile hello.bread hello
 ./hello
+
+# Using Makefile
+make compile-exe FILE=hello.bread OUT=hello
+./hello
+
+# Or using the binary directly
+./build/breadlang --emit-exe -o hello hello.bread
+./hello
+```
+
+### Convenience Script
+
+The `bread` script provides a simple interface to common operations:
+
+```bash
+./bread run <file>              # JIT execution
+./bread compile <file> [output] # Compile to executable
+./bread llvm <file> [output]    # Emit LLVM IR
+./bread build                   # Build compiler
+./bread examples                # Run examples
+./bread help                    # Show help
+```
+
+### Makefile Targets
+
+The enhanced Makefile provides convenient targets for common operations:
+
+#### Execution Targets
+```bash
+make run FILE=program.bread          # JIT execution
+make jit FILE=program.bread          # JIT execution (alias)
+make run-main                        # Run main.bread example
+make run-methods                     # Run test_methods.bread example
+make examples                        # Run all example programs
+```
+
+#### Compilation Targets
+```bash
+make compile-exe FILE=program.bread [OUT=output]     # Create executable
+make compile-llvm FILE=program.bread [OUT=output.ll] # Emit LLVM IR
+make compile-obj FILE=program.bread [OUT=output.o]   # Emit object file
+```
+
+#### Build Targets
+```bash
+make build                           # Build the compiler
+make clean                           # Clean build artifacts
+make rebuild                         # Clean and rebuild
+make test                            # Run tests
 ```
 
 ### File Structure
@@ -799,11 +865,17 @@ Classes support inheritance, fields, and methods:
 class Animal {
     name: String
     age: Int
-    
+
+    // Initializer
+    def init(name: String, age: Int) {
+        self.name = name
+        self.age = age
+    }
+
     def speak() -> String {
         return "Some sound"
     }
-    
+
     def getInfo() -> String {
         return name + " is " + str(age) + " years old"
     }
@@ -812,12 +884,18 @@ class Animal {
 // Derived class with inheritance
 class Dog extends Animal {
     breed: String
-    
+
+    // Initializer (must call super.init)
+    def init(name: String, age: Int, breed: String) {
+        super.init(name, age)
+        self.breed = breed
+    }
+
     // Override parent method
     def speak() -> String {
         return "Woof!"
     }
-    
+
     // New method specific to Dog
     def wagTail() -> String {
         return name + " is wagging tail"
@@ -825,12 +903,12 @@ class Dog extends Animal {
 }
 
 // Creating instances
-let animal: Animal = Animal{name: "Generic", age: 5}
-let dog: Dog = Dog{name: "Buddy", age: 3, breed: "Golden Retriever"}
+let animal: Animal = Animal("Generic", 5)
+let dog: Dog = Dog("Buddy", 3, "Golden Retriever")
 
 // Calling methods
 print(animal.speak())    // "Some sound"
-print(dog.speak())       // "Woof!" (overridden)
+print(dog.speak())       // "Woof!"
 print(dog.wagTail())     // "Buddy is wagging tail"
 
 // Accessing fields

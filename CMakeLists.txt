@@ -74,6 +74,9 @@ set(BREADLANG_SOURCES
     src/runtime/runtime.c
     src/runtime/string_ops.c
     src/runtime/value_ops.c
+    
+    # Codegen runtime bridge
+    src/codegen/codegen_runtime_bridge.c
 )
 
 # Create executable

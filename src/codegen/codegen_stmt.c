@@ -80,6 +80,55 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
             (void)LLVMBuildCall2(cg->builder, cg->ty_index_set_op, cg->fn_index_set_op, args, 3, "");
             return 1;
         }
+
+        case AST_STMT_MEMBER_ASSIGN: {
+            // Handle member assignment like self.field = value
+            LLVMValueRef value = cg_build_expr(cg, cg_fn, val_size, stmt->as.member_assign.value);
+            if (!value) return 0;
+
+            // For now, treat member assignment as a special case of field assignment
+            // This would need proper implementation for self.field = value in methods
+            
+            // Check if target is self
+            if (stmt->as.member_assign.target && 
+                stmt->as.member_assign.target->kind == AST_EXPR_SELF && 
+                cg_fn && cg_fn->is_method && cg_fn->self_param) {
+                
+                // This is a self.field = value assignment in a method
+                const char* member = stmt->as.member_assign.member ? stmt->as.member_assign.member : "";
+                LLVMValueRef member_glob = cg_get_string_global(cg, member);
+                LLVMValueRef member_ptr = LLVMBuildBitCast(cg->builder, member_glob, cg->i8_ptr, "");
+                
+                // Call runtime function to set field on self
+                LLVMValueRef args[] = {
+                    cg_value_to_i8_ptr(cg, cg_fn->self_param),
+                    member_ptr,
+                    cg_value_to_i8_ptr(cg, value)
+                };
+                
+                // Use member operation for field assignment
+                // Note: This would need a dedicated field assignment runtime function
+                (void)LLVMBuildCall2(cg->builder, cg->ty_member_op, cg->fn_member_op, args, 3, "");
+            } else {
+                // General member assignment - evaluate target and use member operation
+                LLVMValueRef target = cg_build_expr(cg, cg_fn, val_size, stmt->as.member_assign.target);
+                if (!target) return 0;
+                
+                const char* member = stmt->as.member_assign.member ? stmt->as.member_assign.member : "";
+                LLVMValueRef member_glob = cg_get_string_global(cg, member);
+                LLVMValueRef member_ptr = LLVMBuildBitCast(cg->builder, member_glob, cg->i8_ptr, "");
+                
+                LLVMValueRef args[] = {
+                    cg_value_to_i8_ptr(cg, target),
+                    member_ptr,
+                    cg_value_to_i8_ptr(cg, value)
+                };
+                
+                (void)LLVMBuildCall2(cg->builder, cg->ty_member_op, cg->fn_member_op, args, 3, "");
+            }
+            
+            return 1;
+        }
         case AST_STMT_PRINT: {
             LLVMValueRef val = cg_build_expr(cg, cg_fn, val_size, stmt->as.print.expr);
             if (!val) return 0;
@@ -544,12 +593,41 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
                 LLVMValueRef constructor_fn = LLVMAddFunction(cg->mod, constructor_name, constructor_type);
                 free(param_types);
                 
-                // Generate constructor body (temporarily disabled for debugging)
+                // Generate constructor body
                 LLVMBasicBlockRef entry_bb = LLVMAppendBasicBlock(constructor_fn, "entry");
                 LLVMPositionBuilderAtEnd(cg->builder, entry_bb);
                 
-                // Simple constructor that just returns
-                LLVMBuildRetVoid(cg->builder);
+                // Create function context for constructor
+                CgFunction cg_constructor = {0};
+                cg_constructor.name = constructor_name;
+                cg_constructor.fn = constructor_fn;
+                cg_constructor.type = constructor_type;
+                cg_constructor.body = class->constructor->body;
+                cg_constructor.param_count = class->constructor->param_count;
+                cg_constructor.param_names = class->constructor->param_names;
+                cg_constructor.return_type = class->constructor->return_type;
+                cg_constructor.return_type_desc = class->constructor->return_type_desc;
+                cg_constructor.scope = cg_scope_new(NULL);
+                cg_constructor.ret_slot = LLVMGetParam(constructor_fn, 0);
+                cg_constructor.current_class = class;
+                cg_constructor.self_param = LLVMGetParam(constructor_fn, 1);
+                cg_constructor.is_method = 1;
+                
+                // Add parameters to scope
+                for (int i = 0; i < class->constructor->param_count; i++) {
+                    LLVMValueRef param = LLVMGetParam(constructor_fn, i + 2);
+                    cg_scope_add_var(cg_constructor.scope, class->constructor->param_names[i], param);
+                }
+                
+                // Generate constructor body
+                if (class->constructor->body) {
+                    cg_build_stmt_list(cg, &cg_constructor, val_size, class->constructor->body);
+                }
+                
+                // Ensure constructor returns
+                if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(cg->builder))) {
+                    LLVMBuildRetVoid(cg->builder);
+                }
                 
                 // Store constructor function for runtime lookup
                 if (class->method_functions && class->method_count > 0) {
@@ -586,17 +664,47 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
                 LLVMValueRef method_fn = LLVMAddFunction(cg->mod, method_name, method_type);
                 free(param_types);
                 
-                // Generate method body (temporarily disabled for debugging)
+                // Generate method body
                 LLVMBasicBlockRef entry_bb = LLVMAppendBasicBlock(method_fn, "entry");
                 LLVMPositionBuilderAtEnd(cg->builder, entry_bb);
                 
-                // Simple method that returns nil
-                LLVMValueRef return_slot = LLVMGetParam(method_fn, 0);
-                LLVMValueRef nil_val = cg_alloc_value(cg, "nil_ret");
-                LLVMValueRef args[] = { cg_value_to_i8_ptr(cg, nil_val) };
-                LLVMBuildCall2(cg->builder, cg->ty_value_set_nil, cg->fn_value_set_nil, args, 1, "");
-                cg_copy_value_into(cg, return_slot, nil_val);
-                LLVMBuildRetVoid(cg->builder);
+                // Create function context for method
+                CgFunction cg_method = {0};
+                cg_method.name = method_name;
+                cg_method.fn = method_fn;
+                cg_method.type = method_type;
+                cg_method.body = method->body;
+                cg_method.param_count = method->param_count;
+                cg_method.param_names = method->param_names;
+                cg_method.return_type = method->return_type;
+                cg_method.return_type_desc = method->return_type_desc;
+                cg_method.scope = cg_scope_new(NULL);
+                cg_method.ret_slot = LLVMGetParam(method_fn, 0);
+                cg_method.current_class = class;
+                cg_method.self_param = LLVMGetParam(method_fn, 1);
+                cg_method.is_method = 1;
+                
+                // Add parameters to scope
+                for (int j = 0; j < method->param_count; j++) {
+                    LLVMValueRef param = LLVMGetParam(method_fn, j + 2);
+                    cg_scope_add_var(cg_method.scope, method->param_names[j], param);
+                }
+                
+                // Generate method body
+                if (method->body) {
+                    cg_build_stmt_list(cg, &cg_method, val_size, method->body);
+                }
+                
+                // Ensure method returns
+                if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(cg->builder))) {
+                    // Return nil if no explicit return
+                    LLVMValueRef return_slot = LLVMGetParam(method_fn, 0);
+                    LLVMValueRef nil_val = cg_alloc_value(cg, "nil_ret");
+                    LLVMValueRef args[] = { cg_value_to_i8_ptr(cg, nil_val) };
+                    LLVMBuildCall2(cg->builder, cg->ty_value_set_nil, cg->fn_value_set_nil, args, 1, "");
+                    cg_copy_value_into(cg, return_slot, nil_val);
+                    LLVMBuildRetVoid(cg->builder);
+                }
                 
                 // Store method function for runtime lookup
                 class->method_functions[i] = method_fn;

@@ -150,6 +150,11 @@ void ast_free_stmt_list(ASTStmtList* stmts) {
                 ast_free_expr(cur->as.index_assign.index);
                 ast_free_expr(cur->as.index_assign.value);
                 break;
+            case AST_STMT_MEMBER_ASSIGN:
+                ast_free_expr(cur->as.member_assign.target);
+                free(cur->as.member_assign.member);
+                ast_free_expr(cur->as.member_assign.value);
+                break;
             case AST_STMT_PRINT:
                 ast_free_expr(cur->as.print.expr);
                 break;
@@ -220,6 +225,11 @@ void ast_free_stmt(ASTStmt* stmt) {
             ast_free_expr(stmt->as.index_assign.target);
             ast_free_expr(stmt->as.index_assign.index);
             ast_free_expr(stmt->as.index_assign.value);
+            break;
+        case AST_STMT_MEMBER_ASSIGN:
+            ast_free_expr(stmt->as.member_assign.target);
+            free(stmt->as.member_assign.member);
+            ast_free_expr(stmt->as.member_assign.value);
             break;
         case AST_STMT_PRINT:
             ast_free_expr(stmt->as.print.expr);
