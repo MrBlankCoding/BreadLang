@@ -82,7 +82,7 @@ make test
 
 Normal builds (`make build`) are for development and do NOT bundle LLVM.
 
-For a release-style bundle, use one of the packaging targets below. The output is a folder you can zip and copy to another Mac.
+For a release-style bundle, use one of the packaging targets below. This will generate a self-contained folder (under `dist/` by default) that you can zip and copy to another Mac.
 
 ### Package for your current Mac architecture (fast)
 
@@ -96,15 +96,22 @@ make package-macos
 make package-macos-universal
 ```
 
-Output:
-
-- `dist/macos-universal/breadlang`
-- `dist/macos-universal/lib/*.dylib`
-
-Run it from inside that folder:
+Run the bundled binary (from the repo root):
 
 ```bash
 ./dist/macos-universal/breadlang --jit hello.bread
+```
+
+If you copy the bundle to another machine, keep the `lib/` folder next to `breadlang`:
+
+```bash
+./breadlang --jit hello.bread
+```
+
+You can customize the output folder via Make variables:
+
+```bash
+make package-macos MACOS_PACKAGE_DIST_DIR=dist/my-bundle
 ```
 
 ## Help / usage

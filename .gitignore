@@ -1,6 +1,8 @@
 .kiro*
 build/
 language_outline/
+build-macos-universal/
+dist/
 
 ### C ###
 # Prerequisites

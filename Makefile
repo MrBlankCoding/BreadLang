@@ -104,7 +104,7 @@ install: build
 package-macos:
 	cmake -S . -B $(MACOS_PACKAGE_BUILD_DIR) -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="$(MACOS_PACKAGE_ARCHS)" -DCMAKE_OSX_DEPLOYMENT_TARGET=$(MACOS_DEPLOYMENT_TARGET)
 	cmake --build $(MACOS_PACKAGE_BUILD_DIR)
-	cmake -P scripts/package_macos.cmake -DBINARY=$(MACOS_PACKAGE_BUILD_DIR)/breadlang -DDIST_DIR=$(MACOS_PACKAGE_DIST_DIR)
+	cmake -DBINARY=$(MACOS_PACKAGE_BUILD_DIR)/breadlang -DDIST_DIR=$(MACOS_PACKAGE_DIST_DIR) -P scripts/package_macos.cmake
 
 package-macos-universal:
 	$(MAKE) package-macos MACOS_PACKAGE_ARCHS="arm64;x86_64" MACOS_PACKAGE_BUILD_DIR=build-macos-universal MACOS_PACKAGE_DIST_DIR=dist/macos-universal

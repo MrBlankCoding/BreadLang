@@ -196,7 +196,7 @@ static void analyze_expr(ASTExpr* expr) {
     case AST_EXPR_UNARY:
         analyze_expr(expr->as.unary.operand);
         if (expr->as.unary.operand->stability_info)
-            *info = *expr->as.unary.operand->stability_info;
+            *info = *(TypeStabilityInfo*)expr->as.unary.operand->stability_info;
         break;
 
     case AST_EXPR_BINARY:
