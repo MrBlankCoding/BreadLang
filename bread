@@ -1,15 +1,11 @@
 #!/bin/bash
-
-# BreadLang convenience script
-# This script provides a simple interface to the BreadLang compiler
-
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BREADLANG="$SCRIPT_DIR/build/breadlang"
 
 show_help() {
-    echo "BreadLang Convenience Script"
+    echo "Breadlang CLI"
     echo ""
     echo "Usage: $0 <command> [options]"
     echo ""

@@ -467,9 +467,9 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
             // Check if the target is a known class variable or constructor call result
             if (expr->as.method_call.target && expr->as.method_call.target->kind == AST_EXPR_VAR) {
                 // Look for the variable in the current scope to see if it has a known class type
-                CgVar* target_var = NULL;
                 if (cg_fn) {
-                    target_var = cg_scope_find_var(cg_fn->scope, expr->as.method_call.target->as.var_name);
+                    // TODO: Use the found variable for type checking when implementing full type inference
+                    (void)cg_scope_find_var(cg_fn->scope, expr->as.method_call.target->as.var_name);
                 }
                 
                 // For now, we'll try to infer the class from the variable name or context
