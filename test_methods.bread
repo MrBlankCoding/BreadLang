@@ -1,0 +1,23 @@
+print(42)
+print(10 + 5)
+
+let name: String = "BreadLang"
+let version: Double = 1.0
+print(name)
+print(version)
+
+let text: String = "Hello World"
+print(text)
+print(text.length)
+print(text[0])
+
+let items: [Int] = [10, 20, 30]
+print(items)
+print(items.length)
+print(items[0])
+
+let counter: Int = 1
+while counter <= 3 {
+    print(counter)
+    counter = counter + 1
+}

@@ -301,7 +301,7 @@ static void cg_init(Cg* cg, LLVMModuleRef mod, LLVMBuilderRef builder) {
     cg_define_functions(cg);
 }
 
-static int bread_llvm_build_module_from_program(const ASTStmtList* program, LLVMModuleRef* out_mod) {
+static int bread_llvm_build_module_from_program(const ASTStmtList* program, LLVMModuleRef* out_mod, Cg* out_cg) {
     LLVMModuleRef mod;
     LLVMBuilderRef builder;
     Cg cg;
@@ -526,15 +526,16 @@ static int bread_llvm_build_module_from_program(const ASTStmtList* program, LLVM
     
     LLVMPositionBuilderAtEnd(builder, main_block);
     
-    // Connect all codegen classes to runtime after code generation is complete
-    if (!cg_connect_all_classes_to_runtime(&cg)) {
-        fprintf(stderr, "Warning: Failed to connect classes to runtime, using AST execution only\n");
-    }
-    
-    // LLVM optimization passes disabled (legacy pass manager removed)
+    // Note: Class connection to runtime moved to after execution engine creation
+    // This ensures JIT function pointers are available when connecting classes
 
     LLVMDisposeBuilder(builder);
     *out_mod = mod;
+    
+    // Copy Cg context to output parameter
+    if (out_cg) {
+        *out_cg = cg;
+    }
     return 1;
 }
 
@@ -592,7 +593,7 @@ int bread_llvm_emit_ll(const ASTStmtList* program, const char* out_path) {
     }
 
     LLVMModuleRef mod = NULL;
-    if (!bread_llvm_build_module_from_program(program, &mod)) {
+    if (!bread_llvm_build_module_from_program(program, &mod, NULL)) {
         if (!bread_error_has_error()) {
             BREAD_ERROR_SET_COMPILE_ERROR("Failed to build LLVM module from program");
         }
@@ -625,7 +626,7 @@ int bread_llvm_emit_obj(const ASTStmtList* program, const char* out_path) {
     }
 
     LLVMModuleRef mod = NULL;
-    if (!bread_llvm_build_module_from_program(program, &mod)) {
+    if (!bread_llvm_build_module_from_program(program, &mod, NULL)) {
         if (!bread_error_has_error()) {
             BREAD_ERROR_SET_COMPILE_ERROR("Failed to build LLVM module from program");
         }
@@ -857,7 +858,8 @@ int bread_llvm_jit_exec(const ASTStmtList* program) {
     LLVMInitializeNativeAsmPrinter();
 
     LLVMModuleRef mod = NULL;
-    if (!bread_llvm_build_module_from_program(program, &mod)) return 1;
+    Cg cg;
+    if (!bread_llvm_build_module_from_program(program, &mod, &cg)) return 1;
     if (!bread_llvm_verify_module(mod)) {
         LLVMDisposeModule(mod);
         return 1;
@@ -873,6 +875,11 @@ int bread_llvm_jit_exec(const ASTStmtList* program) {
 
     // Set the JIT module and engine for the runtime bridge
     cg_set_jit_module(mod, engine);
+    
+    // Now connect all classes to runtime with JIT engine available
+    if (!cg_connect_all_classes_to_runtime(&cg)) {
+        fprintf(stderr, "Warning: Failed to connect classes to runtime, using AST execution only\n");
+    }
 
     uint64_t main_ptr = LLVMGetFunctionAddress(engine, "main");
     if (!main_ptr) {
