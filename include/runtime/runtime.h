@@ -107,6 +107,7 @@ int bread_var_assign(const char* name, const BreadValue* value);
 int bread_var_load(const char* name, BreadValue* out);
 void bread_push_scope(void);
 void bread_pop_scope(void);
+int bread_can_pop_scope(void);
 struct BreadArray* bread_range_create(int start, int end, int step);
 struct BreadArray* bread_range(int n);
 int bread_array_get_value(struct BreadArray* a, int idx, struct BreadValue* out);

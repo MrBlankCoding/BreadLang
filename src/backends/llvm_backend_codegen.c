@@ -10,6 +10,7 @@
 #include "compiler/optimization/optimization.h"
 #include "codegen/optimized_codegen.h"
 #include "codegen/codegen_runtime_bridge.h"
+#include "core/type_descriptor.h"
 #include <llvm-c/Core.h>
 #include <llvm-c/Analysis.h>
 #include <llvm-c/ExecutionEngine.h>
@@ -98,6 +99,8 @@ void cg_init(Cg* cg, LLVMModuleRef mod, LLVMBuilderRef builder) {
     cg->fn_push_scope = cg_declare_fn(cg, "bread_push_scope", cg->ty_push_scope);
     cg->ty_pop_scope = LLVMFunctionType(cg->void_ty, NULL, 0, 0);
     cg->fn_pop_scope = cg_declare_fn(cg, "bread_pop_scope", cg->ty_pop_scope);
+    cg->ty_can_pop_scope = LLVMFunctionType(cg->i32, NULL, 0, 0);
+    cg->fn_can_pop_scope = cg_declare_fn(cg, "bread_can_pop_scope", cg->ty_can_pop_scope);
 
     cg->ty_bread_memory_init = LLVMFunctionType(cg->void_ty, NULL, 0, 0);
     cg->fn_bread_memory_init = cg_declare_fn(cg, "bread_memory_init", cg->ty_bread_memory_init);
@@ -306,16 +309,32 @@ int bread_llvm_generate_function_bodies(Cg* cg, LLVMBuilderRef builder, LLVMValu
 
             f->ret_slot = LLVMGetParam(f->fn, 0);
 
+            // Push a new scope for this function
+            (void)LLVMBuildCall2(builder, cg->ty_push_scope, cg->fn_push_scope, NULL, 0, "");
             for (int i = 0; i < f->param_count; i++) {
                 LLVMValueRef param_val = LLVMGetParam(f->fn, (unsigned)(i + 1));
                 LLVMValueRef alloca = cg_alloc_value(cg, f->param_names[i]);
-                cg_scope_add_var(f->scope, f->param_names[i], alloca);
+                CgVar* param_var = cg_scope_add_var(f->scope, f->param_names[i], alloca);
+                
+                // Set the type descriptor for the parameter
+                if (param_var && f->param_type_descs && f->param_type_descs[i]) {
+                    param_var->type_desc = type_descriptor_clone(f->param_type_descs[i]);
+                    param_var->type = f->param_type_descs[i]->base_type;
+                }
 
                 LLVMValueRef copy_args[] = {
                     LLVMBuildBitCast(builder, param_val, cg->i8_ptr, ""),
                     LLVMBuildBitCast(builder, alloca, cg->i8_ptr, "")
                 };
                 (void)LLVMBuildCall2(builder, cg->ty_value_copy, cg->fn_value_copy, copy_args, 2, "");
+                
+                // Also register the parameter in the runtime scope
+                LLVMValueRef name_str = cg_get_string_global(cg, f->param_names[i]);
+                LLVMValueRef name_ptr = LLVMBuildBitCast(builder, name_str, cg->i8_ptr, "");
+                LLVMValueRef decl_type = LLVMConstInt(cg->i32, TYPE_NIL, 0); // Type will be determined at runtime
+                LLVMValueRef decl_const = LLVMConstInt(cg->i32, 0, 0);
+                LLVMValueRef decl_args[] = {name_ptr, decl_type, decl_const, cg_value_to_i8_ptr(cg, alloca)};
+                (void)LLVMBuildCall2(builder, cg->ty_var_decl_if_missing, cg->fn_var_decl_if_missing, decl_args, 4, "");
             }
 
             if (!cg_build_stmt_list(cg, f, val_size, f->body)) {
@@ -323,6 +342,22 @@ int bread_llvm_generate_function_bodies(Cg* cg, LLVMBuilderRef builder, LLVMValu
             }
             
             if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(builder)) == NULL) {
+                // Only pop the function scope if we can safely do so (only if no explicit return)
+                LLVMValueRef can_pop = LLVMBuildCall2(builder, cg->ty_can_pop_scope, cg->fn_can_pop_scope, NULL, 0, "");
+                LLVMValueRef can_pop_bool = LLVMBuildICmp(builder, LLVMIntNE, can_pop, LLVMConstInt(cg->i32, 0, 0), "");
+                
+                LLVMBasicBlockRef current_block = LLVMGetInsertBlock(builder);
+                LLVMValueRef fn = LLVMGetBasicBlockParent(current_block);
+                LLVMBasicBlockRef pop_block = LLVMAppendBasicBlock(fn, "pop_scope_end");
+                LLVMBasicBlockRef return_block = LLVMAppendBasicBlock(fn, "return_end");
+                
+                LLVMBuildCondBr(builder, can_pop_bool, pop_block, return_block);
+                
+                LLVMPositionBuilderAtEnd(builder, pop_block);
+                (void)LLVMBuildCall2(builder, cg->ty_pop_scope, cg->fn_pop_scope, NULL, 0, "");
+                LLVMBuildBr(builder, return_block);
+                
+                LLVMPositionBuilderAtEnd(builder, return_block);
                 LLVMBuildRetVoid(builder);
             }
         }

@@ -122,6 +122,111 @@ int cg_declare_var(Cg* cg, const char* name, const TypeDescriptor* type_desc, in
     return 1;
 }
 
+static int cg_stmt_guarantees_return(const ASTStmt* stmt);
+
+static int cg_stmt_list_guarantees_return(const ASTStmtList* list) {
+    if (!list) return 0;
+
+    for (const ASTStmt* s = list->head; s; s = s->next) {
+        if (cg_stmt_guarantees_return(s)) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+static int cg_stmt_guarantees_return(const ASTStmt* stmt) {
+    if (!stmt) return 0;
+
+    switch (stmt->kind) {
+        case AST_STMT_RETURN:
+            return 1;
+        case AST_STMT_IF: {
+            const ASTStmtList* then_branch = stmt->as.if_stmt.then_branch;
+            const ASTStmtList* else_branch = stmt->as.if_stmt.else_branch;
+            if (!else_branch) return 0;
+            return cg_stmt_list_guarantees_return(then_branch) && cg_stmt_list_guarantees_return(else_branch);
+        }
+        default:
+            return 0;
+    }
+}
+
+static int cg_check_return_stmt(Cg* cg, const ASTStmtFuncDecl* func_decl, const ASTStmt* ret_stmt) {
+    if (!cg || !func_decl || !ret_stmt) return 0;
+
+    if (ret_stmt->kind != AST_STMT_RETURN) return 1;
+
+    if (ret_stmt->as.ret.expr) {
+        if (ret_stmt->as.ret.expr->tag.is_known && ret_stmt->as.ret.expr->tag.type_desc) {
+            const TypeDescriptor* return_type = ret_stmt->as.ret.expr->tag.type_desc;
+            const TypeDescriptor* expected_type = func_decl->return_type_desc;
+
+            if (expected_type && !type_descriptor_compatible(return_type, expected_type)) {
+                cg_type_error(cg, "Return type mismatch", expected_type, return_type);
+                return 0;
+            }
+        }
+    } else {
+        // Return with no expression - check if function expects void/nil
+        if (func_decl->return_type != TYPE_NIL) {
+            cg_error(cg, "Missing return value", NULL);
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+static int cg_check_returns_in_stmt(Cg* cg, const ASTStmtFuncDecl* func_decl, const ASTStmt* stmt) {
+    if (!cg || !func_decl || !stmt) return 1;
+
+    switch (stmt->kind) {
+        case AST_STMT_RETURN:
+            return cg_check_return_stmt(cg, func_decl, stmt);
+        case AST_STMT_IF: {
+            if (stmt->as.if_stmt.then_branch) {
+                for (ASTStmt* s = stmt->as.if_stmt.then_branch->head; s; s = s->next) {
+                    if (!cg_check_returns_in_stmt(cg, func_decl, s)) return 0;
+                }
+            }
+            if (stmt->as.if_stmt.else_branch) {
+                for (ASTStmt* s = stmt->as.if_stmt.else_branch->head; s; s = s->next) {
+                    if (!cg_check_returns_in_stmt(cg, func_decl, s)) return 0;
+                }
+            }
+            return 1;
+        }
+        case AST_STMT_WHILE: {
+            if (stmt->as.while_stmt.body) {
+                for (ASTStmt* s = stmt->as.while_stmt.body->head; s; s = s->next) {
+                    if (!cg_check_returns_in_stmt(cg, func_decl, s)) return 0;
+                }
+            }
+            return 1;
+        }
+        case AST_STMT_FOR: {
+            if (stmt->as.for_stmt.body) {
+                for (ASTStmt* s = stmt->as.for_stmt.body->head; s; s = s->next) {
+                    if (!cg_check_returns_in_stmt(cg, func_decl, s)) return 0;
+                }
+            }
+            return 1;
+        }
+        case AST_STMT_FOR_IN: {
+            if (stmt->as.for_in_stmt.body) {
+                for (ASTStmt* s = stmt->as.for_in_stmt.body->head; s; s = s->next) {
+                    if (!cg_check_returns_in_stmt(cg, func_decl, s)) return 0;
+                }
+            }
+            return 1;
+        }
+        default:
+            return 1;
+    }
+}
+
 int cg_check_condition_type_desc_simple(Cg* cg, ASTExpr* condition) {
     TypeDescriptor* cond_type = cg_infer_expr_type_desc_simple(cg, condition);
     if (!cond_type) return 0;
@@ -147,6 +252,51 @@ CgVar* cg_find_var(Cg* cg, const char* name) {
     return NULL;
 }
 
+// Scope-aware variable lookup that considers scope depth
+static CgVar* cg_find_var_in_scope(Cg* cg, const char* name) {
+    if (!cg || !name || !cg->global_scope) return NULL;
+    
+    for (CgVar* v = cg->global_scope->vars; v; v = v->next) {
+        if (strcmp(v->name, name) == 0 && v->is_initialized <= cg->scope_depth) {
+            return v;
+        }
+    }
+    return NULL;
+}
+
+static CgStruct* cg_find_struct(Cg* cg, const char* name) {
+    if (!cg || !name) return NULL;
+
+    for (CgStruct* s = cg->structs; s; s = s->next) {
+        if (s->name && strcmp(s->name, name) == 0) {
+            return s;
+        }
+    }
+    return NULL;
+}
+
+static int cg_declare_struct_from_ast(Cg* cg, const ASTStmtStructDecl* struct_decl, const SourceLoc* loc) {
+    if (!cg || !struct_decl || !struct_decl->name) return 0;
+
+    if (cg_find_struct(cg, struct_decl->name)) {
+        cg_error_at(cg, "Struct already declared", struct_decl->name, loc);
+        return 0;
+    }
+
+    CgStruct* s = (CgStruct*)malloc(sizeof(CgStruct));
+    if (!s) return 0;
+    memset(s, 0, sizeof(CgStruct));
+
+    s->name = strdup(struct_decl->name);
+    s->field_count = struct_decl->field_count;
+    s->field_names = struct_decl->field_names;
+    s->field_types = struct_decl->field_types;
+
+    s->next = cg->structs;
+    cg->structs = s;
+    return 1;
+}
+
 int cg_declare_function_from_ast(Cg* cg, const ASTStmtFuncDecl* func_decl, const SourceLoc* loc) {
     if (!cg || !func_decl || !func_decl->name) return 0;
     
@@ -166,6 +316,26 @@ int cg_declare_function_from_ast(Cg* cg, const ASTStmtFuncDecl* func_decl, const
     new_func->param_count = func_decl->param_count;
     new_func->return_type = func_decl->return_type;
     new_func->return_type_desc = type_descriptor_clone(func_decl->return_type_desc);
+    
+    // Copy parameter names and type descriptors
+    if (func_decl->param_count > 0) {
+        new_func->param_names = (char**)malloc(sizeof(char*) * func_decl->param_count);
+        new_func->param_type_descs = (TypeDescriptor**)malloc(sizeof(TypeDescriptor*) * func_decl->param_count);
+        
+        if (!new_func->param_names || !new_func->param_type_descs) {
+            free(new_func->param_names);
+            free(new_func->param_type_descs);
+            free(new_func->name);
+            free(new_func);
+            return 0;
+        }
+        
+        for (int i = 0; i < func_decl->param_count; i++) {
+            new_func->param_names[i] = strdup(func_decl->param_names[i]);
+            new_func->param_type_descs[i] = type_descriptor_clone(func_decl->param_type_descs[i]);
+        }
+    }
+    
     new_func->next = cg->functions;
     cg->functions = new_func;
     
@@ -433,7 +603,7 @@ VarType cg_infer_expr_type_simple(Cg* cg, ASTExpr* expr) {
             return TYPE_NIL;
             
         case AST_EXPR_VAR: {
-            CgVar* var = cg_find_var(cg, expr->as.var_name);
+            CgVar* var = cg_find_var_in_scope(cg, expr->as.var_name);
             if (!var) return TYPE_NIL;
             return var->type;
         }
@@ -629,7 +799,7 @@ TypeDescriptor* cg_infer_expr_type_desc_simple(Cg* cg, ASTExpr* expr) {
             return type_descriptor_create_primitive(TYPE_NIL);
 
         case AST_EXPR_VAR: {
-            CgVar* var = cg_find_var(cg, expr->as.var_name);
+            CgVar* var = cg_find_var_in_scope(cg, expr->as.var_name);
             if (!var || !var->type_desc) return NULL;
             return type_descriptor_clone(var->type_desc);
         }
@@ -943,13 +1113,38 @@ TypeDescriptor* cg_infer_expr_type_desc_simple(Cg* cg, ASTExpr* expr) {
                 type_descriptor_free(target_type);
                 return type_descriptor_create_primitive(TYPE_INT);
             }
+
+            // Dictionary member access (e.g. dict.key) returns the dictionary's value type.
+            // This enables ergonomics like student.metadata.major where metadata is [String: String].
+            if (target_type->base_type == TYPE_DICT) {
+                TypeDescriptor* out = NULL;
+                if (target_type->params.dict.value_type) {
+                    out = type_descriptor_clone(target_type->params.dict.value_type);
+                }
+                type_descriptor_free(target_type);
+                return out ? out : type_descriptor_create_primitive(TYPE_NIL);
+            }
             
             // For struct field access, we need to look up the field type
             if (target_type->base_type == TYPE_STRUCT) {
-                // For now, assume all struct fields are Int (this should be improved)
-                // In a full implementation, we'd look up the actual field type from the struct definition
+                const char* struct_name = target_type->params.struct_type.name;
+                const char* field_name = expr->as.member.member;
+
+                if (struct_name && field_name) {
+                    CgStruct* sdef = cg_find_struct(cg, struct_name);
+                    if (sdef) {
+                        for (int i = 0; i < sdef->field_count; i++) {
+                            if (sdef->field_names[i] && strcmp(sdef->field_names[i], field_name) == 0) {
+                                TypeDescriptor* field_type = type_descriptor_clone(sdef->field_types[i]);
+                                type_descriptor_free(target_type);
+                                return field_type ? field_type : type_descriptor_create_primitive(TYPE_NIL);
+                            }
+                        }
+                    }
+                }
+
                 type_descriptor_free(target_type);
-                return type_descriptor_create_primitive(TYPE_INT);
+                return type_descriptor_create_primitive(TYPE_NIL);
             }
             
             // For class field access, look up the field type
@@ -1115,7 +1310,7 @@ int cg_analyze_expr(Cg* cg, ASTExpr* expr) {
     // First, recursively analyze sub-expressions
     switch (expr->kind) {
         case AST_EXPR_VAR: {
-            CgVar* var = cg_find_var(cg, expr->as.var_name);
+            CgVar* var = cg_find_var_in_scope(cg, expr->as.var_name);
             if (!var) {
                 cg_error(cg, "Undefined variable", expr->as.var_name);
                 return 0;
@@ -1124,8 +1319,8 @@ int cg_analyze_expr(Cg* cg, ASTExpr* expr) {
         }
         case AST_EXPR_CALL: {
             if (expr->as.call.name && strcmp(expr->as.call.name, "range") == 0) {
-                if (expr->as.call.arg_count != 1) {
-                    cg_error_at(cg, "Built-in function 'range' expects 1 argument", expr->as.call.name, &expr->loc);
+                if (expr->as.call.arg_count < 1 || expr->as.call.arg_count > 3) {
+                    cg_error_at(cg, "Built-in function 'range' expects 1 to 3 arguments", expr->as.call.name, &expr->loc);
                     return 0;
                 }
             } else {
@@ -1300,7 +1495,7 @@ int cg_analyze_stmt(Cg* cg, ASTStmt* stmt) {
             break;
         }
         case AST_STMT_VAR_ASSIGN: {
-            CgVar* var = cg_find_var(cg, stmt->as.var_assign.var_name);
+            CgVar* var = cg_find_var_in_scope(cg, stmt->as.var_assign.var_name);
             if (!var) {
                 cg_error_at(cg, "Undefined variable", stmt->as.var_assign.var_name, &stmt->loc);
                 return 0;
@@ -1424,8 +1619,9 @@ int cg_analyze_stmt(Cg* cg, ASTStmt* stmt) {
             return 0;
         }
         case AST_STMT_STRUCT_DECL: {
-            // Struct declarations are registered during semantic analysis
-            // For now, we just validate that the struct is well-formed
+            if (!cg_declare_struct_from_ast(cg, &stmt->as.struct_decl, &stmt->loc)) {
+                return 0;
+            }
             return 1;
         }
         case AST_STMT_CLASS_DECL: {
@@ -1475,37 +1671,16 @@ int cg_semantic_analyze(Cg* cg, ASTStmtList* program) {
             }
             
             // Analyze function body and check return statements
-            int has_return = 0;
             if (stmt->as.func_decl.body) {
                 for (ASTStmt* s = stmt->as.func_decl.body->head; s; s = s->next) {
                     if (!cg_analyze_stmt(cg, s)) return 0;
-                    if (s->kind == AST_STMT_RETURN) {
-                        has_return = 1;
-                        
-                        // Check return type compatibility
-                        if (s->as.ret.expr) {
-                            if (s->as.ret.expr->tag.is_known && s->as.ret.expr->tag.type_desc) {
-                                const TypeDescriptor* return_type = s->as.ret.expr->tag.type_desc;
-                                const TypeDescriptor* expected_type = stmt->as.func_decl.return_type_desc;
-                                
-                                if (expected_type && !type_descriptor_compatible(return_type, expected_type)) {
-                                    cg_type_error(cg, "Return type mismatch", expected_type, return_type);
-                                    return 0;
-                                }
-                            }
-                        } else {
-                            // Return with no expression - check if function expects void/nil
-                            if (stmt->as.func_decl.return_type != TYPE_NIL) {
-                                cg_error(cg, "Missing return value", NULL);
-                                return 0;
-                            }
-                        }
-                    }
+                    if (!cg_check_returns_in_stmt(cg, &stmt->as.func_decl, s)) return 0;
                 }
             }
             
             // Check if function needs a return statement
-            if (stmt->as.func_decl.return_type != TYPE_NIL && !has_return) {
+            if (stmt->as.func_decl.return_type != TYPE_NIL &&
+                !cg_stmt_list_guarantees_return(stmt->as.func_decl.body)) {
                 // Allow implicit return nil for optional return types
                 if (stmt->as.func_decl.return_type_desc && 
                     stmt->as.func_decl.return_type_desc->base_type == TYPE_OPTIONAL) {
@@ -1525,4 +1700,180 @@ int cg_semantic_analyze(Cg* cg, ASTStmtList* program) {
     }
     
     return !cg->had_error;
+}
+// Function-aware type inference that can search both local and global scopes
+TypeDescriptor* cg_infer_expr_type_desc_with_function(Cg* cg, CgFunction* cg_fn, ASTExpr* expr) {
+    if (!expr) return NULL;
+
+    switch (expr->kind) {
+        case AST_EXPR_INT:
+            return type_descriptor_create_primitive(TYPE_INT);
+        case AST_EXPR_DOUBLE:
+            return type_descriptor_create_primitive(TYPE_DOUBLE);
+        case AST_EXPR_BOOL:
+            return type_descriptor_create_primitive(TYPE_BOOL);
+        case AST_EXPR_STRING:
+        case AST_EXPR_STRING_LITERAL:
+            return type_descriptor_create_primitive(TYPE_STRING);
+        case AST_EXPR_NIL:
+            return type_descriptor_create_primitive(TYPE_NIL);
+
+        case AST_EXPR_VAR: {
+            // First try to find in function local scope if available
+            CgVar* var = NULL;
+            if (cg_fn && cg_fn->scope) {
+                var = cg_scope_find_var(cg_fn->scope, expr->as.var_name);
+                if (var && var->type_desc) {
+                    return type_descriptor_clone(var->type_desc);
+                }
+            }
+            
+            // If not found in local scope OR found but missing type descriptor, check function parameters directly
+            if (cg_fn && cg_fn->param_names && cg_fn->param_type_descs) {
+                for (int i = 0; i < cg_fn->param_count; i++) {
+                    if (cg_fn->param_names[i] && strcmp(cg_fn->param_names[i], expr->as.var_name) == 0) {
+                        if (cg_fn->param_type_descs[i]) {
+                            return type_descriptor_clone(cg_fn->param_type_descs[i]);
+                        }
+                        break;
+                    }
+                }
+            }
+            
+            // If not found in function context, try global scope
+            if (!var) {
+                var = cg_find_var(cg, expr->as.var_name);
+            }
+            
+            if (!var || !var->type_desc) return NULL;
+            return type_descriptor_clone(var->type_desc);
+        }
+
+        case AST_EXPR_CALL: {
+            if (expr->as.call.name && strcmp(expr->as.call.name, "range") == 0) {
+                TypeDescriptor* elem = type_descriptor_create_primitive(TYPE_INT);
+                if (!elem) return NULL;
+                TypeDescriptor* out = type_descriptor_create_array(elem);
+                if (!out) {
+                    type_descriptor_free(elem);
+                    return NULL;
+                }
+                return out;
+            }
+
+            const BuiltinFunction* builtin = bread_builtin_lookup(expr->as.call.name);
+            if (builtin) {
+                return type_descriptor_create_primitive(builtin->return_type);
+            }
+
+            // Check for user-defined functions
+            CgFunction* func = cg_find_function(cg, expr->as.call.name);
+            if (func) {
+                if (func->return_type_desc) {
+                    return type_descriptor_clone(func->return_type_desc);
+                } else {
+                    return type_descriptor_create_primitive(func->return_type);
+                }
+            }
+
+            return NULL;
+        }
+
+        case AST_EXPR_METHOD_CALL: {
+            TypeDescriptor* target_type = cg_infer_expr_type_desc_with_function(cg, cg_fn, expr->as.method_call.target);
+            if (!target_type) return NULL;
+
+            if (target_type->base_type == TYPE_ARRAY) {
+                if (strcmp(expr->as.method_call.name, "append") == 0) {
+                    type_descriptor_free(target_type);
+                    return type_descriptor_create_primitive(TYPE_NIL);
+                }
+            } else if (target_type->base_type == TYPE_DICT) {
+                if (strcmp(expr->as.method_call.name, "set") == 0) {
+                    type_descriptor_free(target_type);
+                    return type_descriptor_create_primitive(TYPE_NIL);
+                }
+            } else if (target_type->base_type == TYPE_CLASS) {
+                // For class method calls, we'd need more sophisticated type checking
+                type_descriptor_free(target_type);
+                return type_descriptor_create_primitive(TYPE_NIL);
+            }
+
+            type_descriptor_free(target_type);
+            return NULL;
+        }
+
+        case AST_EXPR_BINARY: {
+            TypeDescriptor* left = cg_infer_expr_type_desc_with_function(cg, cg_fn, expr->as.binary.left);
+            TypeDescriptor* right = cg_infer_expr_type_desc_with_function(cg, cg_fn, expr->as.binary.right);
+            if (!left || !right) {
+                type_descriptor_free(left);
+                type_descriptor_free(right);
+                return NULL;
+            }
+
+            TypeDescriptor* result = NULL;
+            switch (expr->as.binary.op) {
+                case '+':
+                case '-':
+                case '*':
+                case '/':
+                case '%':
+                    if (left->base_type == TYPE_INT && right->base_type == TYPE_INT) {
+                        result = type_descriptor_create_primitive(TYPE_INT);
+                    } else if ((left->base_type == TYPE_DOUBLE || left->base_type == TYPE_INT) &&
+                               (right->base_type == TYPE_DOUBLE || right->base_type == TYPE_INT)) {
+                        result = type_descriptor_create_primitive(TYPE_DOUBLE);
+                    } else if (expr->as.binary.op == '+' && 
+                               left->base_type == TYPE_STRING && right->base_type == TYPE_STRING) {
+                        result = type_descriptor_create_primitive(TYPE_STRING);
+                    }
+                    break;
+                case '<':
+                case '>':
+                case 'L': // <=
+                case 'G': // >=
+                case 'E': // ==
+                case 'N': // !=
+                    result = type_descriptor_create_primitive(TYPE_BOOL);
+                    break;
+                case '&': // &&
+                case '|': // ||
+                    if (left->base_type == TYPE_BOOL && right->base_type == TYPE_BOOL) {
+                        result = type_descriptor_create_primitive(TYPE_BOOL);
+                    }
+                    break;
+            }
+
+            type_descriptor_free(left);
+            type_descriptor_free(right);
+            return result;
+        }
+
+        case AST_EXPR_UNARY: {
+            TypeDescriptor* operand = cg_infer_expr_type_desc_with_function(cg, cg_fn, expr->as.unary.operand);
+            if (!operand) return NULL;
+
+            TypeDescriptor* result = NULL;
+            switch (expr->as.unary.op) {
+                case '-':
+                    if (operand->base_type == TYPE_INT || operand->base_type == TYPE_DOUBLE) {
+                        result = type_descriptor_clone(operand);
+                    }
+                    break;
+                case '!':
+                    if (operand->base_type == TYPE_BOOL) {
+                        result = type_descriptor_create_primitive(TYPE_BOOL);
+                    }
+                    break;
+            }
+
+            type_descriptor_free(operand);
+            return result;
+        }
+
+        // For other expression types, fall back to the original function
+        default:
+            return cg_infer_expr_type_desc_simple(cg, expr);
+    }
 }

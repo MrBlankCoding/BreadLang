@@ -544,28 +544,54 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
         case AST_EXPR_CALL: {
             // Handle built-in range function
             if (expr->as.call.name && strcmp(expr->as.call.name, "range") == 0) {
-                if (expr->as.call.arg_count != 1) {
-                    fprintf(stderr, "Error: range() expects 1 argument\n");
+                int arg_count = expr->as.call.arg_count;
+                if (arg_count < 1 || arg_count > 3) {
+                    fprintf(stderr, "Error: range() expects 1-3 arguments\n");
                     return NULL;
                 }
                 
-                LLVMValueRef arg_val = cg_build_expr(cg, cg_fn, val_size, expr->as.call.args[0]);
-                if (!arg_val) return NULL;
-                
                 tmp = cg_alloc_value(cg, "rangetmp");
                 
-                // Call bread_range function to create the array
-                // We need to extract the integer value from the BreadValue
-                LLVMValueRef int_val = LLVMBuildCall2(cg->builder, cg->ty_value_get_int, cg->fn_value_get_int, 
-                                                     (LLVMValueRef[]){cg_value_to_i8_ptr(cg, arg_val)}, 1, "range_n");
-                
-                // Call bread_range(n) to create the array
-                LLVMValueRef range_array = LLVMBuildCall2(cg->builder, cg->ty_range_simple, cg->fn_range_simple,
-                                                         (LLVMValueRef[]){int_val}, 1, "range_array");
-                
-                // Set the result value to the array
-                LLVMValueRef array_args[] = {cg_value_to_i8_ptr(cg, tmp), range_array};
-                (void)LLVMBuildCall2(cg->builder, cg->ty_value_set_array, cg->fn_value_set_array, array_args, 2, "");
+                if (arg_count == 1) {
+                    // range(end) - use simple range function
+                    LLVMValueRef arg_val = cg_build_expr(cg, cg_fn, val_size, expr->as.call.args[0]);
+                    if (!arg_val) return NULL;
+                    
+                    LLVMValueRef int_val = LLVMBuildCall2(cg->builder, cg->ty_value_get_int, cg->fn_value_get_int, 
+                                                         (LLVMValueRef[]){cg_value_to_i8_ptr(cg, arg_val)}, 1, "range_n");
+                    
+                    LLVMValueRef range_array = LLVMBuildCall2(cg->builder, cg->ty_range_simple, cg->fn_range_simple,
+                                                             (LLVMValueRef[]){int_val}, 1, "range_array");
+                    
+                    LLVMValueRef array_args[] = {cg_value_to_i8_ptr(cg, tmp), range_array};
+                    (void)LLVMBuildCall2(cg->builder, cg->ty_value_set_array, cg->fn_value_set_array, array_args, 2, "");
+                } else {
+                    // range(start, end) or range(start, end, step) - use range_create function
+                    LLVMValueRef start_val = cg_build_expr(cg, cg_fn, val_size, expr->as.call.args[0]);
+                    LLVMValueRef end_val = cg_build_expr(cg, cg_fn, val_size, expr->as.call.args[1]);
+                    if (!start_val || !end_val) return NULL;
+                    
+                    LLVMValueRef start_int = LLVMBuildCall2(cg->builder, cg->ty_value_get_int, cg->fn_value_get_int, 
+                                                           (LLVMValueRef[]){cg_value_to_i8_ptr(cg, start_val)}, 1, "range_start");
+                    LLVMValueRef end_int = LLVMBuildCall2(cg->builder, cg->ty_value_get_int, cg->fn_value_get_int, 
+                                                         (LLVMValueRef[]){cg_value_to_i8_ptr(cg, end_val)}, 1, "range_end");
+                    
+                    LLVMValueRef step_int;
+                    if (arg_count == 3) {
+                        LLVMValueRef step_val = cg_build_expr(cg, cg_fn, val_size, expr->as.call.args[2]);
+                        if (!step_val) return NULL;
+                        step_int = LLVMBuildCall2(cg->builder, cg->ty_value_get_int, cg->fn_value_get_int, 
+                                                 (LLVMValueRef[]){cg_value_to_i8_ptr(cg, step_val)}, 1, "range_step");
+                    } else {
+                        step_int = LLVMConstInt(cg->i32, 1, 0); // default step = 1
+                    }
+                    
+                    LLVMValueRef range_array = LLVMBuildCall2(cg->builder, cg->ty_range_create, cg->fn_range_create,
+                                                             (LLVMValueRef[]){start_int, end_int, step_int}, 3, "range_array");
+                    
+                    LLVMValueRef array_args[] = {cg_value_to_i8_ptr(cg, tmp), range_array};
+                    (void)LLVMBuildCall2(cg->builder, cg->ty_value_set_array, cg->fn_value_set_array, array_args, 2, "");
+                }
                 
                 return tmp;
             }

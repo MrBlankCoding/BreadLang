@@ -31,6 +31,7 @@ typedef struct CgFunction {
     ASTStmtList* body;
     int param_count;
     char** param_names;
+    TypeDescriptor** param_type_descs;
     VarType return_type;
     TypeDescriptor* return_type_desc;
     struct CgFunction* next;
@@ -59,6 +60,14 @@ typedef struct CgClass {
     char** method_names;             // Method names for lookup
     LLVMValueRef constructor_function; // Generated LLVM function for constructor
 } CgClass;
+
+typedef struct CgStruct {
+    char* name;
+    int field_count;
+    char** field_names;
+    TypeDescriptor** field_types;
+    struct CgStruct* next;
+} CgStruct;
 
 typedef struct {
     LLVMModuleRef mod;
@@ -100,6 +109,8 @@ typedef struct {
     LLVMValueRef fn_var_load;
     LLVMValueRef fn_push_scope;
     LLVMValueRef fn_pop_scope;
+    LLVMTypeRef ty_can_pop_scope;
+    LLVMValueRef fn_can_pop_scope;
     LLVMValueRef fn_bread_memory_init;
     LLVMValueRef fn_bread_memory_cleanup;
     LLVMValueRef fn_bread_string_intern_init;
@@ -209,6 +220,7 @@ typedef struct {
     LLVMBasicBlockRef current_loop_continue;
 
     CgFunction* functions;
+    CgStruct* structs;
     CgClass* classes;
     LLVMTypeRef value_type;
     LLVMTypeRef value_ptr_type;
@@ -269,6 +281,7 @@ void cg_type_error_at(Cg* cg, const char* msg, const TypeDescriptor* expected, c
 // Type checking functions (simplified for Phase 2)
 VarType cg_infer_expr_type_simple(Cg* cg, ASTExpr* expr);
 TypeDescriptor* cg_infer_expr_type_desc_simple(Cg* cg, ASTExpr* expr);
+TypeDescriptor* cg_infer_expr_type_desc_with_function(Cg* cg, CgFunction* cg_fn, ASTExpr* expr);
 int cg_check_condition_type_simple(Cg* cg, ASTExpr* condition);
 int cg_check_condition_type_desc_simple(Cg* cg, ASTExpr* condition);
 void cg_type_error(Cg* cg, const char* msg, const TypeDescriptor* expected, const TypeDescriptor* actual);

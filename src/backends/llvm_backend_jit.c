@@ -27,7 +27,12 @@ int bread_llvm_jit_exec(const ASTStmtList* program) {
 
     LLVMModuleRef mod = NULL;
     Cg cg;
-    if (!bread_llvm_build_module_from_program(program, &mod, &cg)) return 1;
+    if (!bread_llvm_build_module_from_program(program, &mod, &cg)) {
+        if (bread_error_has_error()) {
+            bread_error_print_current();
+        }
+        return 1;
+    }
     if (!bread_llvm_verify_module(mod)) {
         LLVMDisposeModule(mod);
         return 1;

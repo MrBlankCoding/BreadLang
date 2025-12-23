@@ -1,0 +1,282 @@
+class Shape {
+    name: String
+    color: String
+    
+    def init(name: String, color: String) {
+        self.name = name
+        self.color = color
+    }
+    
+    def describe() -> String {
+        return "A " + color + " " + name
+    }
+    
+    def area() -> Double {
+        return 0.0
+    }
+}
+
+class Rectangle extends Shape {
+    width: Double
+    height: Double
+    
+    def init(color: String, width: Double, height: Double) {
+        super.init("rectangle", color)
+        self.width = width
+        self.height = height
+    }
+    
+    def area() -> Double {
+        return width * height
+    }
+    
+    def perimeter() -> Double {
+        return 2.0 * (width + height)
+    }
+}
+
+class Circle extends Shape {
+    radius: Double
+    
+    def init(color: String, radius: Double) {
+        super.init("circle", color)
+        self.radius = radius
+    }
+    
+    def area() -> Double {
+        return 3.14159 * radius * radius
+    }
+    
+    def circumference() -> Double {
+        return 2.0 * 3.14159 * radius
+    }
+}
+
+
+struct Point {
+    x: Int
+    y: Int
+}
+
+struct Student {
+    name: String
+    grades: [Int]
+    metadata: [String: String]
+}
+
+def calculateAverage(numbers: [Int]) -> Double {
+    if len(numbers) == 0 {
+        return 0.0
+    }
+    
+    let sum: Int = 0
+    let i: Int = 0
+    while i < len(numbers) {
+        sum = sum + numbers[i]
+        i = i + 1
+    }
+    
+    return float(sum) / float(len(numbers))
+}
+
+def findMax(numbers: [Int]) -> Int {
+    if len(numbers) == 0 {
+        return 0
+    }
+    
+    let max: Int = numbers[0]
+    let i: Int = 1
+    while i < len(numbers) {
+        if numbers[i] > max {
+            max = numbers[i]
+        }
+        i = i + 1
+    }
+    return max
+}
+
+def gradeToLetter(score: Int) -> String {
+    if score >= 90 {
+        return "A"
+    } else if score >= 80 {
+        return "B"
+    } else if score >= 70 {
+        return "C"
+    } else if score >= 60 {
+        return "D"
+    } else {
+        return "F"
+    }
+}
+
+def fibonacci(n: Int) -> [Int] {
+    let result: [Int] = []
+    
+    if n <= 0 {
+        return result
+    }
+    
+    result.append(0)
+    if n == 1 {
+        return result
+    }
+    
+    result.append(1)
+    
+    let i: Int = 2
+    while i < n {
+        let prev: Int = result[i - 1]
+        let prevPrev: Int = result[i - 2]
+        result.append(prev + prevPrev)
+        i = i + 1
+    }
+    
+    return result
+}
+
+def isPrime(n: Int) -> Bool {
+    if n < 2 {
+        return false
+    }
+    if n == 2 {
+        return true
+    }
+    if n % 2 == 0 {
+        return false
+    }
+    
+    let i: Int = 3
+    while i * i <= n {
+        if n % i == 0 {
+            return false
+        }
+        i = i + 2
+    }
+    
+    return true
+}
+
+print("=== BreadLang Feature Showcase ===")
+print("")
+print("1. Object-Oriented Programming:")
+print("--------------------------------")
+
+let rect: Rectangle = Rectangle("blue", 5.0, 3.0)
+let circ: Circle = Circle("red", 4.0)
+
+print(rect.describe())
+print("  Area: " + str(rect.area()))
+print("  Perimeter: " + str(rect.perimeter()))
+print("")
+
+print(circ.describe())
+print("  Area: " + str(circ.area()))
+print("  Circumference: " + str(circ.circumference()))
+print("")
+
+print("2. Structs & Collections:")
+print("-------------------------")
+
+let students: [Student] = []
+students.append(Student{
+    name: "Alice",
+    grades: [95, 87, 92, 88],
+    metadata: ["major": "CS", "year": "junior"]
+})
+students.append(Student{
+    name: "Bob",
+    grades: [78, 82, 85, 79],
+    metadata: ["major": "Math", "year": "senior"]
+})
+students.append(Student{
+    name: "Charlie",
+    grades: [92, 94, 89, 93],
+    metadata: ["major": "Physics", "year": "sophomore"]
+})
+
+let student_i: Int = 0
+while student_i < len(students) {
+    let student: Student = students[student_i]
+    let avg: Double = calculateAverage(student.grades)
+    let maxGrade: Int = findMax(student.grades)
+    let letter: String = gradeToLetter(int(avg))
+    
+    print(student.name + " (" + student.metadata["major"] + ", " + student.metadata["year"] + ")")
+    print("  Average: " + str(avg) + " (Grade: " + letter + ")")
+    print("  Highest Score: " + str(maxGrade))
+    student_i = student_i + 1
+}
+print("")
+
+print("3. Algorithms & Math:")
+print("---------------------")
+
+print("Fibonacci sequence (first 10 numbers):")
+let fib: [Int] = fibonacci(10)
+let i: Int = 0
+while i < len(fib) {
+    print("  " + str(fib[i]))
+    i = i + 1
+}
+print("")
+
+print("Prime numbers up to 30:")
+let primes: String = ""
+for i in range(2, 31) {
+    if isPrime(i) {
+        primes = primes + str(i) + " "
+    }
+}
+print("  " + primes)
+print("")
+
+print("4. Control Flow:")
+print("----------------")
+
+let matrix: [[Int]] = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+print("Matrix:")
+let row_i: Int = 0
+while row_i < len(matrix) {
+    let line: String = "  "
+    let col_i: Int = 0
+    while col_i < len(matrix[row_i]) {
+        line = line + str(matrix[row_i][col_i]) + " "
+        col_i = col_i + 1
+    }
+    print(line)
+    row_i = row_i + 1
+}
+print("")
+
+print("5. Type System:")
+print("---------------")
+let int_val: Int = 42
+let double_val: Double = 3.14159
+let string_val: String = "Hello"
+let bool_val: Bool = true
+let array_val: [Int] = [1, 2, 3]
+let dict_val: [String: Int] = ["x": 10, "y": 20]
+
+print("int_val type: " + type(int_val) + " = " + str(int_val))
+print("double_val type: " + type(double_val) + " = " + str(double_val))
+print("string_val type: " + type(string_val) + " = " + string_val)
+print("bool_val type: " + type(bool_val) + " = " + str(bool_val))
+print("array_val type: " + type(array_val) + ", length: " + str(len(array_val)))
+print("dict_val type: " + type(dict_val) + ", length: " + str(len(dict_val)))
+print("")
+
+print("6. Expression Power:")
+print("--------------------")
+let a: Int = 10
+let b: Int = 3
+print("a = " + str(a) + ", b = " + str(b))
+print("a + b = " + str(a + b))
+print("a - b = " + str(a - b))
+print("a * b = " + str(a * b))
+print("a / b = " + str(a / b))
+print("a % b = " + str(a % b))
+print("a > b: " + str(a > b))
+print("a == b: " + str(a == b))
+print("")
+
+print("=== Demo Complete! ===")

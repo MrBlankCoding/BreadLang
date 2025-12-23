@@ -61,6 +61,10 @@ void pop_scope() {
     scope_depth--;
 }
 
+int can_pop_scope() {
+    return scope_depth > 1;
+}
+
 Variable* get_variable(const char* name) {
     char buf[256];
     strncpy(buf, name, 255);

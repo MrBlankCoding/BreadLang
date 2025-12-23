@@ -155,10 +155,24 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
                 CgVar* var = cg_scope_add_var(cg_fn->scope, stmt->as.var_decl.var_name, slot);
                 if (var) {
                     var->type = stmt->as.var_decl.type;
+                    var->type_desc = stmt->as.var_decl.type_desc ? type_descriptor_clone(stmt->as.var_decl.type_desc) : type_descriptor_create_primitive(stmt->as.var_decl.type);
                     var->unboxed_type = unboxed_type;
                     var->is_const = stmt->as.var_decl.is_const;
                     var->is_initialized = 1;
                 }
+                
+                // For unboxed variables, we need to create a boxed version for runtime access
+                LLVMValueRef boxed_slot = cg_alloc_value(cg, stmt->as.var_decl.var_name);
+                LLVMValueRef boxed_val = cg_box_value(cg, init_val);
+                cg_copy_value_into(cg, boxed_slot, boxed_val);
+                
+                // Register the boxed version in the runtime scope
+                LLVMValueRef name_str = cg_get_string_global(cg, stmt->as.var_decl.var_name);
+                LLVMValueRef name_ptr = LLVMBuildBitCast(cg->builder, name_str, cg->i8_ptr, "");
+                LLVMValueRef type = LLVMConstInt(cg->i32, stmt->as.var_decl.type, 0);
+                LLVMValueRef is_const = LLVMConstInt(cg->i32, stmt->as.var_decl.is_const, 0);
+                LLVMValueRef decl_args[] = {name_ptr, type, is_const, cg_value_to_i8_ptr(cg, boxed_slot)};
+                (void)LLVMBuildCall2(cg->builder, cg->ty_var_decl_if_missing, cg->fn_var_decl_if_missing, decl_args, 4, "");
             } else {
                 LLVMValueRef init = cg_build_expr(cg, cg_fn, val_size, stmt->as.var_decl.init);
                 if (!init) return 0;
@@ -169,10 +183,19 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
                     CgVar* var = cg_scope_add_var(cg_fn->scope, stmt->as.var_decl.var_name, slot);
                     if (var) {
                         var->type = stmt->as.var_decl.type;
+                        var->type_desc = stmt->as.var_decl.type_desc ? type_descriptor_clone(stmt->as.var_decl.type_desc) : type_descriptor_create_primitive(stmt->as.var_decl.type);
                         var->unboxed_type = UNBOXED_NONE;
                         var->is_const = stmt->as.var_decl.is_const;
                         var->is_initialized = 1;
                     }
+                    
+                    // Also register the variable in the runtime scope for for-in loops
+                    LLVMValueRef name_str = cg_get_string_global(cg, stmt->as.var_decl.var_name);
+                    LLVMValueRef name_ptr = LLVMBuildBitCast(cg->builder, name_str, cg->i8_ptr, "");
+                    LLVMValueRef type = LLVMConstInt(cg->i32, stmt->as.var_decl.type, 0);
+                    LLVMValueRef is_const = LLVMConstInt(cg->i32, stmt->as.var_decl.is_const, 0);
+                    LLVMValueRef decl_args[] = {name_ptr, type, is_const, cg_value_to_i8_ptr(cg, slot)};
+                    (void)LLVMBuildCall2(cg->builder, cg->ty_var_decl_if_missing, cg->fn_var_decl_if_missing, decl_args, 4, "");
                 } else {
                     LLVMValueRef name_str = cg_get_string_global(cg, stmt->as.var_decl.var_name);
                     LLVMValueRef name_ptr = LLVMBuildBitCast(cg->builder, name_str, cg->i8_ptr, "");
@@ -289,17 +312,50 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
                 fprintf(stderr, "Error: LLVM for-loop only supports range()\n");
                 return 0;
             }
-            if (stmt->as.for_stmt.range_expr->as.call.arg_count != 1) {
-                fprintf(stderr, "Error: range() expects 1 argument\n");
+            int arg_count = stmt->as.for_stmt.range_expr->as.call.arg_count;
+            if (arg_count < 1 || arg_count > 3) {
+                fprintf(stderr, "Error: range() expects 1-3 arguments\n");
                 return 0;
             }
-            ASTExpr* bound_expr = stmt->as.for_stmt.range_expr->as.call.args[0];
-            if (!bound_expr || bound_expr->kind != AST_EXPR_INT) {
-                fprintf(stderr, "Error: LLVM for-loop currently requires range(Int literal)\n");
-                return 0;
+            
+            int start = 0, end = 0, step = 1;
+            
+            if (arg_count == 1) {
+                // range(end)
+                ASTExpr* end_expr = stmt->as.for_stmt.range_expr->as.call.args[0];
+                if (!end_expr || end_expr->kind != AST_EXPR_INT) {
+                    fprintf(stderr, "Error: LLVM for-loop currently requires range(Int literal)\n");
+                    return 0;
+                }
+                end = end_expr->as.int_val;
+            } else if (arg_count == 2) {
+                // range(start, end)
+                ASTExpr* start_expr = stmt->as.for_stmt.range_expr->as.call.args[0];
+                ASTExpr* end_expr = stmt->as.for_stmt.range_expr->as.call.args[1];
+                if (!start_expr || start_expr->kind != AST_EXPR_INT ||
+                    !end_expr || end_expr->kind != AST_EXPR_INT) {
+                    fprintf(stderr, "Error: LLVM for-loop currently requires range(Int literal)\n");
+                    return 0;
+                }
+                start = start_expr->as.int_val;
+                end = end_expr->as.int_val;
+            } else { // arg_count == 3
+                // range(start, end, step)
+                ASTExpr* start_expr = stmt->as.for_stmt.range_expr->as.call.args[0];
+                ASTExpr* end_expr = stmt->as.for_stmt.range_expr->as.call.args[1];
+                ASTExpr* step_expr = stmt->as.for_stmt.range_expr->as.call.args[2];
+                if (!start_expr || start_expr->kind != AST_EXPR_INT ||
+                    !end_expr || end_expr->kind != AST_EXPR_INT ||
+                    !step_expr || step_expr->kind != AST_EXPR_INT) {
+                    fprintf(stderr, "Error: LLVM for-loop currently requires range(Int literal)\n");
+                    return 0;
+                }
+                start = start_expr->as.int_val;
+                end = end_expr->as.int_val;
+                step = step_expr->as.int_val;
             }
 
-            int upper = bound_expr->as.int_val;
+            int upper = end;
 
             LLVMBasicBlockRef current_block = LLVMGetInsertBlock(cg->builder);
             if (!current_block) return 0;
@@ -316,12 +372,12 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
             cg->current_loop_continue = inc_block;
 
             LLVMValueRef i_slot = LLVMBuildAlloca(cg->builder, cg->i32, "for.i");
-            LLVMBuildStore(cg->builder, LLVMConstInt(cg->i32, 0, 0), i_slot);
+            LLVMBuildStore(cg->builder, LLVMConstInt(cg->i32, start, 0), i_slot);
 
             LLVMValueRef name_str = cg_get_string_global(cg, stmt->as.for_stmt.var_name);
             LLVMValueRef name_ptr = LLVMBuildBitCast(cg->builder, name_str, cg->i8_ptr, "");
             LLVMValueRef init_tmp = cg_alloc_value(cg, "for.init");
-            LLVMValueRef set_args[] = {cg_value_to_i8_ptr(cg, init_tmp), LLVMConstInt(cg->i32, 0, 0)};
+            LLVMValueRef set_args[] = {cg_value_to_i8_ptr(cg, init_tmp), LLVMConstInt(cg->i32, start, 0)};
             (void)LLVMBuildCall2(cg->builder, cg->ty_value_set_int, cg->fn_value_set_int, set_args, 2, "");
             LLVMValueRef decl_type = LLVMConstInt(cg->i32, TYPE_INT, 0);
             LLVMValueRef decl_const = LLVMConstInt(cg->i32, 0, 0);
@@ -332,7 +388,13 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
 
             LLVMPositionBuilderAtEnd(cg->builder, cond_block);
             LLVMValueRef i_val = LLVMBuildLoad2(cg->builder, cg->i32, i_slot, "");
-            LLVMValueRef cmp = LLVMBuildICmp(cg->builder, LLVMIntSLT, i_val, LLVMConstInt(cg->i32, upper, 0), "");
+            // Handle both positive and negative step values
+            LLVMValueRef cmp;
+            if (step > 0) {
+                cmp = LLVMBuildICmp(cg->builder, LLVMIntSLT, i_val, LLVMConstInt(cg->i32, upper, 0), "");
+            } else {
+                cmp = LLVMBuildICmp(cg->builder, LLVMIntSGT, i_val, LLVMConstInt(cg->i32, upper, 0), "");
+            }
             LLVMBuildCondBr(cg->builder, cmp, body_block, end_block);
 
             LLVMPositionBuilderAtEnd(cg->builder, body_block);
@@ -350,7 +412,7 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
             }
 
             LLVMPositionBuilderAtEnd(cg->builder, inc_block);
-            LLVMValueRef next_i = LLVMBuildAdd(cg->builder, i_val, LLVMConstInt(cg->i32, 1, 0), "");
+            LLVMValueRef next_i = LLVMBuildAdd(cg->builder, i_val, LLVMConstInt(cg->i32, step, 0), "");
             LLVMBuildStore(cg->builder, next_i, i_slot);
             LLVMBuildBr(cg->builder, cond_block);
 
@@ -384,7 +446,7 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
             if (!iterable) return 0;
 
             // Determine the type of the iterable
-            TypeDescriptor* iterable_type = cg_infer_expr_type_desc_simple(cg, stmt->as.for_in_stmt.iterable);
+            TypeDescriptor* iterable_type = cg_infer_expr_type_desc_with_function(cg, cg_fn, stmt->as.for_in_stmt.iterable);
             if (!iterable_type) return 0;
 
             LLVMValueRef keys_array = NULL;
@@ -496,6 +558,7 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
             new_cg_fn->body = stmt->as.func_decl.body;
             new_cg_fn->param_count = stmt->as.func_decl.param_count;
             new_cg_fn->param_names = stmt->as.func_decl.param_names;
+            new_cg_fn->param_type_descs = stmt->as.func_decl.param_type_descs;
             new_cg_fn->scope = cg_scope_new(NULL);
             new_cg_fn->next = cg->functions;
             new_cg_fn->ret_slot = NULL;
@@ -512,9 +575,22 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
             }
             cg_copy_value_into(cg, cg_fn->ret_slot, val);
             
-            // Pop the scope before returning from the function
-            // (void)LLVMBuildCall2(cg->builder, cg->ty_pop_scope, cg->fn_pop_scope, NULL, 0, "");
+            // Only pop the scope if we can safely do so
+            LLVMValueRef can_pop = LLVMBuildCall2(cg->builder, cg->ty_can_pop_scope, cg->fn_can_pop_scope, NULL, 0, "");
+            LLVMValueRef can_pop_bool = LLVMBuildICmp(cg->builder, LLVMIntNE, can_pop, LLVMConstInt(cg->i32, 0, 0), "");
             
+            LLVMBasicBlockRef current_block = LLVMGetInsertBlock(cg->builder);
+            LLVMValueRef fn = LLVMGetBasicBlockParent(current_block);
+            LLVMBasicBlockRef pop_block = LLVMAppendBasicBlock(fn, "pop_scope");
+            LLVMBasicBlockRef return_block = LLVMAppendBasicBlock(fn, "return");
+            
+            LLVMBuildCondBr(cg->builder, can_pop_bool, pop_block, return_block);
+            
+            LLVMPositionBuilderAtEnd(cg->builder, pop_block);
+            (void)LLVMBuildCall2(cg->builder, cg->ty_pop_scope, cg->fn_pop_scope, NULL, 0, "");
+            LLVMBuildBr(cg->builder, return_block);
+            
+            LLVMPositionBuilderAtEnd(cg->builder, return_block);
             LLVMBuildRetVoid(cg->builder);
             return 1;
         }

@@ -148,6 +148,10 @@ void bread_push_scope(void) {
 void bread_pop_scope(void) {
     pop_scope();
 }
+
+int bread_can_pop_scope(void) {
+    return can_pop_scope();
+}
 // convert unboxed primitives to bread value
 BreadValue bread_box_int(int value) {
     BreadValue result;

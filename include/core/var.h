@@ -95,6 +95,7 @@ struct ExprResult;
 void init_variables();
 void push_scope();
 void pop_scope();
+int can_pop_scope();
 void execute_variable_declaration(char* line);
 void execute_variable_assignment(char* line);
 int bread_init_variable_from_expr_result(const char* name, const struct ExprResult* value);
