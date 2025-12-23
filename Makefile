@@ -1,8 +1,14 @@
-.PHONY: help configure build all clean distclean rebuild test test-all test-property install run jit compile-llvm compile-obj compile-exe
+.PHONY: help configure build all clean distclean rebuild test test-all test-property install run jit compile-llvm compile-obj compile-exe package-macos
 
 BUILD_DIR ?= build
 BUILD_TYPE ?= Debug
 BREADLANG ?= $(BUILD_DIR)/breadlang
+
+# macOS release bundle settings (only used by package-macos)
+MACOS_PACKAGE_BUILD_DIR ?= build-macos-universal
+MACOS_PACKAGE_DIST_DIR ?= dist/macos-universal
+MACOS_DEPLOYMENT_TARGET ?= 15.0
+MACOS_PACKAGE_ARCHS ?= $(shell uname -m)
 
 help:
 	@printf "%s\n" "Build Targets:" \
@@ -94,3 +100,11 @@ test-property: build
 
 install: build
 	cmake --build $(BUILD_DIR) --target install
+
+package-macos:
+	cmake -S . -B $(MACOS_PACKAGE_BUILD_DIR) -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="$(MACOS_PACKAGE_ARCHS)" -DCMAKE_OSX_DEPLOYMENT_TARGET=$(MACOS_DEPLOYMENT_TARGET)
+	cmake --build $(MACOS_PACKAGE_BUILD_DIR)
+	cmake -P scripts/package_macos.cmake -DBINARY=$(MACOS_PACKAGE_BUILD_DIR)/breadlang -DDIST_DIR=$(MACOS_PACKAGE_DIST_DIR)
+
+package-macos-universal:
+	$(MAKE) package-macos MACOS_PACKAGE_ARCHS="arm64;x86_64" MACOS_PACKAGE_BUILD_DIR=build-macos-universal MACOS_PACKAGE_DIST_DIR=dist/macos-universal

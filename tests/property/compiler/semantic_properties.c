@@ -26,6 +26,48 @@ static bool test_type_mismatch_detection(void) {
     return result;
 }
 
+// Property: Empty container literals must be explicitly typed
+static bool test_empty_container_literals_require_type(void) {
+    bread_error_init();
+
+    const char* invalid_code =
+        "let a = []\n"
+        "let d = [:]\n";
+
+    ASTStmtList* program = ast_parse_program(invalid_code);
+    if (!program) {
+        bread_error_cleanup();
+        return true;
+    }
+
+    bool result = !semantic_analyze(program);
+
+    ast_free_stmt_list(program);
+    bread_error_cleanup();
+    return result;
+}
+
+// Property: Indexing/member access must be type-correct
+static bool test_invalid_index_member_rejected(void) {
+    bread_error_init();
+
+    const char* invalid_code =
+        "let x: Int = 1\n"
+        "let y = x[0]\n";
+
+    ASTStmtList* program = ast_parse_program(invalid_code);
+    if (!program) {
+        bread_error_cleanup();
+        return true;
+    }
+
+    bool result = !semantic_analyze(program);
+
+    ast_free_stmt_list(program);
+    bread_error_cleanup();
+    return result;
+}
+
 // Property: Valid programs should pass semantic analysis
 static bool test_valid_program_analysis(void) {
     bread_error_init();
@@ -102,6 +144,8 @@ int main(void) {
     pbt_property("Valid program analysis", test_valid_program_analysis);
     pbt_property("Undefined variable detection", test_undefined_variable_detection);
     pbt_property("Function signature validation", test_function_signature_validation);
+    pbt_property("Empty containers require type", test_empty_container_literals_require_type);
+    pbt_property("Invalid index/member rejected", test_invalid_index_member_rejected);
     
     return pbt_run();
 }

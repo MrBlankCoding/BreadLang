@@ -64,6 +64,9 @@ case "${1:-}" in
     "test")
         make -C "$SCRIPT_DIR" test
         ;;
+    "package-macos")
+        make -C "$SCRIPT_DIR" package-macos
+        ;;
     "help"|"-h"|"--help"|"")
         show_help
         ;;
