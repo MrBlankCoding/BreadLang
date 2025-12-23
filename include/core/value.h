@@ -48,7 +48,7 @@ struct BreadStruct {
 typedef struct BreadValue (*BreadMethod)(struct BreadClass* self, struct BreadValue* args, int arg_count);
 
 // LLVM function pointer type for compiled methods
-typedef void (*BreadCompiledMethod)(void* ret_slot, void* self_ptr, void** args);
+typedef void (*BreadCompiledMethod)(void);
 
 struct BreadClass {
     BreadObjHeader header;

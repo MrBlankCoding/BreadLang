@@ -390,6 +390,8 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
                                     (LLVMValueRef[]){LLVMConstInt(cg->i32, 0, 0), LLVMConstInt(cg->i32, i, 0)},
                                     2,
                                     "super_init_arg_slot");
+                                LLVMValueRef slot_nil_args[] = {cg_value_to_i8_ptr(cg, slot)};
+                                (void)LLVMBuildCall2(cg->builder, cg->ty_value_set_nil, cg->fn_value_set_nil, slot_nil_args, 1, "");
                                 cg_copy_value_into(cg, slot, arg_val);
                             }
 
@@ -423,43 +425,119 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
             }
             
             // Regular method call handling
-            LLVMValueRef name_glob = cg_get_string_global(cg, name);
-            LLVMValueRef name_ptr = LLVMBuildBitCast(cg->builder, name_glob, cg->i8_ptr, "");
-            LLVMValueRef is_opt = LLVMConstInt(cg->i32, expr->as.method_call.is_optional_chain ? 1 : 0, 0);
-            LLVMValueRef argc = LLVMConstInt(cg->i32, expr->as.method_call.arg_count, 0);
+            // Try to generate direct function call if we can determine the target class at compile time
+            int generated_direct_call = 0;
+            
+            // Check if the target is a known class variable or constructor call result
+            if (expr->as.method_call.target && expr->as.method_call.target->kind == AST_EXPR_VAR) {
+                // Look for the variable in the current scope to see if it has a known class type
+                CgVar* target_var = NULL;
+                if (cg_fn) {
+                    target_var = cg_scope_find_var(cg_fn->scope, expr->as.method_call.target->as.var_name);
+                }
+                
+                // For now, we'll try to infer the class from the variable name or context
+                // This is a simplified approach - a full implementation would track types more carefully
+                const char* inferred_class_name = NULL;
+                
+                // Simple heuristic: if the variable name contains a class name, assume that's the type
+                for (CgClass* cls = cg->classes; cls; cls = cls->next) {
+                    if (strstr(expr->as.method_call.target->as.var_name, cls->name) != NULL) {
+                        inferred_class_name = cls->name;
+                        break;
+                    }
+                }
+                
+                if (inferred_class_name) {
+                    // Find the class and method
+                    CgClass* target_class = cg_find_class(cg, inferred_class_name);
+                    if (target_class) {
+                        // Find the method in the class
+                        int method_index = -1;
+                        for (int i = 0; i < target_class->method_count; i++) {
+                            if (target_class->method_names[i] && strcmp(target_class->method_names[i], name) == 0) {
+                                method_index = i;
+                                break;
+                            }
+                        }
+                        
+                        if (method_index >= 0 && target_class->method_functions && target_class->method_functions[method_index]) {
+                            // Generate direct function call
+                            LLVMValueRef method_fn = target_class->method_functions[method_index];
+                            
+                            // Prepare arguments: return slot, self, then method arguments
+                            int total_args = expr->as.method_call.arg_count + 2;
+                            LLVMValueRef* call_args = malloc(sizeof(LLVMValueRef) * total_args);
+                            if (call_args) {
+                                call_args[0] = cg_value_to_i8_ptr(cg, tmp);  // return slot
+                                call_args[1] = cg_value_to_i8_ptr(cg, target);  // self
+                                
+                                // Add method arguments
+                                for (int i = 0; i < expr->as.method_call.arg_count; i++) {
+                                    LLVMValueRef arg_val = cg_build_expr(cg, cg_fn, val_size, expr->as.method_call.args[i]);
+                                    if (!arg_val) {
+                                        free(call_args);
+                                        return NULL;
+                                    }
+                                    call_args[i + 2] = cg_value_to_i8_ptr(cg, arg_val);
+                                }
+                                
+                                // Make the direct function call
+                                LLVMTypeRef method_type = LLVMGetElementType(LLVMTypeOf(method_fn));
+                                (void)LLVMBuildCall2(cg->builder, method_type, method_fn, call_args, total_args, "");
+                                
+                                free(call_args);
+                                generated_direct_call = 1;
+                                printf("Generated direct call to %s::%s\n", inferred_class_name, name);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Fall back to runtime method call if we couldn't generate a direct call
+            if (!generated_direct_call) {
+                LLVMValueRef name_glob = cg_get_string_global(cg, name);
+                LLVMValueRef name_ptr = LLVMBuildBitCast(cg->builder, name_glob, cg->i8_ptr, "");
+                LLVMValueRef is_opt = LLVMConstInt(cg->i32, expr->as.method_call.is_optional_chain ? 1 : 0, 0);
+                LLVMValueRef argc = LLVMConstInt(cg->i32, expr->as.method_call.arg_count, 0);
 
-            LLVMValueRef args_ptr = LLVMConstNull(cg->i8_ptr);
-            if (expr->as.method_call.arg_count > 0) {
-                LLVMTypeRef args_arr_ty = LLVMArrayType(cg->value_type, (unsigned)expr->as.method_call.arg_count);
-                LLVMValueRef args_alloca = LLVMBuildAlloca(cg->builder, args_arr_ty, "method_args");
-                LLVMSetAlignment(args_alloca, 16);
+                LLVMValueRef args_ptr = LLVMConstNull(cg->i8_ptr);
+                if (expr->as.method_call.arg_count > 0) {
+                    LLVMTypeRef args_arr_ty = LLVMArrayType(cg->value_type, (unsigned)expr->as.method_call.arg_count);
+                    LLVMValueRef args_alloca = LLVMBuildAlloca(cg->builder, args_arr_ty, "method_args");
+                    LLVMSetAlignment(args_alloca, 16);
 
-                for (int i = 0; i < expr->as.method_call.arg_count; i++) {
-                    LLVMValueRef arg_val = cg_build_expr(cg, cg_fn, val_size, expr->as.method_call.args[i]);
-                    if (!arg_val) return NULL;
+                    for (int i = 0; i < expr->as.method_call.arg_count; i++) {
+                        LLVMValueRef arg_val = cg_build_expr(cg, cg_fn, val_size, expr->as.method_call.args[i]);
+                        if (!arg_val) return NULL;
 
-                    LLVMValueRef slot = LLVMBuildGEP2(
-                        cg->builder,
-                        args_arr_ty,
-                        args_alloca,
-                        (LLVMValueRef[]){LLVMConstInt(cg->i32, 0, 0), LLVMConstInt(cg->i32, i, 0)},
-                        2,
-                        "method_arg_slot");
-                    cg_copy_value_into(cg, slot, arg_val);
+                        LLVMValueRef slot = LLVMBuildGEP2(
+                            cg->builder,
+                            args_arr_ty,
+                            args_alloca,
+                            (LLVMValueRef[]){LLVMConstInt(cg->i32, 0, 0), LLVMConstInt(cg->i32, i, 0)},
+                            2,
+                            "method_arg_slot");
+                        LLVMValueRef slot_nil_args[] = {cg_value_to_i8_ptr(cg, slot)};
+                        (void)LLVMBuildCall2(cg->builder, cg->ty_value_set_nil, cg->fn_value_set_nil, slot_nil_args, 1, "");
+                        cg_copy_value_into(cg, slot, arg_val);
+                    }
+
+                    args_ptr = LLVMBuildBitCast(cg->builder, args_alloca, cg->i8_ptr, "");
                 }
 
-                args_ptr = LLVMBuildBitCast(cg->builder, args_alloca, cg->i8_ptr, "");
+                LLVMValueRef args[] = {
+                    cg_value_to_i8_ptr(cg, target),
+                    name_ptr,
+                    argc,
+                    args_ptr,
+                    is_opt,
+                    cg_value_to_i8_ptr(cg, tmp)
+                };
+                (void)LLVMBuildCall2(cg->builder, cg->ty_method_call_op, cg->fn_method_call_op, args, 6, "");
             }
-
-            LLVMValueRef args[] = {
-                cg_value_to_i8_ptr(cg, target),
-                name_ptr,
-                argc,
-                args_ptr,
-                is_opt,
-                cg_value_to_i8_ptr(cg, tmp)
-            };
-            (void)LLVMBuildCall2(cg->builder, cg->ty_method_call_op, cg->fn_method_call_op, args, 6, "");
+            
             return tmp;
         }
 
@@ -531,11 +609,14 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
                 if (expr->as.call.arg_count > 0) {
                     LLVMTypeRef args_arr_ty = LLVMArrayType(cg->value_type, (unsigned)expr->as.call.arg_count);
                     LLVMValueRef args_arr = LLVMBuildAlloca(cg->builder, args_arr_ty, "builtin.args");
+                    LLVMSetAlignment(args_arr, 16);
 
                     LLVMValueRef zero = LLVMConstInt(cg->i32, 0, 0);
                     for (int i = 0; i < expr->as.call.arg_count; i++) {
                         LLVMValueRef idx = LLVMConstInt(cg->i32, (unsigned)i, 0);
                         LLVMValueRef elem_ptr = LLVMBuildGEP2(cg->builder, args_arr_ty, args_arr, (LLVMValueRef[]){zero, idx}, 2, "builtin.arg.ptr");
+                        LLVMValueRef elem_nil_args[] = {cg_value_to_i8_ptr(cg, elem_ptr)};
+                        (void)LLVMBuildCall2(cg->builder, cg->ty_value_set_nil, cg->fn_value_set_nil, elem_nil_args, 1, "");
                         cg_copy_value_into(cg, elem_ptr, arg_vals[i]);
                     }
 
@@ -723,6 +804,8 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
                                 (LLVMValueRef[]){LLVMConstInt(cg->i32, 0, 0), LLVMConstInt(cg->i32, i, 0)},
                                 2,
                                 "constructor_arg_slot");
+                            LLVMValueRef slot_nil_args[] = {cg_value_to_i8_ptr(cg, slot)};
+                            (void)LLVMBuildCall2(cg->builder, cg->ty_value_set_nil, cg->fn_value_set_nil, slot_nil_args, 1, "");
                             cg_copy_value_into(cg, slot, arg_val);
                         }
 

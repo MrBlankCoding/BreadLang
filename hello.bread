@@ -1,10 +1,3 @@
-// ============================================
-// BreadLang OOP Comprehensive Stress Test
-// ============================================
-
-// Test 1: Basic Struct Definition and Usage
-print("=== Test 1: Basic Structs ===")
-
 struct Point {
     x: Int
     y: Int
@@ -24,16 +17,12 @@ print("Origin: " + str(origin.x) + ", " + str(origin.y))
 print("Rectangle width: " + str(rect.width))
 print("Rectangle top-left: " + str(rect.topLeft.x) + ", " + str(rect.topLeft.y))
 
-// Test 2: Struct Mutation
-print("\n=== Test 2: Struct Mutation ===")
-
 let mutablePoint: Point = Point{x: 10, y: 20}
 print("Before: " + str(mutablePoint.x) + ", " + str(mutablePoint.y))
 mutablePoint.x = 30
 mutablePoint.y = 40
 print("After: " + str(mutablePoint.x) + ", " + str(mutablePoint.y))
 
-// Test 3: Basic Class with Methods
 print("\n=== Test 3: Basic Class ===")
 
 class Counter {

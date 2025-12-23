@@ -88,29 +88,37 @@ int cg_execute_compiled_method(BreadCompiledMethod compiled_fn, BreadClass* self
     // Prepare return slot
     BreadValue ret_slot;
     bread_value_set_nil(&ret_slot);
-    
-    // Convert arguments to LLVM calling convention
-    void** llvm_args = NULL;
-    if (argc > 0) {
-        llvm_args = malloc(argc * sizeof(void*));
-        if (!llvm_args) return 0;
-        
-        for (int i = 0; i < argc; i++) {
-            llvm_args[i] = (void*)&args[i];
-        }
+ 
+    BreadValue self_value;
+    bread_value_set_class(&self_value, self);
+     
+    switch (argc) {
+        case 0:
+            ((void(*)(void*, void*))compiled_fn)(&ret_slot, &self_value);
+            break;
+        case 1:
+            ((void(*)(void*, void*, void*))compiled_fn)(&ret_slot, &self_value, (void*)&args[0]);
+            break;
+        case 2:
+            ((void(*)(void*, void*, void*, void*))compiled_fn)(&ret_slot, &self_value, (void*)&args[0], (void*)&args[1]);
+            break;
+        case 3:
+            ((void(*)(void*, void*, void*, void*, void*))compiled_fn)(&ret_slot, &self_value, (void*)&args[0], (void*)&args[1], (void*)&args[2]);
+            break;
+        default:
+            bread_value_set_nil(out);
+            bread_value_release(&ret_slot);
+            bread_value_release(&self_value);
+            return 1;
     }
-    
-    // Call the compiled function
-    // The function signature is: void fn(void* ret_slot, void* self_ptr, void** args)
-    compiled_fn(&ret_slot, self, llvm_args);
-    
+     
     // Copy result
     *out = bread_value_clone(ret_slot);
-    
+     
     // Cleanup
     bread_value_release(&ret_slot);
-    free(llvm_args);
-    
+    bread_value_release(&self_value);
+     
     return 1;
 }
 

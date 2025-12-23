@@ -55,6 +55,11 @@ set(BREADLANG_SOURCES
     
     # Backend and codegen
     src/backends/llvm_backend.c
+    src/backends/llvm_backend_utils.c
+    src/backends/llvm_backend_codegen.c
+    src/backends/llvm_backend_emit.c
+    src/backends/llvm_backend_link.c
+    src/backends/llvm_backend_jit.c
     src/codegen/codegen.c
     src/codegen/codegen_helpers.c
     src/codegen/codegen_scope.c
