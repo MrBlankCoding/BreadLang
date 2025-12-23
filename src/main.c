@@ -98,12 +98,6 @@ static void print_usage(const char* prog) {
     printf("  make compile-exe FILE=program.bread      # Create executable\n");
     printf("  make compile-llvm FILE=program.bread     # Emit LLVM IR\n");
     printf("  make compile-obj FILE=program.bread      # Emit object file\n");
-    printf("\nExamples:\n");
-    printf("  %s --jit program.bread                   # JIT execution\n", prog);
-    printf("  %s --emit-exe -o myapp program.bread     # Create executable\n", prog);
-    printf("  make run FILE=program.bread              # JIT via Makefile\n");
-    printf("  make compile-exe FILE=program.bread OUT=myapp  # Compile via Makefile\n");
-    printf("\nFor more information, visit: https://github.com/breadlang/breadlang\n");
 }
 
 char* trim_main(char* str) {

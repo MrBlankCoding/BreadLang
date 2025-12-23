@@ -20,7 +20,6 @@ show_help() {
     echo "  build                   Build the BreadLang compiler"
     echo "  clean                   Clean build artifacts"
     echo "  test                    Run tests"
-    echo "  examples                Run example programs"
     echo "  help                    Show this help message"
     echo ""
     echo "For more options, use the Makefile directly:"
@@ -68,9 +67,6 @@ case "${1:-}" in
         ;;
     "test")
         make -C "$SCRIPT_DIR" test
-        ;;
-    "examples")
-        make -C "$SCRIPT_DIR" examples
         ;;
     "help"|"-h"|"--help"|"")
         show_help

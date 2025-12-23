@@ -1,4 +1,4 @@
-.PHONY: help configure build all clean distclean rebuild test test-all test-property install run jit compile-llvm compile-obj compile-exe examples
+.PHONY: help configure build all clean distclean rebuild test test-all test-property install run jit compile-llvm compile-obj compile-exe
 
 BUILD_DIR ?= build
 BUILD_TYPE ?= Debug

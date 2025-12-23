@@ -82,7 +82,6 @@ The `bread` script provides a simple interface to common operations:
 ./bread compile <file> [output] # Compile to executable
 ./bread llvm <file> [output]    # Emit LLVM IR
 ./bread build                   # Build compiler
-./bread examples                # Run examples
 ./bread help                    # Show help
 ```
 
