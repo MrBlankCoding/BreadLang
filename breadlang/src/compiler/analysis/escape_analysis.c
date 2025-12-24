@@ -219,6 +219,14 @@ static void analyze_stmt_escape(ASTStmt* stmt) {
             }
             break;
             
+        case AST_STMT_IMPORT:
+            // Import statements don't affect escape analysis
+            break;
+            
+        case AST_STMT_EXPORT:
+            // Export statements don't affect escape analysis
+            break;
+            
         case AST_STMT_PRINT:
             analyze_expr_escape(stmt->as.print.expr, 0);
             EscapeInfo* print_info = (EscapeInfo*)stmt->as.print.expr->escape_info;

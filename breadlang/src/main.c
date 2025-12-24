@@ -374,6 +374,17 @@ int main(int argc, char* argv[]) {
     
     init_runtime(config.verbose);
     module_system_init();
+
+     if (config.input_file) {
+         char* path_copy = strdup(config.input_file);
+         if (path_copy) {
+             char* dir = dirname(path_copy);
+             if (dir) {
+                 module_add_search_path(dir);
+             }
+             free(path_copy);
+         }
+     }
     
     if (config.verbose) {
         printf("Parsing program...\n");
@@ -393,6 +404,15 @@ int main(int argc, char* argv[]) {
         cleanup_runtime();
         return 1;
     }
+
+     if (!module_preprocess_program(program, config.input_file)) {
+         fprintf(stderr, "\nError: Could not process imports/exports: %s\n", module_get_error());
+         ast_free_stmt_list(program);
+         free(source);
+         module_system_cleanup();
+         cleanup_runtime();
+         return 1;
+     }
     
     int result = compile_or_execute(program, &config);
     ast_free_stmt_list(program);

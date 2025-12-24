@@ -34,6 +34,11 @@ typedef struct Module {
     struct Module* dependencies;   
     int is_compiled;               
     int is_loading;                
+     int is_preprocessed;
+     int is_included;
+     char* default_export_name;
+     VarType default_export_type;
+     TypeDescriptor* default_export_type_desc;
     struct Module* next;           
 } Module;
 
@@ -58,6 +63,8 @@ ModuleSymbol* module_get_default_export(Module* module);
 
 int process_import_statement(const ASTStmtImport* import_stmt, const char* current_file_dir);
 int process_export_statement(const ASTStmtExport* export_stmt, Module* current_module);
+
+int module_preprocess_program(ASTStmtList* program, const char* entry_file_path);
 
 void* module_lookup_symbol(const char* qualified_name, ModuleSymbolType* out_type);
 int module_register_qualified_symbol(const char* module_name, const char* symbol_name, 

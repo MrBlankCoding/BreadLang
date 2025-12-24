@@ -141,12 +141,9 @@ static int bread_class_collect_all_fields(BreadClass* class_def, char*** all_fie
     
     BreadClass* current = class_def;
     while (current) {
-        printf("DEBUG: Class %s has %d fields\n", current->class_name ? current->class_name : "unknown", current->field_count);
         *total_count += current->field_count;
         current = current->parent_class;
     }
-    
-    printf("DEBUG: Total field count: %d\n", *total_count);
     
     if (*total_count == 0) return 1;
     
@@ -159,10 +156,8 @@ static int bread_class_collect_all_fields(BreadClass* class_def, char*** all_fie
         char** parent_fields;
         int parent_count;
         if (bread_class_collect_all_fields(class_def->parent_class, &parent_fields, &parent_count)) {
-            printf("DEBUG: Collected %d parent fields\n", parent_count);
             for (int i = 0; i < parent_count; i++) {
                 (*all_field_names)[index++] = strdup(parent_fields[i]);
-                printf("DEBUG: Added parent field[%d]: %s\n", index-1, parent_fields[i]);
                 free(parent_fields[i]);
             }
             free(parent_fields);
@@ -172,11 +167,9 @@ static int bread_class_collect_all_fields(BreadClass* class_def, char*** all_fie
     for (int i = 0; i < class_def->field_count; i++) {
         if (class_def->field_names[i]) {
             (*all_field_names)[index++] = strdup(class_def->field_names[i]);
-            printf("DEBUG: Added own field[%d]: %s\n", index-1, class_def->field_names[i]);
         }
     }
     
-    printf("DEBUG: Final field count: %d\n", index);
     return 1;
 }
 

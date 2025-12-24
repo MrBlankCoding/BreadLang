@@ -122,7 +122,7 @@ int cg_build_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stm
                 LLVMTypeRef alloc_type;
                 switch (unboxed_type) {
                     case UNBOXED_INT:
-                        alloc_type = cg->i32;
+                        alloc_type = cg->i64;
                         break;
                     case UNBOXED_DOUBLE:
                         alloc_type = cg->f64;

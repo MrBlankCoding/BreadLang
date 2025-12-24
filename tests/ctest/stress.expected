@@ -1,0 +1,25 @@
+Deep nesting result: 1
+Created array with 1000 elements
+Created 2D array with 10000 total elements
+Created dictionary with 500 entries
+Built string of length: 100
+Fibonacci(20) = 6765
+Factorial(20) = 2432902008176640000
+Complex expression result: 154400
+Boundary access: 10,50,40
+Nested loops completed: 2500 iterations
+Sum of range(1000): 499500
+Sum of dictionary values: 12250
+Inheritance chain result: 150
+Created instances: 100
+Array: 0, Dict: 0
+Boolean logic result: true
+Conversion chain result: 42
+Precedence result: 27
+String lengths sum: 19
+Function chain result: 13
+Mixed collections sum: 75
+Defaults test: 35, 40, 45
+Struct operations sum: 3675
+Comparison tests passed: 8
+Memory pressure test: 100 collections created

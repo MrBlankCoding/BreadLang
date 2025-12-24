@@ -1,0 +1,2 @@
+import "import_default_export_module" as mod
+print(mod)
