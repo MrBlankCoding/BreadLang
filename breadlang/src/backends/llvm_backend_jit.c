@@ -11,6 +11,7 @@
 #include <llvm-c/Target.h>
 
 #include "core/function.h"
+#include "core/type_descriptor.h"
 #include "codegen/codegen.h"
 #include "../codegen/codegen_internal.h"
 
@@ -162,9 +163,7 @@ int bread_llvm_jit_function(Function* fn) {
     LLVMPositionBuilderAtEnd(builder, fn_entry);
 
     target_fn->ret_slot = LLVMGetParam(target_fn->fn, 0);
-    target_fn->scope = (CgScope*)malloc(sizeof(CgScope));
-    target_fn->scope->vars = NULL;
-    target_fn->scope->parent = NULL;
+    target_fn->scope = cg_scope_new(NULL);
 
     // Record base runtime scope depth and push a new scope when entering the JIT function
     LLVMValueRef base_depth = LLVMBuildCall2(builder, cg.ty_scope_depth, cg.fn_scope_depth, NULL, 0, "");
@@ -177,7 +176,13 @@ int bread_llvm_jit_function(Function* fn) {
     for (int i = 0; i < target_fn->param_count; i++) {
         LLVMValueRef param_val = LLVMGetParam(target_fn->fn, (unsigned)(i + 1));
         LLVMValueRef alloca = cg_alloc_value(&cg, target_fn->param_names[i]);
-        cg_scope_add_var(target_fn->scope, target_fn->param_names[i], alloca);
+        CgVar* param_var = cg_scope_add_var(target_fn->scope, target_fn->param_names[i], alloca);
+        
+        // Set the type descriptor for the parameter
+        if (param_var && target_fn->param_type_descs && target_fn->param_type_descs[i]) {
+            param_var->type_desc = type_descriptor_clone(target_fn->param_type_descs[i]);
+            param_var->type = target_fn->param_type_descs[i]->base_type;
+        }
 
         LLVMValueRef copy_args[] = {
             LLVMBuildBitCast(builder, param_val, cg.i8_ptr, ""),
@@ -195,11 +200,13 @@ int bread_llvm_jit_function(Function* fn) {
     // ONLY IF THERE IS NO TERMINATOR, ADD A RETURN
     if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(builder)) == NULL) {
         // Strict cleanup: pop back to base depth before returning
-        LLVMValueRef loaded_base = base_depth;
-        if (target_fn->runtime_scope_base_depth_slot) {
-            loaded_base = LLVMBuildLoad2(builder, cg.i32, target_fn->runtime_scope_base_depth_slot, "");
-        }
-        LLVMValueRef pop_args[] = { loaded_base };
+        LLVMValueRef loaded_base = LLVMBuildLoad2(builder, cg.i32, target_fn->runtime_scope_base_depth_slot, "");
+        // Ensure we don't pop to an invalid depth
+        LLVMValueRef min_depth = LLVMConstInt(cg.i32, 1, 0);
+        LLVMValueRef safe_depth = LLVMBuildSelect(builder, 
+            LLVMBuildICmp(builder, LLVMIntSGE, loaded_base, min_depth, ""), 
+            loaded_base, min_depth, "safe_depth");
+        LLVMValueRef pop_args[] = { safe_depth };
         (void)LLVMBuildCall2(builder, cg.ty_pop_to_scope_depth, cg.fn_pop_to_scope_depth, pop_args, 1, "");
         LLVMBuildRetVoid(builder);
     }

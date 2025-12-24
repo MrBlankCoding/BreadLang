@@ -34,6 +34,228 @@ ASTStmtList* parse_block(const char** code) {
 
 ASTStmt* parse_stmt(const char** code) {
     skip_whitespace(code);
+    if (strncmp(*code, "import ", 7) == 0) {
+        *code += 7;
+        skip_whitespace(code);
+        
+        ASTStmt* stmt = ast_stmt_new(AST_STMT_IMPORT);
+        if (!stmt) return NULL;
+        
+        stmt->as.import.module_path = NULL;
+        stmt->as.import.alias = NULL;
+        stmt->as.import.is_selective = 0;
+        stmt->as.import.symbol_count = 0;
+        stmt->as.import.symbol_names = NULL;
+        stmt->as.import.symbol_aliases = NULL;
+        
+        if (**code == '{') {
+            (*code)++;
+            skip_whitespace(code);
+            
+            stmt->as.import.is_selective = 1;
+            
+            int symbol_cap = 4;
+            stmt->as.import.symbol_names = (char**)malloc(symbol_cap * sizeof(char*));
+            stmt->as.import.symbol_aliases = (char**)malloc(symbol_cap * sizeof(char*));
+            
+            while (**code && **code != '}') {
+                skip_whitespace(code);
+                if (**code == '}') break;
+    
+                const char* start = *code;
+                while (**code && (isalnum((unsigned char)**code) || **code == '_')) (*code)++;
+                if (*code == start) {
+                    ast_free_stmt(stmt);
+                    return NULL;
+                }
+                
+                char* symbol_name = dup_range(start, *code);
+                skip_whitespace(code);
+                
+                char* symbol_alias = NULL;
+                if (strncmp(*code, "as ", 3) == 0) {
+                    *code += 3;
+                    skip_whitespace(code);
+                    
+                    const char* alias_start = *code;
+                    while (**code && (isalnum((unsigned char)**code) || **code == '_')) (*code)++;
+                    if (*code == alias_start) {
+                        free(symbol_name);
+                        ast_free_stmt(stmt);
+                        return NULL;
+                    }
+                    symbol_alias = dup_range(alias_start, *code);
+                }
+                
+                if (stmt->as.import.symbol_count >= symbol_cap) {
+                    symbol_cap *= 2;
+                    stmt->as.import.symbol_names = (char**)realloc(stmt->as.import.symbol_names, 
+                                                                  symbol_cap * sizeof(char*));
+                    stmt->as.import.symbol_aliases = (char**)realloc(stmt->as.import.symbol_aliases, 
+                                                                    symbol_cap * sizeof(char*));
+                }
+                
+                stmt->as.import.symbol_names[stmt->as.import.symbol_count] = symbol_name;
+                stmt->as.import.symbol_aliases[stmt->as.import.symbol_count] = symbol_alias;
+                stmt->as.import.symbol_count++;
+                
+                skip_whitespace(code);
+                if (**code == ',') {
+                    (*code)++;
+                    skip_whitespace(code);
+                }
+            }
+            
+            if (**code != '}') {
+                ast_free_stmt(stmt);
+                return NULL;
+            }
+            (*code)++;
+            skip_whitespace(code);
+            
+            if (strncmp(*code, "from ", 5) != 0) {
+                ast_free_stmt(stmt);
+                return NULL;
+            }
+            *code += 5;
+            skip_whitespace(code);
+        }
+        
+        if (**code != '"') {
+            ast_free_stmt(stmt);
+            return NULL;
+        }
+        (*code)++;
+        
+        const char* path_start = *code;
+        while (**code && **code != '"') (*code)++;
+        if (**code != '"') {
+            ast_free_stmt(stmt);
+            return NULL;
+        }
+        
+        stmt->as.import.module_path = dup_range(path_start, *code);
+        (*code)++;
+        skip_whitespace(code);
+        
+        if (!stmt->as.import.is_selective && strncmp(*code, "as ", 3) == 0) {
+            *code += 3;
+            skip_whitespace(code);
+            
+            const char* alias_start = *code;
+            while (**code && (isalnum((unsigned char)**code) || **code == '_')) (*code)++;
+            if (*code == alias_start) {
+                ast_free_stmt(stmt);
+                return NULL;
+            }
+            stmt->as.import.alias = dup_range(alias_start, *code);
+        }
+        
+        return stmt;
+    }
+    
+    if (strncmp(*code, "export ", 7) == 0) {
+        *code += 7;
+        skip_whitespace(code);
+        
+        ASTStmt* stmt = ast_stmt_new(AST_STMT_EXPORT);
+        if (!stmt) return NULL;
+        
+        stmt->as.export.is_default = 0;
+        stmt->as.export.symbol_count = 0;
+        stmt->as.export.symbol_names = NULL;
+        stmt->as.export.symbol_aliases = NULL;
+        
+        if (strncmp(*code, "default ", 8) == 0) {
+            *code += 8;
+            skip_whitespace(code);
+            
+            stmt->as.export.is_default = 1;
+            stmt->as.export.symbol_count = 1;
+            stmt->as.export.symbol_names = (char**)malloc(sizeof(char*));
+            stmt->as.export.symbol_aliases = (char**)malloc(sizeof(char*));
+            
+            const char* start = *code;
+            while (**code && (isalnum((unsigned char)**code) || **code == '_')) (*code)++;
+            if (*code == start) {
+                ast_free_stmt(stmt);
+                return NULL;
+            }
+            
+            stmt->as.export.symbol_names[0] = dup_range(start, *code);
+            stmt->as.export.symbol_aliases[0] = NULL;
+            
+            return stmt;
+        }
+        
+        // Parse symbol list: export { symbol1, symbol2 }
+        if (**code != '{') {
+            ast_free_stmt(stmt);
+            return NULL;
+        }
+        (*code)++;
+        skip_whitespace(code);
+        
+        int symbol_cap = 4;
+        stmt->as.export.symbol_names = (char**)malloc(symbol_cap * sizeof(char*));
+        stmt->as.export.symbol_aliases = (char**)malloc(symbol_cap * sizeof(char*));
+        
+        while (**code && **code != '}') {
+            skip_whitespace(code);
+            if (**code == '}') break;
+            
+            const char* start = *code;
+            while (**code && (isalnum((unsigned char)**code) || **code == '_')) (*code)++;
+            if (*code == start) {
+                ast_free_stmt(stmt);
+                return NULL;
+            }
+            
+            char* symbol_name = dup_range(start, *code);
+            skip_whitespace(code);
+            
+            char* symbol_alias = NULL;
+            if (strncmp(*code, "as ", 3) == 0) {
+                *code += 3;
+                skip_whitespace(code);
+                
+                const char* alias_start = *code;
+                while (**code && (isalnum((unsigned char)**code) || **code == '_')) (*code)++;
+                if (*code == alias_start) {
+                    free(symbol_name);
+                    ast_free_stmt(stmt);
+                    return NULL;
+                }
+                symbol_alias = dup_range(alias_start, *code);
+            }
+            
+            if (stmt->as.export.symbol_count >= symbol_cap) {
+                symbol_cap *= 2;
+                stmt->as.export.symbol_names = (char**)realloc(stmt->as.export.symbol_names, 
+                                                              symbol_cap * sizeof(char*));
+                stmt->as.export.symbol_aliases = (char**)realloc(stmt->as.export.symbol_aliases, 
+                                                                symbol_cap * sizeof(char*));
+            }
+            
+            stmt->as.export.symbol_names[stmt->as.export.symbol_count] = symbol_name;
+            stmt->as.export.symbol_aliases[stmt->as.export.symbol_count] = symbol_alias;
+            stmt->as.export.symbol_count++;
+            
+            skip_whitespace(code);
+            if (**code == ',') {
+                (*code)++;
+                skip_whitespace(code);
+            }
+        }
+        
+        if (**code != '}') {
+            ast_free_stmt(stmt);
+            return NULL;
+        }
+        (*code)++;
+        
+        return stmt;
+    }
 
     if (strncmp(*code, "def ", 4) == 0) {
         *code += 4;

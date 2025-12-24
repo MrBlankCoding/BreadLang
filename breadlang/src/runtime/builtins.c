@@ -234,7 +234,7 @@ BreadValue bread_builtin_str(BreadValue* args, int arg_count) {
             bread_value_set_string(&result, arg->value.bool_val ? "true" : "false");
             break;
         case TYPE_INT:
-            snprintf(buffer, sizeof(buffer), "%d", arg->value.int_val);
+            snprintf(buffer, sizeof(buffer), "%lld", arg->value.int_val);
             bread_value_set_string(&result, buffer);
             break;
         case TYPE_FLOAT:
@@ -242,10 +242,9 @@ BreadValue bread_builtin_str(BreadValue* args, int arg_count) {
             bread_value_set_string(&result, buffer);
             break;
         case TYPE_DOUBLE: {
-            // Use a more robust double-to-string conversion
             double val = arg->value.double_val;
             if (val == (int)val && val >= -2147483648.0 && val <= 2147483647.0) {
-                // If it's a whole number within int range, format as int
+                // woahh... big nuuumberss
                 snprintf(buffer, sizeof(buffer), "%d", (int)val);
             } else {
                 snprintf(buffer, sizeof(buffer), "%.6g", val);

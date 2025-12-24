@@ -1,13 +1,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdint.h>
 
 #include "runtime/runtime.h"
 #include "runtime/error.h"
 #include "core/value.h"
 
 // Built-in range function implementation
-BreadArray* bread_range_create(int start, int end, int step) {
+BreadArray* bread_range_create(int64_t start, int64_t end, int64_t step) {
     if (step == 0) return NULL;
     if (step > 0 && start >= end) return bread_array_new_typed(TYPE_INT);
     if (step < 0 && start <= end) return bread_array_new_typed(TYPE_INT);
@@ -29,7 +30,7 @@ BreadArray* bread_range_create(int start, int end, int step) {
     return arr;
 }
 
-BreadArray* bread_range(int n) {
+BreadArray* bread_range(int64_t n) {
     return bread_range_create(0, n, 1);
 }
 

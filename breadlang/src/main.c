@@ -11,6 +11,7 @@
 #include "core/var.h"
 #include "compiler/ast/ast.h"
 #include "core/function.h"
+#include "core/module.h"
 #include "backends/llvm_backend.h"
 #include "codegen/codegen_runtime_bridge.h"
 
@@ -372,6 +373,8 @@ int main(int argc, char* argv[]) {
     }
     
     init_runtime(config.verbose);
+    module_system_init();
+    
     if (config.verbose) {
         printf("Parsing program...\n");
     }
@@ -394,6 +397,7 @@ int main(int argc, char* argv[]) {
     int result = compile_or_execute(program, &config);
     ast_free_stmt_list(program);
     free(source);
+    module_system_cleanup();
     cleanup_runtime();
     
     return result;

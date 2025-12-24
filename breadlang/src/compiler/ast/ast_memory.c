@@ -274,6 +274,24 @@ void ast_free_stmt(ASTStmt* stmt) {
         case AST_STMT_RETURN:
             ast_free_expr(stmt->as.ret.expr);
             break;
+        case AST_STMT_IMPORT:
+            free(stmt->as.import.module_path);
+            free(stmt->as.import.alias);
+            for (int i = 0; i < stmt->as.import.symbol_count; i++) {
+                free(stmt->as.import.symbol_names[i]);
+                free(stmt->as.import.symbol_aliases[i]);
+            }
+            free(stmt->as.import.symbol_names);
+            free(stmt->as.import.symbol_aliases);
+            break;
+        case AST_STMT_EXPORT:
+            for (int i = 0; i < stmt->as.export.symbol_count; i++) {
+                free(stmt->as.export.symbol_names[i]);
+                free(stmt->as.export.symbol_aliases[i]);
+            }
+            free(stmt->as.export.symbol_names);
+            free(stmt->as.export.symbol_aliases);
+            break;
         default:
             break;
     }

@@ -95,7 +95,7 @@ void bread_value_release(BreadValue* v) {
     v->type = TYPE_NIL;
 }
 
-int bread_value_get_int(BreadValue* v) {
+int64_t bread_value_get_int(BreadValue* v) {
     if (!v || v->type != TYPE_INT) return 0;
     return v->value.int_val;
 }

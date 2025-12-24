@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
 #include "compiler/parser/expr.h"
 #include "core/var.h"
@@ -122,7 +123,7 @@ ExprResult evaluate_binary_op(ExprResult left, ExprResult right, char op) {
                 printf("Error: Modulo by zero\n");
                 return ops_create_error_result();
             }
-            int result_val;
+            int64_t result_val;
             switch (op) {
                 case '+': result_val = left.value.int_val + right.value.int_val; break;
                 case '-': result_val = left.value.int_val - right.value.int_val; break;

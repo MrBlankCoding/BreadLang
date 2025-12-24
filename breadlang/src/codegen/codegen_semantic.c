@@ -252,7 +252,6 @@ CgVar* cg_find_var(Cg* cg, const char* name) {
     return NULL;
 }
 
-// Scope-aware variable lookup that considers scope depth
 static CgVar* cg_find_var_in_scope(Cg* cg, const char* name) {
     if (!cg || !name || !cg->global_scope) return NULL;
     
@@ -314,10 +313,23 @@ int cg_declare_function_from_ast(Cg* cg, const ASTStmtFuncDecl* func_decl, const
     memset(new_func, 0, sizeof(CgFunction));
     new_func->name = strdup(func_decl->name);
     new_func->param_count = func_decl->param_count;
+    new_func->required_param_count = func_decl->param_count;
+    new_func->param_defaults = func_decl->param_defaults;
     new_func->return_type = func_decl->return_type;
     new_func->return_type_desc = type_descriptor_clone(func_decl->return_type_desc);
+
+    if (func_decl->param_defaults) {
+        int required = 0;
+        for (int i = 0; i < func_decl->param_count; i++) {
+            if (func_decl->param_defaults[i] == NULL) {
+                required++;
+            } else {
+                break;
+            }
+        }
+        new_func->required_param_count = required;
+    }
     
-    // Copy parameter names and type descriptors
     if (func_decl->param_count > 0) {
         new_func->param_names = (char**)malloc(sizeof(char*) * func_decl->param_count);
         new_func->param_type_descs = (TypeDescriptor**)malloc(sizeof(TypeDescriptor*) * func_decl->param_count);
@@ -1432,23 +1444,33 @@ int cg_analyze_expr(Cg* cg, ASTExpr* expr) {
                     CgClass* class = cg_find_class(cg, expr->as.call.name);
                     
                     if (func) {
-                        if (func->param_count != expr->as.call.arg_count) {
+                        if (expr->as.call.arg_count < func->required_param_count || expr->as.call.arg_count > func->param_count) {
                             char msg[256];
-                            snprintf(msg, sizeof(msg), "Function expects %d argument(s), got %d", 
-                                    func->param_count, expr->as.call.arg_count);
+                            snprintf(msg, sizeof(msg), "Function expects %d to %d argument(s), got %d", 
+                                    func->required_param_count, func->param_count, expr->as.call.arg_count);
                             cg_error_at(cg, msg, expr->as.call.name, &expr->loc);
                             return 0;
                         }
                     } else if (class) {
-                        // Check if class has constructor and validate argument count
                         if (!class->constructor) {
                             cg_error_at(cg, "Class has no constructor", expr->as.call.name, &expr->loc);
                             return 0;
                         }
-                        if (class->constructor->param_count != expr->as.call.arg_count) {
+                        int required = class->constructor->param_count;
+                        if (class->constructor->param_defaults) {
+                            required = 0;
+                            for (int i = 0; i < class->constructor->param_count; i++) {
+                                if (class->constructor->param_defaults[i] == NULL) {
+                                    required++;
+                                } else {
+                                    break;
+                                }
+                            }
+                        }
+                        if (expr->as.call.arg_count < required || expr->as.call.arg_count > class->constructor->param_count) {
                             char msg[256];
-                            snprintf(msg, sizeof(msg), "Constructor expects %d argument(s), got %d", 
-                                    class->constructor->param_count, expr->as.call.arg_count);
+                            snprintf(msg, sizeof(msg), "Constructor expects %d to %d argument(s), got %d", 
+                                    required, class->constructor->param_count, expr->as.call.arg_count);
                             cg_error_at(cg, msg, expr->as.call.name, &expr->loc);
                             return 0;
                         }

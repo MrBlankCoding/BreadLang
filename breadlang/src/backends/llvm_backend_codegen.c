@@ -52,7 +52,7 @@ void cg_init(Cg* cg, LLVMModuleRef mod, LLVMBuilderRef builder) {
     cg->fn_value_set_nil = cg_declare_fn(cg, "bread_value_set_nil", cg->ty_value_set_nil);
     cg->ty_value_set_bool = LLVMFunctionType(cg->void_ty, (LLVMTypeRef[]){cg->i8_ptr, cg->i32}, 2, 0);
     cg->fn_value_set_bool = cg_declare_fn(cg, "bread_value_set_bool", cg->ty_value_set_bool);
-    cg->ty_value_set_int = LLVMFunctionType(cg->void_ty, (LLVMTypeRef[]){cg->i8_ptr, cg->i32}, 2, 0);
+    cg->ty_value_set_int = LLVMFunctionType(cg->void_ty, (LLVMTypeRef[]){cg->i8_ptr, cg->i64}, 2, 0);
     cg->fn_value_set_int = cg_declare_fn(cg, "bread_value_set_int", cg->ty_value_set_int);
     cg->ty_value_set_double = LLVMFunctionType(cg->void_ty, (LLVMTypeRef[]){cg->i8_ptr, cg->f64}, 2, 0);
     cg->fn_value_set_double = cg_declare_fn(cg, "bread_value_set_double", cg->ty_value_set_double);
@@ -165,13 +165,13 @@ void cg_init(Cg* cg, LLVMModuleRef mod, LLVMBuilderRef builder) {
     cg->fn_array_length = cg_declare_fn(cg, "bread_value_array_length", cg->ty_array_length);
     
     // range
-    cg->ty_range_create = LLVMFunctionType(cg->i8_ptr, (LLVMTypeRef[]){cg->i32, cg->i32, cg->i32}, 3, 0);
+    cg->ty_range_create = LLVMFunctionType(cg->i8_ptr, (LLVMTypeRef[]){cg->i64, cg->i64, cg->i64}, 3, 0);
     cg->fn_range_create = cg_declare_fn(cg, "bread_range_create", cg->ty_range_create);
-    cg->ty_range_simple = LLVMFunctionType(cg->i8_ptr, (LLVMTypeRef[]){cg->i32}, 1, 0);
+    cg->ty_range_simple = LLVMFunctionType(cg->i8_ptr, (LLVMTypeRef[]){cg->i64}, 1, 0);
     cg->fn_range_simple = cg_declare_fn(cg, "bread_range", cg->ty_range_simple);
     
     // value
-    cg->ty_value_get_int = LLVMFunctionType(cg->i32, (LLVMTypeRef[]){cg->i8_ptr}, 1, 0);
+    cg->ty_value_get_int = LLVMFunctionType(cg->i64, (LLVMTypeRef[]){cg->i8_ptr}, 1, 0);
     cg->fn_value_get_int = cg_declare_fn(cg, "bread_value_get_int", cg->ty_value_get_int);
     
     cg->ty_value_get_double = LLVMFunctionType(cg->f64, (LLVMTypeRef[]){cg->i8_ptr}, 1, 0);
@@ -352,11 +352,13 @@ int bread_llvm_generate_function_bodies(Cg* cg, LLVMBuilderRef builder, LLVMValu
             
             if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(builder)) == NULL) {
                 // Strict cleanup: pop back to base depth before returning
-                LLVMValueRef loaded_base = base_depth;
-                if (f->runtime_scope_base_depth_slot) {
-                    loaded_base = LLVMBuildLoad2(builder, cg->i32, f->runtime_scope_base_depth_slot, "");
-                }
-                LLVMValueRef pop_args[] = { loaded_base };
+                LLVMValueRef loaded_base = LLVMBuildLoad2(builder, cg->i32, f->runtime_scope_base_depth_slot, "");
+                // Ensure we don't pop to an invalid depth
+                LLVMValueRef min_depth = LLVMConstInt(cg->i32, 1, 0);
+                LLVMValueRef safe_depth = LLVMBuildSelect(builder, 
+                    LLVMBuildICmp(builder, LLVMIntSGE, loaded_base, min_depth, ""), 
+                    loaded_base, min_depth, "safe_depth");
+                LLVMValueRef pop_args[] = { safe_depth };
                 (void)LLVMBuildCall2(builder, cg->ty_pop_to_scope_depth, cg->fn_pop_to_scope_depth, pop_args, 1, "");
                 LLVMBuildRetVoid(builder);
             }

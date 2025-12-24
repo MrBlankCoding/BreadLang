@@ -6,7 +6,6 @@
 #include "runtime/error.h"
 #include "core/value.h"
 
-// Helper function to unwrap optional values
 static int unwrap_optional(const BreadValue* value, BreadValue* unwrapped, int* owned) {
     if (!value || !unwrapped || !owned) return 0;
     
@@ -25,7 +24,6 @@ static int unwrap_optional(const BreadValue* value, BreadValue* unwrapped, int* 
     return 1;
 }
 
-// Helper function for safe cleanup
 static void cleanup_if_owned(BreadValue* value, int owned) {
     if (owned && value) {
         bread_value_release(value);
@@ -64,7 +62,6 @@ int bread_index_op(const BreadValue* target, const BreadValue* idx, BreadValue* 
             int index = idx->value.int_val;
             size_t len = bread_string_len(real_target.value.string_val);
             
-            // Normalize negative indices
             if (index < 0) {
                 index += (int)len;
             }
@@ -72,7 +69,7 @@ int bread_index_op(const BreadValue* target, const BreadValue* idx, BreadValue* 
             if (index < 0 || index >= (int)len) {
                 char error_msg[256];
                 snprintf(error_msg, sizeof(error_msg), 
-                        "String index %d out of bounds (length %zu)", 
+                        "String index %lld out of bounds (length %zu)", 
                         idx->value.int_val, len);
                 BREAD_ERROR_SET_INDEX_OUT_OF_BOUNDS(error_msg);
                 break;
@@ -94,7 +91,6 @@ int bread_index_op(const BreadValue* target, const BreadValue* idx, BreadValue* 
             int index = idx->value.int_val;
             int length = bread_array_length(real_target.value.array_val);
             
-            // Normalize negative indices
             if (index < 0) {
                 index += length;
             }
@@ -102,7 +98,7 @@ int bread_index_op(const BreadValue* target, const BreadValue* idx, BreadValue* 
             if (index < 0 || index >= length) {
                 char error_msg[256];
                 snprintf(error_msg, sizeof(error_msg), 
-                        "Array index %d out of bounds (length %d)", 
+                        "Array index %lld out of bounds (length %d)", 
                         idx->value.int_val, length);
                 BREAD_ERROR_SET_INDEX_OUT_OF_BOUNDS(error_msg);
                 break;
@@ -237,7 +233,6 @@ int bread_member_op(const BreadValue* target, const char* member, int is_opt, Br
         return result;
     }
 
-    // Handle type-specific member access
     switch (real_target.type) {
         case TYPE_DICT: {
             BreadValue* v = bread_dict_get(real_target.value.dict_val, member ? member : "");
@@ -367,7 +362,7 @@ static int convert_to_string(const BreadValue* value, BreadValue* out) {
             return 1;
             
         case TYPE_INT:
-            snprintf(buf, sizeof(buf), "%d", value->value.int_val);
+            snprintf(buf, sizeof(buf), "%lld", value->value.int_val);
             break;
             
         case TYPE_BOOL:
@@ -562,14 +557,26 @@ static int bread_super_init_impl(const BreadValue* self, const char* parent_name
         return 0;
     }
     
-    // Set parent fields from arguments
-    int fields_to_set = (argc < parent_class->field_count) ? argc : parent_class->field_count;
-    
-    for (int i = 0; i < fields_to_set; i++) {
-        if (parent_class->field_names[i]) {
-            BreadValue safe_arg = bread_value_clone(args[i]);
-            bread_class_set_field(instance, parent_class->field_names[i], safe_arg);
-            bread_value_release(&safe_arg);
+    // Execute the parent's compiled constructor on the current instance
+    if (parent_class->compiled_constructor) {
+        BreadValue constructor_result;
+        int success = bread_class_call_compiled_method(parent_class->compiled_constructor, instance, argc, args, &constructor_result);
+        bread_value_release(&constructor_result);
+        
+        if (!success) {
+            BREAD_ERROR_SET_RUNTIME("Failed to execute parent constructor");
+            return 0;
+        }
+    } else {
+        // Fallback: Default constructor behavior for parent class
+        int fields_to_set = (argc < parent_class->field_count) ? argc : parent_class->field_count;
+        
+        for (int i = 0; i < fields_to_set; i++) {
+            if (parent_class->field_names[i]) {
+                BreadValue safe_arg = bread_value_clone(args[i]);
+                bread_class_set_field(instance, parent_class->field_names[i], safe_arg);
+                bread_value_release(&safe_arg);
+            }
         }
     }
     

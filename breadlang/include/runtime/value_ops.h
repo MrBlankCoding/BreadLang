@@ -11,7 +11,7 @@ void bread_print(const BreadValue* v);
 void bread_print_compact(const BreadValue* v);
 void bread_value_set_nil(BreadValue* out);
 void bread_value_set_bool(BreadValue* out, int v);
-void bread_value_set_int(BreadValue* out, int v);
+void bread_value_set_int(BreadValue* out, int64_t v);
 void bread_value_set_float(BreadValue* out, float v);
 void bread_value_set_double(BreadValue* out, double v);
 void bread_value_set_string(BreadValue* out, const char* cstr);

@@ -698,7 +698,7 @@ static ExprResult parse_postfix(const char** expr, ExprResult base) {
                 }
                 
                 if (index < 0 || index >= (int)len) {
-                    printf("Error: String index %d out of bounds (length %zu)\n", idx_r.value.int_val, len);
+                    printf("Error: String index %lld out of bounds (length %zu)\n", idx_r.value.int_val, len);
                     release_expr_result(&idx_r);
                     if (target_owned) release_expr_result(&target);
                     else release_expr_result(&base);

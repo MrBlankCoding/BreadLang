@@ -2,6 +2,7 @@
 #define VAR_H
 
 #include "core/forward_decls.h"
+#include <stdint.h>
 
 typedef enum {
     TYPE_STRING,
@@ -72,7 +73,7 @@ static inline UnboxedType var_type_to_unboxed(VarType type) {
 
 typedef union {
     BreadString* string_val;
-    int int_val;
+    int64_t int_val;
     int bool_val;
     float float_val;
     double double_val;

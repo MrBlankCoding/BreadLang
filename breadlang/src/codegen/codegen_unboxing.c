@@ -23,7 +23,7 @@ CgValue cg_unbox_value(Cg* cg, LLVMValueRef boxed_val, VarType expected_type) {
         case TYPE_INT: {
             LLVMValueRef v = LLVMBuildCall2(cg->builder, cg->ty_value_get_int, cg->fn_value_get_int,
                                             (LLVMValueRef[]){boxed_ptr}, 1, "unbox_int");
-            return cg_create_value(CG_VALUE_UNBOXED_INT, v, cg->i32);
+            return cg_create_value(CG_VALUE_UNBOXED_INT, v, cg->i64);
         }
         case TYPE_DOUBLE: {
             LLVMValueRef v = LLVMBuildCall2(cg->builder, cg->ty_value_get_double, cg->fn_value_get_double,
@@ -85,8 +85,8 @@ CgValue cg_build_expr_unboxed(Cg* cg, CgFunction* cg_fn, ASTExpr* expr) {
         case AST_EXPR_INT:
             return cg_create_value(
                 CG_VALUE_UNBOXED_INT,
-                LLVMConstInt(cg->i32, expr->as.int_val, 0),
-                cg->i32
+                LLVMConstInt(cg->i64, expr->as.int_val, 0),
+                cg->i64
             );
 
         case AST_EXPR_DOUBLE:
@@ -112,7 +112,7 @@ CgValue cg_build_expr_unboxed(Cg* cg, CgFunction* cg_fn, ASTExpr* expr) {
 
                     switch (var->unboxed_type) {
                         case UNBOXED_INT:
-                            ty = cg->i32; vt = CG_VALUE_UNBOXED_INT; break;
+                            ty = cg->i64; vt = CG_VALUE_UNBOXED_INT; break;
                         case UNBOXED_DOUBLE:
                             ty = cg->f64; vt = CG_VALUE_UNBOXED_DOUBLE; break;
                         case UNBOXED_BOOL:
@@ -223,7 +223,7 @@ CgValue cg_build_binary_unboxed(
                 cg->i1
             );
         }
-        if (v) return cg_create_value(CG_VALUE_UNBOXED_INT, v, cg->i32);
+        if (v) return cg_create_value(CG_VALUE_UNBOXED_INT, v, cg->i64);
     }
 
     // double ops
@@ -284,7 +284,7 @@ CgValue cg_build_unary_unboxed(
             return cg_create_value(
                 CG_VALUE_UNBOXED_INT,
                 LLVMBuildSub(cg->builder,
-                             LLVMConstInt(cg->i32, 0, 0),
+                             LLVMConstInt(cg->i64, 0, 0),
                              v.value, "neg"),
                 cg->i32
             );

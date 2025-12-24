@@ -49,7 +49,7 @@ void execute_print(char* line) {
             printf("%s\n", bread_string_cstr(result.value.string_val));
             break;
         case TYPE_INT:
-            printf("%d\n", result.value.int_val);
+            printf("%lld\n", result.value.int_val);
             break;
         case TYPE_BOOL:
             printf("%s\n", result.value.bool_val ? "true" : "false");
@@ -75,7 +75,7 @@ void execute_print(char* line) {
                         printf("%s\n", bread_string_cstr(inner.value.string_val));
                         break;
                     case TYPE_INT:
-                        printf("%d\n", inner.value.int_val);
+                        printf("%lld\n", inner.value.int_val);
                         break;
                     case TYPE_BOOL:
                         printf("%s\n", inner.value.bool_val ? "true" : "false");
@@ -111,7 +111,7 @@ void execute_print(char* line) {
                         printf("\"%s\"", bread_string_cstr(inner.value.string_val));
                         break;
                     case TYPE_INT:
-                        printf("%d", inner.value.int_val);
+                        printf("%lld", inner.value.int_val);
                         break;
                     case TYPE_BOOL:
                         printf("%s", inner.value.bool_val ? "true" : "false");
@@ -155,7 +155,7 @@ void execute_print(char* line) {
                             printf("\"%s\"", bread_string_cstr(inner.value.string_val));
                         break;
                     case TYPE_INT:
-                        printf("%d", inner.value.int_val);
+                        printf("%lld", inner.value.int_val);
                         break;
                     case TYPE_BOOL:
                         printf("%s", inner.value.bool_val ? "true" : "false");

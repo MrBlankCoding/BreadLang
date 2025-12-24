@@ -19,6 +19,7 @@ set(BREADLANG_SOURCES
     breadlang/src/main.c
     
     breadlang/src/core/function.c
+    breadlang/src/core/module.c
     breadlang/src/core/value_core.c
     breadlang/src/core/value_array.c
     breadlang/src/core/value_dict.c

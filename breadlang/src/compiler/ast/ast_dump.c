@@ -24,7 +24,7 @@ static void ast_dump_expr(const ASTExpr* e, FILE* out) {
             fprintf(out, e->as.bool_val ? "true" : "false");
             break;
         case AST_EXPR_INT:
-            fprintf(out, "%d", e->as.int_val);
+            fprintf(out, "%lld", e->as.int_val);
             break;
         case AST_EXPR_DOUBLE:
             fprintf(out, "%lf", e->as.double_val);
@@ -202,6 +202,41 @@ void ast_dump_stmt_list(const ASTStmtList* stmts, FILE* out) {
                 break;
             case AST_STMT_CONTINUE:
                 fprintf(out, "continue\n");
+                break;
+            case AST_STMT_IMPORT:
+                if (cur->as.import.is_selective) {
+                    fprintf(out, "import { ");
+                    for (int i = 0; i < cur->as.import.symbol_count; i++) {
+                        if (i > 0) fprintf(out, ", ");
+                        fprintf(out, "%s", cur->as.import.symbol_names[i] ? cur->as.import.symbol_names[i] : "");
+                        if (cur->as.import.symbol_aliases && cur->as.import.symbol_aliases[i]) {
+                            fprintf(out, " as %s", cur->as.import.symbol_aliases[i]);
+                        }
+                    }
+                    fprintf(out, " } from \"%s\"\n", cur->as.import.module_path ? cur->as.import.module_path : "");
+                } else {
+                    fprintf(out, "import \"%s\"", cur->as.import.module_path ? cur->as.import.module_path : "");
+                    if (cur->as.import.alias) {
+                        fprintf(out, " as %s", cur->as.import.alias);
+                    }
+                    fprintf(out, "\n");
+                }
+                break;
+            case AST_STMT_EXPORT:
+                if (cur->as.export.is_default) {
+                    fprintf(out, "export default %s\n", 
+                           cur->as.export.symbol_names[0] ? cur->as.export.symbol_names[0] : "");
+                } else {
+                    fprintf(out, "export { ");
+                    for (int i = 0; i < cur->as.export.symbol_count; i++) {
+                        if (i > 0) fprintf(out, ", ");
+                        fprintf(out, "%s", cur->as.export.symbol_names[i] ? cur->as.export.symbol_names[i] : "");
+                        if (cur->as.export.symbol_aliases && cur->as.export.symbol_aliases[i]) {
+                            fprintf(out, " as %s", cur->as.export.symbol_aliases[i]);
+                        }
+                    }
+                    fprintf(out, " }\n");
+                }
                 break;
             default:
                 fprintf(out, "<stmt>\n");

@@ -33,7 +33,7 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
             }
             
             tmp = cg_alloc_value(cg, "inttmp");
-            LLVMValueRef i = LLVMConstInt(cg->i32, expr->as.int_val, 0);
+            LLVMValueRef i = LLVMConstInt(cg->i64, expr->as.int_val, 0);
             LLVMValueRef int_args[] = {cg_value_to_i8_ptr(cg, tmp), i};
             (void)LLVMBuildCall2(cg->builder, cg->ty_value_set_int, cg->fn_value_set_int, int_args, 2, "");
             return tmp;
@@ -87,7 +87,7 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
                     
                     switch (var->unboxed_type) {
                         case UNBOXED_INT:
-                            load_type = cg->i32;
+                            load_type = cg->i64;
                             result_type = CG_VALUE_UNBOXED_INT;
                             break;
                         case UNBOXED_DOUBLE:
@@ -236,7 +236,7 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
             if (expr->as.unary.op == '-') {
                 // This needs more support down the line. 
                 LLVMValueRef zero = cg_alloc_value(cg, "zerotmp");
-                LLVMValueRef zero_i = LLVMConstInt(cg->i32, 0, 0);
+                LLVMValueRef zero_i = LLVMConstInt(cg->i64, 0, 0);
                 LLVMValueRef zargs[] = {cg_value_to_i8_ptr(cg, zero), zero_i};
                 (void)LLVMBuildCall2(cg->builder, cg->ty_value_set_int, cg->fn_value_set_int, zargs, 2, "");
 
@@ -820,15 +820,30 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
                     LLVMValueRef constructor_name_str = cg_get_string_global(cg, "init");
                     LLVMValueRef constructor_name_ptr = LLVMBuildBitCast(cg->builder, constructor_name_str, cg->i8_ptr, "");
                     
-                    // Args array
+                    // Args array (pad omitted args with defaults)
+                    int provided = expr->as.call.arg_count;
+                    int expected = callee_class->constructor->param_count;
+                    int final_argc = expected;
                     LLVMValueRef args_ptr = LLVMConstNull(cg->i8_ptr);
-                    if (expr->as.call.arg_count > 0) {
-                        LLVMTypeRef args_arr_ty = LLVMArrayType(cg->value_type, (unsigned)expr->as.call.arg_count);
+                    if (final_argc > 0) {
+                        LLVMTypeRef args_arr_ty = LLVMArrayType(cg->value_type, (unsigned)final_argc);
                         LLVMValueRef args_alloca = LLVMBuildAlloca(cg->builder, args_arr_ty, "constructor_args");
                         LLVMSetAlignment(args_alloca, 16);
 
-                        for (int i = 0; i < expr->as.call.arg_count; i++) {
-                            LLVMValueRef arg_val = cg_build_expr(cg, cg_fn, val_size, expr->as.call.args[i]);
+                        for (int i = 0; i < final_argc; i++) {
+                            ASTExpr* arg_expr = NULL;
+                            if (i < provided) {
+                                arg_expr = expr->as.call.args[i];
+                            } else if (callee_class->constructor->param_defaults) {
+                                arg_expr = callee_class->constructor->param_defaults[i];
+                            }
+
+                            if (!arg_expr) {
+                                fprintf(stderr, "Error: Missing argument %d for constructor '%s' and no default provided\n", i + 1, expr->as.call.name);
+                                return NULL;
+                            }
+
+                            LLVMValueRef arg_val = cg_build_expr(cg, cg_fn, val_size, arg_expr);
                             if (!arg_val) return NULL;
 
                             LLVMValueRef slot = LLVMBuildGEP2(
@@ -846,14 +861,11 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
                         args_ptr = LLVMBuildBitCast(cg->builder, args_alloca, cg->i8_ptr, "");
                     }
                     
-                    // Create a temporary value for the method call result (ignored)
                     LLVMValueRef method_result = cg_alloc_value(cg, "constructor_result");
-                    
-                    // Call the constructor method
                     LLVMValueRef method_args[] = {
                         cg_value_to_i8_ptr(cg, tmp),  // The class instance (self)
                         constructor_name_ptr,          // Method name ("init")
-                        LLVMConstInt(cg->i32, expr->as.call.arg_count, 0),  // Argument count
+                        LLVMConstInt(cg->i32, final_argc, 0),  // Argument count
                         args_ptr,                      // Arguments array
                         LLVMConstInt(cg->i32, 0, 0),  // is_optional_chain (false)
                         cg_value_to_i8_ptr(cg, method_result)  // Result (ignored)
@@ -874,14 +886,29 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
             // because that path bypasses the runtime scope prologue/epilogue and can leak
             // function-local variables into the caller scope.
 
-            int total_args = expr->as.call.arg_count + 1;
+            int provided = expr->as.call.arg_count;
+            int expected = callee_fn->param_count;
+            int total_args = expected + 1;
             LLVMValueRef* args = (LLVMValueRef*)malloc(sizeof(LLVMValueRef) * (size_t)total_args);
             if (!args) return NULL;
             tmp = cg_alloc_value(cg, "calltmp");
             args[0] = tmp;
 
-            for (int i = 0; i < expr->as.call.arg_count; i++) {
-                LLVMValueRef arg_val = cg_build_expr(cg, cg_fn, val_size, expr->as.call.args[i]);
+            for (int i = 0; i < expected; i++) {
+                ASTExpr* arg_expr = NULL;
+                if (i < provided) {
+                    arg_expr = expr->as.call.args[i];
+                } else if (callee_fn->param_defaults) {
+                    arg_expr = callee_fn->param_defaults[i];
+                }
+
+                if (!arg_expr) {
+                    fprintf(stderr, "Error: Missing argument %d for function '%s' and no default provided\n", i + 1, expr->as.call.name);
+                    free(args);
+                    return NULL;
+                }
+
+                LLVMValueRef arg_val = cg_build_expr(cg, cg_fn, val_size, arg_expr);
                 if (!arg_val) {
                     free(args);
                     return NULL;

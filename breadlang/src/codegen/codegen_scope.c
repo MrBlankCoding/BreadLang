@@ -17,6 +17,7 @@ CgVar* cg_scope_add_var(CgScope* scope, const char* name, LLVMValueRef alloca) {
     v->alloca = alloca;
     v->type = TYPE_NIL;
     v->type_desc = NULL;
+    v->unboxed_type = UNBOXED_NONE;
     v->is_const = 0;
     v->is_initialized = 0;
     v->next = scope->vars;

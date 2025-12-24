@@ -133,25 +133,83 @@ BreadClass* bread_class_find_definition(const char* class_name) {
     return NULL;
 }
 
+static int bread_class_collect_all_fields(BreadClass* class_def, char*** all_field_names, int* total_count) {
+    if (!class_def || !all_field_names || !total_count) return 0;
+    
+    *total_count = 0;
+    *all_field_names = NULL;
+    
+    BreadClass* current = class_def;
+    while (current) {
+        printf("DEBUG: Class %s has %d fields\n", current->class_name ? current->class_name : "unknown", current->field_count);
+        *total_count += current->field_count;
+        current = current->parent_class;
+    }
+    
+    printf("DEBUG: Total field count: %d\n", *total_count);
+    
+    if (*total_count == 0) return 1;
+    
+    *all_field_names = malloc(*total_count * sizeof(char*));
+    if (!*all_field_names) return 0;
+    
+    int index = 0;
+    
+    if (class_def->parent_class) {
+        char** parent_fields;
+        int parent_count;
+        if (bread_class_collect_all_fields(class_def->parent_class, &parent_fields, &parent_count)) {
+            printf("DEBUG: Collected %d parent fields\n", parent_count);
+            for (int i = 0; i < parent_count; i++) {
+                (*all_field_names)[index++] = strdup(parent_fields[i]);
+                printf("DEBUG: Added parent field[%d]: %s\n", index-1, parent_fields[i]);
+                free(parent_fields[i]);
+            }
+            free(parent_fields);
+        }
+    }
+    
+    for (int i = 0; i < class_def->field_count; i++) {
+        if (class_def->field_names[i]) {
+            (*all_field_names)[index++] = strdup(class_def->field_names[i]);
+            printf("DEBUG: Added own field[%d]: %s\n", index-1, class_def->field_names[i]);
+        }
+    }
+    
+    printf("DEBUG: Final field count: %d\n", index);
+    return 1;
+}
+
 BreadClass* bread_class_create_instance(const char* class_name, const char* parent_name, 
                                        int field_count, char** field_names,
                                        int method_count, char** method_names) {
     BreadClass* class_def = bread_class_find_definition(class_name);
     
     if (class_def) {
+        char** all_field_names;
+        int total_field_count;
+        
+        if (!bread_class_collect_all_fields(class_def, &all_field_names, &total_field_count)) {
+            return NULL;
+        }
+        
         BreadClass* instance = bread_class_new_with_methods(class_name, parent_name, 
-                                                           field_count, field_names,
+                                                           total_field_count, all_field_names,
                                                            method_count, method_names);
+        
+        if (all_field_names) {
+            for (int i = 0; i < total_field_count; i++) {
+                free(all_field_names[i]);
+            }
+            free(all_field_names);
+        }
+        
         if (!instance) return NULL;
-
-        // Inherit resolved parent pointer from the class definition so runtime method lookup
-        // can traverse inheritance for instances.
         if (class_def->parent_class) {
             instance->parent_class = class_def->parent_class;
             bread_class_retain(instance->parent_class);
         }
         
-        // Copy compiled methods from the class definition
         if (class_def->compiled_methods && instance->compiled_methods) {
             for (int i = 0; i < instance->method_count; i++) {
                 if (!instance->method_names || !instance->method_names[i]) continue;
@@ -182,8 +240,6 @@ void bread_class_set_field(BreadClass* c, const char* field_name, BreadValue val
     if (index >= 0) {
         bread_value_release(&c->field_values[index]);
         c->field_values[index] = bread_value_clone(value);
-    } else if (c->parent_class) {
-        bread_class_set_field(c->parent_class, field_name, value);
     }
 }
 
@@ -194,8 +250,6 @@ void bread_class_set_field_value_ptr(BreadClass* c, const char* field_name, cons
     if (index >= 0) {
         bread_value_release(&c->field_values[index]);
         c->field_values[index] = bread_value_clone(*value);
-    } else if (c->parent_class) {
-        bread_class_set_field_value_ptr(c->parent_class, field_name, value);
     }
 }
 
@@ -205,8 +259,6 @@ BreadValue* bread_class_get_field(BreadClass* c, const char* field_name) {
     int index = bread_class_find_field_index(c, field_name);
     if (index >= 0) {
         return &c->field_values[index];
-    } else if (c->parent_class) {
-        return bread_class_get_field(c->parent_class, field_name);
     }
     
     return NULL;
@@ -363,8 +415,8 @@ BreadClass* bread_class_find_method_defining_class(BreadClass* c, const char* me
     return NULL;
 }
 
-static int bread_class_call_compiled_method(BreadCompiledMethod compiled_fn, BreadClass* instance, 
-                                           int argc, const BreadValue* args, BreadValue* out) {
+int bread_class_call_compiled_method(BreadCompiledMethod compiled_fn, BreadClass* instance, 
+                                   int argc, const BreadValue* args, BreadValue* out) {
     BreadValue ret_slot;
     bread_value_set_nil(&ret_slot);
     

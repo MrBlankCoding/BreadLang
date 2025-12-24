@@ -2,6 +2,7 @@
 #define AST_H
 
 #include <stdio.h>
+#include <stdint.h>
 
 #include "compiler/parser/expr.h"
 #include "core/var.h"
@@ -60,7 +61,7 @@ struct ASTExpr {
     void* opt_hints;       // OptimizationHints*
     union {
         int bool_val;
-        int int_val;
+        int64_t int_val;
         double double_val;
         char* string_val;
         char* var_name;
@@ -142,7 +143,9 @@ typedef enum {
     AST_STMT_FUNC_DECL,
     AST_STMT_STRUCT_DECL,
     AST_STMT_CLASS_DECL,
-    AST_STMT_RETURN
+    AST_STMT_RETURN,
+    AST_STMT_IMPORT,
+    AST_STMT_EXPORT
 } ASTStmtKind;
 
 typedef struct {
@@ -226,18 +229,34 @@ typedef struct {
 
 typedef struct {
     char* name;
-    char* parent_name;  // NULL if no inheritance
+    char* parent_name;  
     int field_count;
     char** field_names;
     TypeDescriptor** field_types;
     int method_count;
     ASTStmtFuncDecl** methods;
-    ASTStmtFuncDecl* constructor;  // NULL if no explicit constructor
+    ASTStmtFuncDecl* constructor;  
 } ASTStmtClassDecl;
+
+typedef struct {
+    char* module_path;      
+    char* alias;            
+    int is_selective;       
+    int symbol_count;       
+    char** symbol_names;    
+    char** symbol_aliases;  
+} ASTStmtImport;
+
+typedef struct {
+    int is_default;         // 1 if this is a default export
+    int symbol_count;       
+    char** symbol_names;    
+    char** symbol_aliases;  
+} ASTStmtExport;
 
 struct ASTStmt {
     ASTStmtKind kind;
-    SourceLoc loc;  // Source location for error reporting
+    SourceLoc loc;  
     void* opt_hints;       // OptimizationHints*
     union {
         ASTStmtVarDecl var_decl;
@@ -254,6 +273,8 @@ struct ASTStmt {
         ASTStmtStructDecl struct_decl;
         ASTStmtClassDecl class_decl;
         ASTStmtReturn ret;
+        ASTStmtImport import;
+        ASTStmtExport export;
     } as;
     ASTStmt* next;
 };
@@ -263,7 +284,6 @@ struct ASTStmtList {
     ASTStmt* tail;
 };
 
-// Core AST parsing and dumping functions
 ASTStmtList* ast_parse_program(const char* code);
 void ast_free_stmt_list(ASTStmtList* stmts);
 void ast_dump_stmt_list(const ASTStmtList* stmts, FILE* out);

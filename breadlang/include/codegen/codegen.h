@@ -30,8 +30,10 @@ typedef struct CgFunction {
     LLVMTypeRef type;
     ASTStmtList* body;
     int param_count;
+    int required_param_count;
     char** param_names;
     TypeDescriptor** param_type_descs;
+    ASTExpr** param_defaults;
     VarType return_type;
     TypeDescriptor* return_type_desc;
     struct CgFunction* next;

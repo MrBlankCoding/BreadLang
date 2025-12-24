@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
+#include <stdint.h>
 
 #include "runtime/runtime.h"
 #include "runtime/error.h"
@@ -152,7 +153,7 @@ static void bread_print_value_recursive(const BreadValue* v, int compact) {
             break;
             
         case TYPE_INT:
-            printf("%d", v->value.int_val);
+            printf("%lld", v->value.int_val);
             break;
             
         case TYPE_FLOAT:
@@ -287,7 +288,7 @@ void bread_value_set_bool(BreadValue* out, int v) {
     out->value.bool_val = v ? 1 : 0;
 }
 
-void bread_value_set_int(BreadValue* out, int v) {
+void bread_value_set_int(BreadValue* out, int64_t v) {
     if (!out) return;
     memset(out, 0, sizeof(*out));
     out->type = TYPE_INT;
@@ -510,7 +511,7 @@ int bread_binary_op(char op, const BreadValue* left, const BreadValue* right, Br
                 return 0;
             }
             
-            int result;
+            int64_t result;
             switch (op) {
                 case '-': result = left->value.int_val - right->value.int_val; break;
                 case '*': result = left->value.int_val * right->value.int_val; break;

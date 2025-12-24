@@ -1,1 +1,570 @@
-print("Hello, World!")
+// ============================================================================
+// BREADLANG COMPREHENSIVE STRESS TEST SUITE
+// ============================================================================
+// Tests edge cases, performance limits, and potential breaking points
+// Run with: ./bread run stress_test.bread
+// ============================================================================
+
+print("=== BreadLang Stress Test Suite ===")
+print("")
+
+// ============================================================================
+// TEST 1: Deep Nesting Stress
+// ============================================================================
+print("TEST 1: Deep Nesting (Control Flow)")
+
+def testDeepNesting() -> Int {
+    let result: Int = 0
+    
+    if true {
+        if true {
+            if true {
+                if true {
+                    if true {
+                        if true {
+                            if true {
+                                if true {
+                                    if true {
+                                        if true {
+                                            result = 1
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    return result
+}
+
+print("Deep nesting result: " + str(testDeepNesting()))
+
+// ============================================================================
+// TEST 2: Large Array Operations
+// ============================================================================
+print("")
+print("TEST 2: Large Array Operations")
+
+def testLargeArrays() -> Int {
+    let large: [Int] = []
+    let i: Int = 0
+    
+    while i < 1000 {
+        large.append(i)
+        i = i + 1
+    }
+    
+    return large.length
+}
+
+print("Created array with " + str(testLargeArrays()) + " elements")
+
+// ============================================================================
+// TEST 3: Nested Arrays (Multi-dimensional)
+// ============================================================================
+print("")
+print("TEST 3: Nested Arrays (2D/3D)")
+
+def testNestedArrays() -> Int {
+    let matrix: [[Int]] = []
+    let i: Int = 0
+    
+    while i < 100 {
+        let row: [Int] = []
+        let j: Int = 0
+        while j < 100 {
+            row.append(i * 100 + j)
+            j = j + 1
+        }
+        matrix.append(row)
+        i = i + 1
+    }
+    
+    return matrix.length * matrix[0].length
+}
+
+print("Created 2D array with " + str(testNestedArrays()) + " total elements")
+
+// ============================================================================
+// TEST 4: Large Dictionary Operations
+// ============================================================================
+print("")
+print("TEST 4: Large Dictionary Operations")
+
+def testLargeDictionary() -> Int {
+    let dict: [String: Int] = [:]
+    let i: Int = 0
+    
+    while i < 500 {
+        dict["key" + str(i)] = i * 2
+        i = i + 1
+    }
+    
+    return dict.length
+}
+
+print("Created dictionary with " + str(testLargeDictionary()) + " entries")
+
+// ============================================================================
+// TEST 5: String Concatenation Stress
+// ============================================================================
+print("")
+print("TEST 5: String Concatenation Stress")
+
+def testStringConcatenation() -> Int {
+    let result: String = ""
+    let i: Int = 0
+    
+    while i < 100 {
+        result = result + "x"
+        i = i + 1
+    }
+    
+    return result.length
+}
+
+print("Built string of length: " + str(testStringConcatenation()))
+
+// ============================================================================
+// TEST 6: Deep Recursion
+// ============================================================================
+print("")
+print("TEST 6: Deep Recursion (Fibonacci)")
+
+def fibonacci(n: Int) -> Int {
+    if n <= 1 {
+        return n
+    }
+    return fibonacci(n - 1) + fibonacci(n - 2)
+}
+
+print("Fibonacci(20) = " + str(fibonacci(20)))
+
+// ============================================================================
+// TEST 7: Recursive Factorial (Deeper Stack)
+// ============================================================================
+print("")
+print("TEST 7: Deep Stack (Factorial)")
+
+def factorial(n: Int) -> Int {
+    if n <= 1 {
+        return 1
+    }
+    return n * factorial(n - 1)
+}
+
+print("Factorial(20) = " + str(factorial(20)))
+
+// ============================================================================
+// TEST 8: Complex Expression Evaluation
+// ============================================================================
+print("")
+print("TEST 8: Complex Expressions")
+
+def testComplexExpressions() -> Int {
+    let a: Int = 10
+    let b: Int = 20
+    let c: Int = 30
+    let d: Int = 40
+    
+    let result: Int = ((a + b) * (c - d)) + ((a * b) - (c + d)) * ((a - b) + (c * d))
+    return result
+}
+
+print("Complex expression result: " + str(testComplexExpressions()))
+
+// ============================================================================
+// TEST 9: Edge Case - Array Boundary Access
+// ============================================================================
+print("")
+print("TEST 9: Array Boundary Access")
+
+def testArrayBoundaries() -> String {
+    let arr: [Int] = [10, 20, 30, 40, 50]
+    
+    let first: Int = arr[0]
+    let last: Int = arr[-1]
+    let secondLast: Int = arr[-2]
+    
+    return str(first) + "," + str(last) + "," + str(secondLast)
+}
+
+print("Boundary access: " + testArrayBoundaries())
+
+// ============================================================================
+// TEST 10: Nested Loops (Performance)
+// ============================================================================
+print("")
+print("TEST 10: Nested Loops Performance")
+
+def testNestedLoops() -> Int {
+    let counter: Int = 0
+    let i: Int = 0
+    
+    while i < 50 {
+        let j: Int = 0
+        while j < 50 {
+            counter = counter + 1
+            j = j + 1
+        }
+        i = i + 1
+    }
+    
+    return counter
+}
+
+print("Nested loops completed: " + str(testNestedLoops()) + " iterations")
+
+// ============================================================================
+// TEST 11: For-In Loop with Large Range
+// ============================================================================
+print("")
+print("TEST 11: For-In Loop Performance")
+
+def testForInLoop() -> Int {
+    let sum: Int = 0
+    
+    for i in range(1000) {
+        sum = sum + i
+    }
+    
+    return sum
+}
+
+print("Sum of range(1000): " + str(testForInLoop()))
+
+// ============================================================================
+// TEST 12: Dictionary Iteration
+// ============================================================================
+print("")
+print("TEST 12: Dictionary Iteration")
+
+def testDictIteration() -> Int {
+    let scores: [String: Int] = [:]
+    let i: Int = 0
+    
+    while i < 50 {
+        scores["student" + str(i)] = i * 10
+        i = i + 1
+    }
+    
+    let sum: Int = 0
+    for key in scores {
+        sum = sum + scores[key]
+    }
+    
+    return sum
+}
+
+print("Sum of dictionary values: " + str(testDictIteration()))
+
+// ============================================================================
+// TEST 13: Class Inheritance Depth
+// ============================================================================
+print("")
+print("TEST 13: Class Inheritance Chain")
+
+class Level1 {
+    value: Int
+    
+    def init(value: Int) {
+        self.value = value
+    }
+    
+    def getValue() -> Int {
+        return value
+    }
+}
+
+class Level2 extends Level1 {
+    multiplier: Int
+    
+    def init(value: Int, multiplier: Int) {
+        super.init(value)
+        self.multiplier = multiplier
+    }
+    
+    def getValue() -> Int {
+        return value * multiplier
+    }
+}
+
+class Level3 extends Level2 {
+    offset: Int
+    
+    def init(value: Int, multiplier: Int, offset: Int) {
+        super.init(value, multiplier)
+        self.offset = offset
+    }
+    
+    def getValue() -> Int {
+        return (value * multiplier) + offset
+    }
+}
+
+let obj: Level3 = Level3(10, 5, 100)
+print("Inheritance chain result: " + str(obj.getValue()))
+
+// ============================================================================
+// TEST 14: Multiple Object Instances
+// ============================================================================
+print("")
+print("TEST 14: Multiple Object Instances")
+
+class Counter {
+    count: Int
+    
+    def init(start: Int) {
+        self.count = start
+    }
+    
+    def increment() -> Int {
+        self.count = self.count + 1
+        return self.count
+    }
+}
+
+def testMultipleInstances() -> Int {
+    let counters: [Counter] = []
+    let i: Int = 0
+    
+    while i < 100 {
+        counters.append(Counter(i))
+        i = i + 1
+    }
+    
+    return counters.length
+}
+
+print("Created instances: " + str(testMultipleInstances()))
+
+// ============================================================================
+// TEST 15: Edge Case - Empty Collections
+// ============================================================================
+print("")
+print("TEST 15: Empty Collections")
+
+def testEmptyCollections() -> String {
+    let emptyArr: [Int] = []
+    let emptyDict: [String: Int] = [:]
+    
+    return "Array: " + str(emptyArr.length) + ", Dict: " + str(emptyDict.length)
+}
+
+print(testEmptyCollections())
+
+// ============================================================================
+// TEST 16: Boolean Logic Stress
+// ============================================================================
+print("")
+print("TEST 16: Complex Boolean Logic")
+
+def testBooleanLogic() -> Bool {
+    let a: Bool = true
+    let b: Bool = false
+    let c: Bool = true
+    let d: Bool = false
+    
+    let result: Bool = (a && b) || (c && !d) || (!a && b) || (a && c)
+    return result
+}
+
+print("Boolean logic result: " + str(testBooleanLogic()))
+
+// ============================================================================
+// TEST 17: Type Conversion Chain
+// ============================================================================
+print("")
+print("TEST 17: Type Conversion Chain")
+
+def testTypeConversions() -> String {
+    let i: Int = 42
+    let s: String = str(i)
+    let back: Int = int(s)
+    let d: Double = float(back)
+    let final: String = str(d)
+    
+    return final
+}
+
+print("Conversion chain result: " + testTypeConversions())
+
+// ============================================================================
+// TEST 18: Operator Precedence Complexity
+// ============================================================================
+print("")
+print("TEST 18: Operator Precedence")
+
+def testOperatorPrecedence() -> Int {
+    let result: Int = 10 + 5 * 2 - 8 / 4 + 3 * (5 - 2)
+    return result
+}
+
+print("Precedence result: " + str(testOperatorPrecedence()))
+
+// ============================================================================
+// TEST 19: String Edge Cases
+// ============================================================================
+print("")
+print("TEST 19: String Edge Cases")
+
+def testStringEdgeCases() -> Int {
+    let empty: String = ""
+    let single: String = "x"
+    let withEscapes: String = "Line1\nLine2\tTabbed"
+    
+    return empty.length + single.length + withEscapes.length
+}
+
+print("String lengths sum: " + str(testStringEdgeCases()))
+
+// ============================================================================
+// TEST 20: Function Call Chain
+// ============================================================================
+print("")
+print("TEST 20: Function Call Chain")
+
+def addOne(x: Int) -> Int {
+    return x + 1
+}
+
+def multiplyTwo(x: Int) -> Int {
+    return x * 2
+}
+
+def subtractThree(x: Int) -> Int {
+    return x - 3
+}
+
+def testFunctionChain() -> Int {
+    return subtractThree(multiplyTwo(addOne(addOne(addOne(5)))))
+}
+
+print("Function chain result: " + str(testFunctionChain()))
+
+// ============================================================================
+// TEST 21: Mixed Collection Operations
+// ============================================================================
+print("")
+print("TEST 21: Mixed Collection Operations")
+
+def testMixedCollections() -> Int {
+    let arr: [Int] = [1, 2, 3, 4, 5]
+    let dict: [String: Int] = ["a": 10, "b": 20, "c": 30]
+    
+    let arrSum: Int = 0
+    for val in arr {
+        arrSum = arrSum + val
+    }
+    
+    let dictSum: Int = 0
+    for key in dict {
+        dictSum = dictSum + dict[key]
+    }
+    
+    return arrSum + dictSum
+}
+
+print("Mixed collections sum: " + str(testMixedCollections()))
+
+// ============================================================================
+// TEST 22: Default Parameter Edge Cases
+// ============================================================================
+print("")
+print("TEST 22: Default Parameters")
+
+def withDefaults(a: Int, b: Int = 10, c: Int = 20) -> Int {
+    return a + b + c
+}
+
+print("Defaults test: " + str(withDefaults(5)) + ", " + str(withDefaults(5, 15)) + ", " + str(withDefaults(5, 15, 25)))
+
+// ============================================================================
+// TEST 23: Struct Field Access Pattern
+// ============================================================================
+print("")
+print("TEST 23: Struct Operations")
+
+struct Point {
+    x: Int
+    y: Int
+}
+
+def testStructs() -> Int {
+    let points: [Point] = []
+    let i: Int = 0
+    
+    while i < 50 {
+        points.append(Point{x: i, y: i * 2})
+        i = i + 1
+    }
+    
+    let sum: Int = 0
+    for point in points {
+        sum = sum + point.x + point.y
+    }
+    
+    return sum
+}
+
+print("Struct operations sum: " + str(testStructs()))
+
+// ============================================================================
+// TEST 24: Comparison Operators All Types
+// ============================================================================
+print("")
+print("TEST 24: Comparison Operators")
+
+def testComparisons() -> Int {
+    let score: Int = 0
+    
+    if 5 == 5 { score = score + 1 }
+    if 5 != 3 { score = score + 1 }
+    if 3 < 5 { score = score + 1 }
+    if 5 > 3 { score = score + 1 }
+    if 5 <= 5 { score = score + 1 }
+    if 5 >= 5 { score = score + 1 }
+    
+    if "abc" < "def" { score = score + 1 }
+    if "xyz" > "abc" { score = score + 1 }
+    
+    return score
+}
+
+print("Comparison tests passed: " + str(testComparisons()))
+
+// ============================================================================
+// TEST 25: Memory Pressure - Rapid Allocation
+// ============================================================================
+print("")
+print("TEST 25: Memory Pressure Test")
+
+def testMemoryPressure() -> Int {
+    let collections: [[Int]] = []
+    let i: Int = 0
+    
+    while i < 100 {
+        let temp: [Int] = []
+        let j: Int = 0
+        while j < 100 {
+            temp.append(j)
+            j = j + 1
+        }
+        collections.append(temp)
+        i = i + 1
+    }
+    
+    return collections.length
+}
+
+print("Memory pressure test: " + str(testMemoryPressure()) + " collections created")
+
+// ============================================================================
+print("")
+print("=== All Stress Tests Completed ===")
+print("If you see this, BreadLang handled all stress tests successfully!")
+// ============================================================================

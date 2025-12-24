@@ -22,7 +22,7 @@ int optimized_codegen_init(OptimizedCg* cg, LLVMModuleRef mod) {
     cg->base.void_ty = LLVMVoidType();
 
     // Primitives
-    cg->unboxed_int    = cg->base.i32;
+    cg->unboxed_int    = cg->base.i64;
     cg->unboxed_double = cg->base.f64;
     cg->unboxed_bool   = cg->base.i1;
 
@@ -30,7 +30,7 @@ int optimized_codegen_init(OptimizedCg* cg, LLVMModuleRef mod) {
 
     // runtime boys
     cg->ty_value_get_int =
-        LLVMFunctionType(cg->base.i32, &value_ptr, 1, 0);
+        LLVMFunctionType(cg->base.i64, &value_ptr, 1, 0);
     cg->fn_value_get_int =
         cg_declare_fn((Cg*)cg, "bread_value_get_int", cg->ty_value_get_int);
 

@@ -106,6 +106,7 @@ BreadValue bread_class_call_method(BreadClass* c, const char* method_name, Bread
 int bread_class_execute_method(BreadClass* c, int method_index, int argc, const BreadValue* args, BreadValue* out);
 int bread_class_execute_method_direct(BreadClass* defining_class, int method_index, BreadClass* instance, int argc, const BreadValue* args, BreadValue* out);
 int bread_class_execute_constructor(BreadClass* c, int argc, const BreadValue* args, BreadValue* out);
+int bread_class_call_compiled_method(BreadCompiledMethod compiled_fn, BreadClass* instance, int argc, const BreadValue* args, BreadValue* out);
 void bread_class_set_compiled_method(BreadClass* c, int method_index, BreadCompiledMethod compiled_fn);
 void bread_class_set_compiled_constructor(BreadClass* c, BreadCompiledMethod compiled_fn);
 void bread_class_retain(BreadClass* c);
@@ -152,7 +153,7 @@ BreadOptional* bread_optional_new_none(void);
 BreadOptional* bread_optional_new_some(BreadValue v);
 void bread_optional_retain(BreadOptional* o);
 void bread_optional_release(BreadOptional* o);
-int bread_value_get_int(BreadValue* v);
+int64_t bread_value_get_int(BreadValue* v);
 double bread_value_get_double(BreadValue* v);
 int bread_value_get_bool(BreadValue* v);
 int bread_value_get_type(BreadValue* v);
