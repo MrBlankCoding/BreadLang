@@ -574,7 +574,7 @@ int cg_declare_class_from_ast(Cg* cg, const ASTStmtClassDecl* class_decl, const 
     new_class->method_functions = NULL;
     new_class->method_names = NULL;
     new_class->constructor_function = NULL; // Initialize constructor function
-    if (new_class->method_count > 0) {
+    if (new_class->method_count > 0 && new_class->methods) {
         new_class->method_functions = malloc(sizeof(LLVMValueRef) * new_class->method_count);
         new_class->method_names = malloc(sizeof(char*) * new_class->method_count);
         if (!new_class->method_functions || !new_class->method_names) {
@@ -588,8 +588,12 @@ int cg_declare_class_from_ast(Cg* cg, const ASTStmtClassDecl* class_decl, const 
         
         // Copy method names for runtime lookup
         for (int i = 0; i < new_class->method_count; i++) {
-            new_class->method_names[i] = strdup(new_class->methods[i]->name);
             new_class->method_functions[i] = NULL; // Will be set during codegen
+            if (!new_class->methods[i] || !new_class->methods[i]->name) {
+                new_class->method_names[i] = NULL;
+                continue;
+            }
+            new_class->method_names[i] = strdup(new_class->methods[i]->name);
         }
     }
     

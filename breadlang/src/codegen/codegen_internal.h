@@ -15,6 +15,7 @@ LLVMValueRef cg_value_to_i8_ptr(Cg* cg, LLVMValueRef value_ptr);
 void cg_copy_value_into(Cg* cg, LLVMValueRef dst, LLVMValueRef src);
 LLVMValueRef cg_clone_value(Cg* cg, LLVMValueRef src, const char* name);
 LLVMValueRef cg_get_string_global(Cg* cg, const char* s);
+LLVMValueRef cg_get_string_ptr(Cg* cg, const char* s);
 CgScope* cg_scope_new(CgScope* parent);
 CgValue cg_unbox_value(Cg* cg, LLVMValueRef boxed_val, VarType expected_type);
 

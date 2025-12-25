@@ -128,7 +128,6 @@ int bread_eq(const BreadValue* left, const BreadValue* right, int* out_bool) {
 
 static void bread_format_float(char* buf, size_t size, double value) {
     snprintf(buf, size, "%.15g", value);
-    // Ensure there's a decimal point for clarity
     if (!strchr(buf, '.') && !strchr(buf, 'e') && !strchr(buf, 'E')) {
         size_t len = strlen(buf);
         if (len + 2 < size) {
@@ -153,10 +152,10 @@ static void bread_print_value_recursive(const BreadValue* v, int compact) {
             break;
             
         case TYPE_INT:
-            printf("%lld", v->value.int_val);
+            printf("%lld", (long long)v->value.int_val);
             break;
             
-        case TYPE_FLOAT:
+        case TYPE_FLOAT: {
             if (compact) {
                 char buf[64];
                 bread_format_float(buf, sizeof(buf), (double)v->value.float_val);
@@ -165,8 +164,9 @@ static void bread_print_value_recursive(const BreadValue* v, int compact) {
                 printf("%f", v->value.float_val);
             }
             break;
+        }
             
-        case TYPE_DOUBLE:
+        case TYPE_DOUBLE: {
             if (compact) {
                 char buf[64];
                 bread_format_float(buf, sizeof(buf), v->value.double_val);
@@ -175,6 +175,7 @@ static void bread_print_value_recursive(const BreadValue* v, int compact) {
                 printf("%lf", v->value.double_val);
             }
             break;
+        }
             
         case TYPE_STRING:
             printf("%s", bread_string_cstr(v->value.string_val));
@@ -323,9 +324,14 @@ void bread_value_set_string(BreadValue* out, const char* cstr) {
 void bread_value_set_array(BreadValue* out, BreadArray* a) {
     if (!out) return;
     memset(out, 0, sizeof(*out));
+    if (!a) {
+        BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory creating array");
+        out->type = TYPE_NIL;
+        return;
+    }
     out->type = TYPE_ARRAY;
     out->value.array_val = a;
-    bread_array_retain(out->value.array_val);
+    bread_array_retain(a);
 }
 
 void bread_value_set_dict(BreadValue* out, BreadDict* d) {
@@ -333,7 +339,7 @@ void bread_value_set_dict(BreadValue* out, BreadDict* d) {
     memset(out, 0, sizeof(*out));
     out->type = TYPE_DICT;
     out->value.dict_val = d;
-    bread_dict_retain(out->value.dict_val);
+    if (d) bread_dict_retain(d);
 }
 
 void bread_value_set_optional(BreadValue* out, BreadOptional* o) {
@@ -341,7 +347,7 @@ void bread_value_set_optional(BreadValue* out, BreadOptional* o) {
     memset(out, 0, sizeof(*out));
     out->type = TYPE_OPTIONAL;
     out->value.optional_val = o;
-    bread_optional_retain(out->value.optional_val);
+    if (o) bread_optional_retain(o);
 }
 
 void bread_value_set_struct(BreadValue* out, BreadStruct* s) {
@@ -349,7 +355,7 @@ void bread_value_set_struct(BreadValue* out, BreadStruct* s) {
     memset(out, 0, sizeof(*out));
     out->type = TYPE_STRUCT;
     out->value.struct_val = s;
-    bread_struct_retain(out->value.struct_val);
+    if (s) bread_struct_retain(s);
 }
 
 void bread_value_set_class(BreadValue* out, BreadClass* c) {
@@ -357,7 +363,7 @@ void bread_value_set_class(BreadValue* out, BreadClass* c) {
     memset(out, 0, sizeof(*out));
     out->type = TYPE_CLASS;
     out->value.class_val = c;
-    bread_class_retain(out->value.class_val);
+    if (c) bread_class_retain(c);
 }
 
 size_t bread_value_size(void) {
@@ -365,8 +371,7 @@ size_t bread_value_size(void) {
 }
 
 void bread_value_copy(const BreadValue* in, BreadValue* out) {
-    if (!in || !out) return;
-    if (in == out) return; // Avoid self-copy
+    if (!in || !out || in == out) return;
     bread_value_release(out);
     *out = bread_value_clone(*in);
 }
@@ -377,7 +382,7 @@ void bread_value_release_value(BreadValue* v) {
 
 int bread_value_assign(BreadValue* target, const BreadValue* source) {
     if (!target || !source) return 0;
-    if (target == source) return 1; // Self-assignment is a no-op
+    if (target == source) return 1;
     
     BreadValue new_value = bread_value_clone(*source);
     bread_value_release(target);
@@ -435,40 +440,64 @@ static int bread_compare_values(const BreadValue* left, const BreadValue* right,
 
     switch (left->type) {
         case TYPE_INT:
-            if (op == '=') *result = left->value.int_val == right->value.int_val;
-            else if (op == '!') *result = left->value.int_val != right->value.int_val;
-            else if (op == '<') *result = left->value.int_val < right->value.int_val;
-            else if (op == '>') *result = left->value.int_val > right->value.int_val;
-            else if (op == 'l') *result = left->value.int_val <= right->value.int_val;
-            else if (op == 'g') *result = left->value.int_val >= right->value.int_val;
+            switch (op) {
+                case '=': *result = left->value.int_val == right->value.int_val; break;
+                case '!': *result = left->value.int_val != right->value.int_val; break;
+                case '<': *result = left->value.int_val < right->value.int_val; break;
+                case '>': *result = left->value.int_val > right->value.int_val; break;
+                case 'l': *result = left->value.int_val <= right->value.int_val; break;
+                case 'g': *result = left->value.int_val >= right->value.int_val; break;
+                default: return 0;
+            }
             return 1;
 
         case TYPE_DOUBLE:
-            if (op == '=') *result = left->value.double_val == right->value.double_val;
-            else if (op == '!') *result = left->value.double_val != right->value.double_val;
-            else if (op == '<') *result = left->value.double_val < right->value.double_val;
-            else if (op == '>') *result = left->value.double_val > right->value.double_val;
-            else if (op == 'l') *result = left->value.double_val <= right->value.double_val;
-            else if (op == 'g') *result = left->value.double_val >= right->value.double_val;
+            switch (op) {
+                case '=': *result = left->value.double_val == right->value.double_val; break;
+                case '!': *result = left->value.double_val != right->value.double_val; break;
+                case '<': *result = left->value.double_val < right->value.double_val; break;
+                case '>': *result = left->value.double_val > right->value.double_val; break;
+                case 'l': *result = left->value.double_val <= right->value.double_val; break;
+                case 'g': *result = left->value.double_val >= right->value.double_val; break;
+                default: return 0;
+            }
+            return 1;
+
+        case TYPE_FLOAT:
+            switch (op) {
+                case '=': *result = left->value.float_val == right->value.float_val; break;
+                case '!': *result = left->value.float_val != right->value.float_val; break;
+                case '<': *result = left->value.float_val < right->value.float_val; break;
+                case '>': *result = left->value.float_val > right->value.float_val; break;
+                case 'l': *result = left->value.float_val <= right->value.float_val; break;
+                case 'g': *result = left->value.float_val >= right->value.float_val; break;
+                default: return 0;
+            }
             return 1;
 
         case TYPE_BOOL:
-            if (op == '=') *result = left->value.bool_val == right->value.bool_val;
-            else if (op == '!') *result = left->value.bool_val != right->value.bool_val;
-            else if (op == '<') *result = left->value.bool_val < right->value.bool_val;
-            else if (op == '>') *result = left->value.bool_val > right->value.bool_val;
-            else if (op == 'l') *result = left->value.bool_val <= right->value.bool_val;
-            else if (op == 'g') *result = left->value.bool_val >= right->value.bool_val;
+            switch (op) {
+                case '=': *result = left->value.bool_val == right->value.bool_val; break;
+                case '!': *result = left->value.bool_val != right->value.bool_val; break;
+                case '<': *result = left->value.bool_val < right->value.bool_val; break;
+                case '>': *result = left->value.bool_val > right->value.bool_val; break;
+                case 'l': *result = left->value.bool_val <= right->value.bool_val; break;
+                case 'g': *result = left->value.bool_val >= right->value.bool_val; break;
+                default: return 0;
+            }
             return 1;
 
         case TYPE_STRING: {
             int cmp = bread_string_cmp(left->value.string_val, right->value.string_val);
-            if (op == '=') *result = cmp == 0;
-            else if (op == '!') *result = cmp != 0;
-            else if (op == '<') *result = cmp < 0;
-            else if (op == '>') *result = cmp > 0;
-            else if (op == 'l') *result = cmp <= 0;
-            else if (op == 'g') *result = cmp >= 0;
+            switch (op) {
+                case '=': *result = cmp == 0; break;
+                case '!': *result = cmp != 0; break;
+                case '<': *result = cmp < 0; break;
+                case '>': *result = cmp > 0; break;
+                case 'l': *result = cmp <= 0; break;
+                case 'g': *result = cmp >= 0; break;
+                default: return 0;
+            }
             return 1;
         }
 
@@ -492,115 +521,130 @@ static int bread_compare_values(const BreadValue* left, const BreadValue* right,
     }
 }
 
-int bread_binary_op(char op, const BreadValue* left, const BreadValue* right, BreadValue* out) {
-    if (!left || !right || !out) return 0;
-    if (op == '+') {
-        return bread_add(left, right, out);
+static int bread_arithmetic_op(char op, const BreadValue* left, const BreadValue* right, BreadValue* out) {
+    if (!bread_value_is_numeric_type(left) || !bread_value_is_numeric_type(right)) {
+        BREAD_ERROR_SET_TYPE_MISMATCH("Invalid operand types for arithmetic operation");
+        return 0;
     }
 
-    if (op == '-' || op == '*' || op == '/' || op == '%') {
-        if (!bread_value_is_numeric_type(left) || !bread_value_is_numeric_type(right)) {
-            BREAD_ERROR_SET_TYPE_MISMATCH("Invalid operand types for arithmetic operation");
+    if (left->type == TYPE_INT && right->type == TYPE_INT) {
+        if ((op == '/' || op == '%') && right->value.int_val == 0) {
+            BREAD_ERROR_SET_DIVISION_BY_ZERO(
+                op == '/' ? "Integer division by zero" : "Integer modulo by zero");
             return 0;
         }
-
-        if (left->type == TYPE_INT && right->type == TYPE_INT) {
-            if ((op == '/' || op == '%') && right->value.int_val == 0) {
-                BREAD_ERROR_SET_DIVISION_BY_ZERO(
-                    op == '/' ? "Integer division by zero" : "Integer modulo by zero");
-                return 0;
-            }
-            
-            int64_t result;
-            switch (op) {
-                case '-': result = left->value.int_val - right->value.int_val; break;
-                case '*': result = left->value.int_val * right->value.int_val; break;
-                case '/': result = left->value.int_val / right->value.int_val; break;
-                case '%': result = left->value.int_val % right->value.int_val; break;
-                default: return 0;
-            }
-            bread_value_set_int(out, result);
-            return 1;
-        }
-
-        if (op == '%') {
-            BREAD_ERROR_SET_TYPE_MISMATCH("Modulo operation not supported for floating point numbers");
-            return 0;
-        }
-
-        double l, r;
-        if (!bread_binary_numeric_promote(left, right, &l, &r)) {
-            BREAD_ERROR_SET_TYPE_MISMATCH("Invalid operand types for arithmetic operation");
-            return 0;
-        }
-
-        if (op == '/' && r == 0.0) {
-            BREAD_ERROR_SET_DIVISION_BY_ZERO("Floating point division by zero");
-            return 0;
-        }
-
-        double result;
+        
+        int64_t result;
         switch (op) {
-            case '-': result = l - r; break;
-            case '*': result = l * r; break;
-            case '/': result = l / r; break;
+            case '-': result = left->value.int_val - right->value.int_val; break;
+            case '*': result = left->value.int_val * right->value.int_val; break;
+            case '/': result = left->value.int_val / right->value.int_val; break;
+            case '%': result = left->value.int_val % right->value.int_val; break;
             default: return 0;
         }
-        bread_value_set_double(out, result);
+        bread_value_set_int(out, result);
         return 1;
     }
 
-    if (op == '=' || op == '!' || op == '<' || op == '>' || op == 'l' || op == 'g') {
-        int result;
-        if (!bread_compare_values(left, right, &result, op)) {
+    if (op == '%') {
+        BREAD_ERROR_SET_TYPE_MISMATCH("Modulo operation not supported for floating point numbers");
+        return 0;
+    }
+
+    double l, r;
+    if (!bread_binary_numeric_promote(left, right, &l, &r)) {
+        BREAD_ERROR_SET_TYPE_MISMATCH("Invalid operand types for arithmetic operation");
+        return 0;
+    }
+
+    if (op == '/' && r == 0.0) {
+        BREAD_ERROR_SET_DIVISION_BY_ZERO("Floating point division by zero");
+        return 0;
+    }
+
+    double result;
+    switch (op) {
+        case '-': result = l - r; break;
+        case '*': result = l * r; break;
+        case '/': result = l / r; break;
+        default: return 0;
+    }
+    bread_value_set_double(out, result);
+    return 1;
+}
+
+int bread_binary_op(char op, const BreadValue* left, const BreadValue* right, BreadValue* out) {
+    if (!left || !right || !out) return 0;
+    
+    switch (op) {
+        case '+':
+            return bread_add(left, right, out);
+            
+        case '-':
+        case '*':
+        case '/':
+        case '%':
+            return bread_arithmetic_op(op, left, right, out);
+            
+        case '=':
+        case '!':
+        case '<':
+        case '>':
+        case 'l':
+        case 'g': {
+            int result;
+            if (!bread_compare_values(left, right, &result, op)) {
+                return 0;
+            }
+            bread_value_set_bool(out, result);
+            return 1;
+        }
+            
+        case '&':
+        case '|':
+            if (left->type != TYPE_BOOL || right->type != TYPE_BOOL) {
+                BREAD_ERROR_SET_TYPE_MISMATCH("Logical operations require boolean operands");
+                return 0;
+            }
+            bread_value_set_bool(out, (op == '&') ? 
+                (left->value.bool_val && right->value.bool_val) :
+                (left->value.bool_val || right->value.bool_val));
+            return 1;
+            
+        default: {
+            char error_msg[64];
+            snprintf(error_msg, sizeof(error_msg), "Unknown binary operator '%c'", op);
+            BREAD_ERROR_SET_RUNTIME(error_msg);
             return 0;
         }
-        bread_value_set_bool(out, result);
-        return 1;
     }
-
-    if (op == '&' || op == '|') {
-        if (left->type != TYPE_BOOL || right->type != TYPE_BOOL) {
-            BREAD_ERROR_SET_TYPE_MISMATCH("Logical operations require boolean operands");
-            return 0;
-        }
-        int result = (op == '&') ? 
-            (left->value.bool_val && right->value.bool_val) :
-            (left->value.bool_val || right->value.bool_val);
-        bread_value_set_bool(out, result);
-        return 1;
-    }
-
-    char error_msg[64];
-    snprintf(error_msg, sizeof(error_msg), "Unknown binary operator '%c'", op);
-    BREAD_ERROR_SET_RUNTIME(error_msg);
-    return 0;
 }
 
 int bread_coerce_value(VarType target, const BreadValue* in, BreadValue* out) {
     if (!in || !out) return 0;
 
-    // Nil to Optional coercion
-    if (target == TYPE_OPTIONAL && in->type == TYPE_NIL) {
-        BreadOptional* o = bread_optional_new_none();
-        if (!o) {
-            BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory creating optional value");
-            return 0;
+    if (target == TYPE_OPTIONAL) {
+        if (in->type == TYPE_NIL) {
+            BreadOptional* o = bread_optional_new_none();
+            if (!o) {
+                BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory creating optional value");
+                return 0;
+            }
+            bread_value_set_optional(out, o);
+            bread_optional_release(o);
+            return 1;
         }
-        bread_value_set_optional(out, o);
-        bread_optional_release(o);
-        return 1;
-    }
-
-    if (target == TYPE_OPTIONAL && in->type != TYPE_OPTIONAL) {
-        BreadOptional* o = bread_optional_new_some(*in);
-        if (!o) {
-            BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory creating optional value");
-            return 0;
+        
+        if (in->type != TYPE_OPTIONAL) {
+            BreadOptional* o = bread_optional_new_some(*in);
+            if (!o) {
+                BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory creating optional value");
+                return 0;
+            }
+            bread_value_set_optional(out, o);
+            bread_optional_release(o);
+            return 1;
         }
-        bread_value_set_optional(out, o);
-        bread_optional_release(o);
-        return 1;
     }
 
     if (target == in->type) {
@@ -608,37 +652,42 @@ int bread_coerce_value(VarType target, const BreadValue* in, BreadValue* out) {
         return 1;
     }
 
-    if (target == TYPE_DOUBLE) {
-        if (in->type == TYPE_INT) {
-            bread_value_set_double(out, (double)in->value.int_val);
-            return 1;
-        }
-        if (in->type == TYPE_FLOAT) {
-            bread_value_set_double(out, (double)in->value.float_val);
-            return 1;
-        }
-    }
-    
-    if (target == TYPE_FLOAT) {
-        if (in->type == TYPE_INT) {
-            bread_value_set_float(out, (float)in->value.int_val);
-            return 1;
-        }
-        if (in->type == TYPE_DOUBLE) {
-            bread_value_set_float(out, (float)in->value.double_val);
-            return 1;
-        }
-    }
-    
-    if (target == TYPE_INT) {
-        if (in->type == TYPE_DOUBLE) {
-            bread_value_set_int(out, (int)in->value.double_val);
-            return 1;
-        }
-        if (in->type == TYPE_FLOAT) {
-            bread_value_set_int(out, (int)in->value.float_val);
-            return 1;
-        }
+    switch (target) {
+        case TYPE_DOUBLE:
+            if (in->type == TYPE_INT) {
+                bread_value_set_double(out, (double)in->value.int_val);
+                return 1;
+            }
+            if (in->type == TYPE_FLOAT) {
+                bread_value_set_double(out, (double)in->value.float_val);
+                return 1;
+            }
+            break;
+            
+        case TYPE_FLOAT:
+            if (in->type == TYPE_INT) {
+                bread_value_set_float(out, (float)in->value.int_val);
+                return 1;
+            }
+            if (in->type == TYPE_DOUBLE) {
+                bread_value_set_float(out, (float)in->value.double_val);
+                return 1;
+            }
+            break;
+            
+        case TYPE_INT:
+            if (in->type == TYPE_DOUBLE) {
+                bread_value_set_int(out, (int64_t)in->value.double_val);
+                return 1;
+            }
+            if (in->type == TYPE_FLOAT) {
+                bread_value_set_int(out, (int64_t)in->value.float_val);
+                return 1;
+            }
+            break;
+            
+        default:
+            break;
     }
 
     BREAD_ERROR_SET_TYPE_MISMATCH("Type mismatch in coercion");

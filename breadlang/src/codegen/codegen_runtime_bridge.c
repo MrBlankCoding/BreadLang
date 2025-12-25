@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdint.h>
 
 #include "codegen/codegen.h"
 #include "core/value.h"
@@ -213,8 +214,26 @@ int cg_connect_all_classes_to_runtime(Cg* cg) {
     if (!cg) return 0;
 
     printf("JIT: Connecting all classes\n");
+    fflush(stdout);
 
-    for (CgClass* cls = cg->classes; cls; cls = cls->next) {
+    CgClass* classes = cg->classes;
+    printf("JIT: cg->classes=%p\n", (void*)classes);
+    fflush(stdout);
+    fprintf(stderr, "JIT: cg->classes=%p\n", (void*)classes);
+    if (classes && (uintptr_t)classes < 4096) {
+        fprintf(stderr, "JIT ERROR: Invalid cg->classes pointer\n");
+        return 0;
+    }
+
+    for (CgClass* cls = classes; cls; cls = cls->next) {
+        if ((uintptr_t)cls < 4096) {
+            fprintf(stderr, "JIT ERROR: Invalid CgClass pointer\n");
+            return 0;
+        }
+        if (!cls->name || (uintptr_t)cls->name < 4096) {
+            fprintf(stderr, "JIT ERROR: Invalid CgClass name pointer\n");
+            return 0;
+        }
         BreadClass* runtime = find_runtime_class(cls->name);
 
         if (!runtime) {

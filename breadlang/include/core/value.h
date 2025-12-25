@@ -108,6 +108,7 @@ int bread_class_execute_method_direct(BreadClass* defining_class, int method_ind
 int bread_class_execute_constructor(BreadClass* c, int argc, const BreadValue* args, BreadValue* out);
 int bread_class_call_compiled_method(BreadCompiledMethod compiled_fn, BreadClass* instance, int argc, const BreadValue* args, BreadValue* out);
 void bread_class_set_compiled_method(BreadClass* c, int method_index, BreadCompiledMethod compiled_fn);
+void bread_class_set_compiled_method_by_name(BreadClass* c, const char* method_name, BreadCompiledMethod compiled_fn);
 void bread_class_set_compiled_constructor(BreadClass* c, BreadCompiledMethod compiled_fn);
 void bread_class_retain(BreadClass* c);
 void bread_class_release(BreadClass* c);

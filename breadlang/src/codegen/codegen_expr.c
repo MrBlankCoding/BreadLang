@@ -53,8 +53,7 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
         case AST_EXPR_STRING: {
             tmp = cg_alloc_value(cg, "strtmp");
             const char* s = expr->as.string_val ? expr->as.string_val : "";
-            LLVMValueRef str_glob = cg_get_string_global(cg, s);
-            LLVMValueRef ptr = LLVMBuildBitCast(cg->builder, str_glob, cg->i8_ptr, "");
+            LLVMValueRef ptr = cg_get_string_ptr(cg, s);
             LLVMValueRef str_args[] = {cg_value_to_i8_ptr(cg, tmp), ptr};
             (void)LLVMBuildCall2(cg->builder, cg->ty_value_set_string, cg->fn_value_set_string, str_args, 2, "");
             return tmp;
@@ -64,8 +63,7 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
             const char* s = expr->as.string_literal.value ? expr->as.string_literal.value : "";
             
             // llvm string const
-            LLVMValueRef str_glob = cg_get_string_global(cg, s);
-            LLVMValueRef ptr = LLVMBuildBitCast(cg->builder, str_glob, cg->i8_ptr, "");
+            LLVMValueRef ptr = cg_get_string_ptr(cg, s);
             
             // I love bread value
             LLVMValueRef str_args[] = {cg_value_to_i8_ptr(cg, tmp), ptr};
@@ -132,8 +130,7 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
                 if (is_field) {
                     LLVMValueRef self_param = cg_fn->self_param ? cg_fn->self_param : LLVMGetParam(cg_fn->fn, 1);
                     tmp = cg_alloc_value(cg, "membertmp");
-                    LLVMValueRef member_glob = cg_get_string_global(cg, expr->as.var_name);
-                    LLVMValueRef member_ptr = LLVMBuildBitCast(cg->builder, member_glob, cg->i8_ptr, "");
+                    LLVMValueRef member_ptr = cg_get_string_ptr(cg, expr->as.var_name);
                     LLVMValueRef is_opt = LLVMConstInt(cg->i32, 0, 0);
 
                     LLVMValueRef args[] = {
@@ -148,8 +145,7 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
             }
 
             tmp = cg_alloc_value(cg, expr->as.var_name);
-            LLVMValueRef name_str = cg_get_string_global(cg, expr->as.var_name);
-            LLVMValueRef name_ptr = LLVMBuildBitCast(cg->builder, name_str, cg->i8_ptr, "");
+            LLVMValueRef name_ptr = cg_get_string_ptr(cg, expr->as.var_name);
             LLVMValueRef args[] = {name_ptr, cg_value_to_i8_ptr(cg, tmp)};
             (void)LLVMBuildCall2(cg->builder, cg->ty_var_load, cg->fn_var_load, args, 2, "");
             return tmp;
@@ -280,8 +276,7 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
 
             tmp = cg_alloc_value(cg, "membertmp");
             const char* member = expr->as.member.member ? expr->as.member.member : "";
-            LLVMValueRef member_glob = cg_get_string_global(cg, member);
-            LLVMValueRef member_ptr = LLVMBuildBitCast(cg->builder, member_glob, cg->i8_ptr, "");
+            LLVMValueRef member_ptr = cg_get_string_ptr(cg, member);
             LLVMValueRef is_opt = LLVMConstInt(cg->i32, expr->as.member.is_optional_chain ? 1 : 0, 0);
 
             LLVMValueRef args[] = {

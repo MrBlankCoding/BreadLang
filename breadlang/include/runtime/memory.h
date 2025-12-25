@@ -16,6 +16,7 @@ typedef struct {
 } BreadMemoryStats;
 typedef struct BreadObjectNode {
     void* object;
+    size_t size;
     BreadObjKind kind;
     int marked;
     struct BreadObjectNode* next;
@@ -35,7 +36,7 @@ void bread_memory_cleanup(void);
 void* bread_memory_alloc(size_t size, BreadObjKind kind);
 void* bread_memory_realloc(void* ptr, size_t new_size);
 void bread_memory_free(void* ptr);
-void bread_memory_track_object(void* object, BreadObjKind kind);
+void bread_memory_track_object(void* object, size_t size, BreadObjKind kind);
 void bread_memory_untrack_object(void* object);
 void bread_object_retain(void* object);
 void bread_object_release(void* object);

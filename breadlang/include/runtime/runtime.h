@@ -7,6 +7,7 @@
 #include "core/var.h"
 
 typedef enum {
+    BREAD_OBJ_UNKNOWN = 0,
     BREAD_OBJ_STRING = 1,
     BREAD_OBJ_ARRAY = 2,
     BREAD_OBJ_DICT = 3,

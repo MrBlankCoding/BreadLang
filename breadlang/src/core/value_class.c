@@ -37,7 +37,7 @@ BreadClass* bread_class_new(const char* class_name, const char* parent_name, int
         }
         
         for (int i = 0; i < field_count; i++) {
-            c->field_names[i] = strdup(field_names[i]);
+            c->field_names[i] = field_names[i] ? strdup(field_names[i]) : NULL;
             memset(&c->field_values[i], 0, sizeof(BreadValue));
             c->field_values[i].type = TYPE_NIL;
         }
@@ -69,7 +69,7 @@ BreadClass* bread_class_new_with_methods(const char* class_name, const char* par
         }
         
         for (int i = 0; i < method_count; i++) {
-            c->method_names[i] = strdup(method_names[i]);
+            c->method_names[i] = method_names[i] ? strdup(method_names[i]) : NULL;
             c->compiled_methods[i] = NULL;
         }
     }
@@ -287,6 +287,20 @@ void bread_class_add_method(BreadClass* c, const char* method_name, BreadMethod 
 void bread_class_set_compiled_method(BreadClass* c, int method_index, BreadCompiledMethod compiled_fn) {
     if (!c || method_index < 0 || method_index >= c->method_count || !c->compiled_methods) return;
     c->compiled_methods[method_index] = compiled_fn;
+}
+
+void bread_class_set_compiled_method_by_name(BreadClass* c, const char* method_name, BreadCompiledMethod compiled_fn) {
+    if (!c || !method_name) return;
+
+    int idx = bread_class_find_method_index(c, method_name);
+    if (idx >= 0) {
+        bread_class_set_compiled_method(c, idx, compiled_fn);
+        return;
+    }
+
+    if (c->parent_class) {
+        bread_class_set_compiled_method_by_name(c->parent_class, method_name, compiled_fn);
+    }
 }
 
 void bread_class_set_compiled_constructor(BreadClass* c, BreadCompiledMethod compiled_fn) {
