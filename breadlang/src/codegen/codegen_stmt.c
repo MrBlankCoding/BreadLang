@@ -511,12 +511,12 @@ static int build_while_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AS
 static void declare_loop_variable(Cg* cg, const char* var_name, int initial_value) {
     LLVMValueRef name_ptr = cg_get_string_ptr(cg, var_name);
     LLVMValueRef init_tmp = cg_alloc_value(cg, "loop.init");
-    (void)initial_value;
 
-    LLVMValueRef set_args[] = {cg_value_to_i8_ptr(cg, init_tmp)};
-    LLVMBuildCall2(cg->builder, cg->ty_value_set_nil, cg->fn_value_set_nil, set_args, 1, "");
+    LLVMValueRef init_val = LLVMConstInt(cg->i64, initial_value, 0);
+    LLVMValueRef set_args[] = {cg_value_to_i8_ptr(cg, init_tmp), init_val};
+    LLVMBuildCall2(cg->builder, cg->ty_value_set_int, cg->fn_value_set_int, set_args, 2, "");
     
-    LLVMValueRef decl_type = LLVMConstInt(cg->i32, TYPE_NIL, 0);
+    LLVMValueRef decl_type = LLVMConstInt(cg->i32, TYPE_INT, 0);
     LLVMValueRef decl_const = LLVMConstInt(cg->i32, 0, 0);
     LLVMValueRef decl_args[] = {name_ptr, decl_type, decl_const, cg_value_to_i8_ptr(cg, init_tmp)};
     LLVMBuildCall2(cg->builder, cg->ty_var_decl_if_missing, cg->fn_var_decl_if_missing, decl_args, 4, "");
@@ -525,7 +525,9 @@ static void declare_loop_variable(Cg* cg, const char* var_name, int initial_valu
 static void assign_loop_variable(Cg* cg, const char* var_name, LLVMValueRef value) {
     LLVMValueRef name_ptr = cg_get_string_ptr(cg, var_name);
     LLVMValueRef iter_tmp = cg_alloc_value(cg, "loop.iter");
-    LLVMValueRef set_iter_args[] = {cg_value_to_i8_ptr(cg, iter_tmp), value};
+
+    LLVMValueRef value_64 = LLVMBuildSExt(cg->builder, value, cg->i64, "idx.ext");
+    LLVMValueRef set_iter_args[] = {cg_value_to_i8_ptr(cg, iter_tmp), value_64};
     LLVMBuildCall2(cg->builder, cg->ty_value_set_int, cg->fn_value_set_int, set_iter_args, 2, "");
     
     LLVMValueRef assign_args[] = {name_ptr, cg_value_to_i8_ptr(cg, iter_tmp)};
