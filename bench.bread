@@ -1,9 +1,7 @@
-let N: Int = 5
-let acc: Int = 0
-for i in range(N) {
-    acc = acc + i
+let numPeople = 1
+
+for i in range(10) {
+    numPeople += 1
 }
-print(acc)
 
-
-// The impossible code. 
+print(numPeople)

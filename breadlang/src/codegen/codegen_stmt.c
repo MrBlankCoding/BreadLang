@@ -357,12 +357,126 @@ static int build_expr_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
     return val != NULL;
 }
 
+static int handle_unboxed_var_compound_assign(Cg* cg, CgFunction* cg_fn, CgVar* var, ASTExpr* value_expr, char op) {
+    CgValue current_val;
+    current_val.type = CG_VALUE_BOXED; 
+    LLVMTypeRef ty = NULL;
+    
+    switch (var->unboxed_type) {
+        case UNBOXED_INT: 
+            ty = cg->i64; 
+            current_val.type = CG_VALUE_UNBOXED_INT; 
+            break;
+        case UNBOXED_DOUBLE: 
+            ty = cg->f64; 
+            current_val.type = CG_VALUE_UNBOXED_DOUBLE; 
+            break;
+        case UNBOXED_BOOL: 
+            ty = cg->i1; 
+            current_val.type = CG_VALUE_UNBOXED_BOOL; 
+            break;
+        default: return 0;
+    }
+    
+    current_val.value = LLVMBuildLoad2(cg->builder, ty, var->alloca, "curr_val");
+    current_val.llvm_type = ty;
+    
+    CgValue rhs_val = cg_build_expr_unboxed(cg, cg_fn, value_expr);
+    
+    LLVMValueRef result = NULL;
+    
+    if (current_val.type == CG_VALUE_UNBOXED_INT && rhs_val.type == CG_VALUE_UNBOXED_INT) {
+        switch (op) {
+            case '+': result = LLVMBuildAdd(cg->builder, current_val.value, rhs_val.value, "add"); break;
+            case '-': result = LLVMBuildSub(cg->builder, current_val.value, rhs_val.value, "sub"); break;
+            case '*': result = LLVMBuildMul(cg->builder, current_val.value, rhs_val.value, "mul"); break;
+            case '/': result = LLVMBuildSDiv(cg->builder, current_val.value, rhs_val.value, "div"); break;
+            case '%': result = LLVMBuildSRem(cg->builder, current_val.value, rhs_val.value, "mod"); break;
+        }
+    } else if (current_val.type == CG_VALUE_UNBOXED_DOUBLE && rhs_val.type == CG_VALUE_UNBOXED_DOUBLE) {
+        switch (op) {
+            case '+': result = LLVMBuildFAdd(cg->builder, current_val.value, rhs_val.value, "fadd"); break;
+            case '-': result = LLVMBuildFSub(cg->builder, current_val.value, rhs_val.value, "fsub"); break;
+            case '*': result = LLVMBuildFMul(cg->builder, current_val.value, rhs_val.value, "fmul"); break;
+            case '/': result = LLVMBuildFDiv(cg->builder, current_val.value, rhs_val.value, "fdiv"); break;
+        }
+    }
+    
+    if (result) {
+        LLVMBuildStore(cg->builder, result, var->alloca);
+        return 1;
+    }
+    
+    // Fallback: Box everything, do op, unbox result
+    LLVMValueRef boxed_lhs = cg_box_value(cg, current_val);
+    LLVMValueRef boxed_rhs = (rhs_val.type == CG_VALUE_BOXED) ? rhs_val.value : cg_box_value(cg, rhs_val);
+    LLVMValueRef boxed_res = cg_alloc_value(cg, "bin_res");
+    
+    LLVMValueRef args[] = {
+        LLVMConstInt(cg->i8, op, 0),
+        cg_value_to_i8_ptr(cg, boxed_lhs),
+        cg_value_to_i8_ptr(cg, boxed_rhs),
+        cg_value_to_i8_ptr(cg, boxed_res)
+    };
+    LLVMBuildCall2(cg->builder, cg->ty_binary_op, cg->fn_binary_op, args, 4, "");
+    
+    CgValue unboxed_res = cg_unbox_value(cg, boxed_res, var->type);
+    if (unboxed_res.value) {
+        LLVMBuildStore(cg->builder, unboxed_res.value, var->alloca);
+        return 1;
+    }
+    return 0;
+}
+
+static int handle_boxed_var_compound_assign(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stmt) {
+    ASTExpr load_expr;
+    memset(&load_expr, 0, sizeof(ASTExpr));
+    load_expr.kind = AST_EXPR_VAR;
+    load_expr.as.var_name = stmt->as.var_assign.var_name;
+    load_expr.loc = stmt->loc;
+    
+    LLVMValueRef lhs = cg_build_expr(cg, cg_fn, val_size, &load_expr);
+    if (!lhs) return 0;
+    
+    LLVMValueRef rhs = cg_build_expr(cg, cg_fn, val_size, stmt->as.var_assign.value);
+    if (!rhs) return 0;
+    
+    LLVMValueRef res = cg_alloc_value(cg, "compound_res");
+    LLVMValueRef args[] = {
+        LLVMConstInt(cg->i8, stmt->as.var_assign.op, 0),
+        cg_value_to_i8_ptr(cg, lhs),
+        cg_value_to_i8_ptr(cg, rhs),
+        cg_value_to_i8_ptr(cg, res)
+    };
+    LLVMBuildCall2(cg->builder, cg->ty_binary_op, cg->fn_binary_op, args, 4, "");
+    
+    if (cg_fn) {
+        CgVar* var = cg_scope_find_var(cg_fn->scope, stmt->as.var_assign.var_name);
+        if (var) {
+             cg_copy_value_into(cg, var->alloca, res);
+             return 1;
+        }
+    }
+    
+    LLVMValueRef name_ptr = cg_get_string_ptr(cg, stmt->as.var_assign.var_name);
+    LLVMValueRef assign_args[] = {name_ptr, cg_value_to_i8_ptr(cg, res)};
+    LLVMBuildCall2(cg->builder, cg->ty_var_assign, cg->fn_var_assign, assign_args, 2, "");
+    
+    return 1;
+}
+
 static int build_var_assign_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stmt) {
     if (cg_fn) {
         CgVar* var = cg_scope_find_var(cg_fn->scope, stmt->as.var_assign.var_name);
         if (var && var->unboxed_type != UNBOXED_NONE) {
+            if (stmt->as.var_assign.op) {
+                return handle_unboxed_var_compound_assign(cg, cg_fn, var, stmt->as.var_assign.value, stmt->as.var_assign.op);
+            }
             return handle_unboxed_var_assign(cg, cg_fn, var, stmt->as.var_assign.value);
         }
+    }
+    if (stmt->as.var_assign.op) {
+        return handle_boxed_var_compound_assign(cg, cg_fn, val_size, stmt);
     }
     return handle_boxed_var_assign(cg, cg_fn, val_size, stmt);
 }
@@ -371,9 +485,6 @@ static int build_index_assign_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_s
     LLVMValueRef idx = cg_build_expr(cg, cg_fn, val_size, stmt->as.index_assign.index);
     if (!idx) return 0;
     
-    LLVMValueRef value = cg_build_expr(cg, cg_fn, val_size, stmt->as.index_assign.value);
-    if (!value) return 0;
-
     LLVMValueRef target_ptr = NULL;
     if (stmt->as.index_assign.target && stmt->as.index_assign.target->kind == AST_EXPR_VAR && cg_fn) {
         CgVar* var = cg_scope_find_var(cg_fn->scope, stmt->as.index_assign.target->as.var_name);
@@ -383,6 +494,34 @@ static int build_index_assign_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_s
     if (!target_ptr) {
         target_ptr = cg_build_expr(cg, cg_fn, val_size, stmt->as.index_assign.target);
         if (!target_ptr) return 0;
+    }
+
+    LLVMValueRef value = NULL;
+
+    if (stmt->as.index_assign.op) {
+        // Compound
+        LLVMValueRef current = cg_alloc_value(cg, "idx_curr");
+        LLVMValueRef get_args[] = {
+            cg_value_to_i8_ptr(cg, target_ptr),
+            cg_value_to_i8_ptr(cg, idx),
+            cg_value_to_i8_ptr(cg, current)
+        };
+        LLVMBuildCall2(cg->builder, cg->ty_index_op, cg->fn_index_op, get_args, 3, "");
+        
+        LLVMValueRef rhs = cg_build_expr(cg, cg_fn, val_size, stmt->as.index_assign.value);
+        if (!rhs) return 0;
+        
+        value = cg_alloc_value(cg, "idx_compound_res");
+        LLVMValueRef op_args[] = {
+            LLVMConstInt(cg->i8, stmt->as.index_assign.op, 0),
+            cg_value_to_i8_ptr(cg, current),
+            cg_value_to_i8_ptr(cg, rhs),
+            cg_value_to_i8_ptr(cg, value)
+        };
+        LLVMBuildCall2(cg->builder, cg->ty_binary_op, cg->fn_binary_op, op_args, 4, "");
+    } else {
+        value = cg_build_expr(cg, cg_fn, val_size, stmt->as.index_assign.value);
+        if (!value) return 0;
     }
 
     LLVMValueRef args[] = {
@@ -395,14 +534,42 @@ static int build_index_assign_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_s
 }
 
 static int build_member_assign_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTStmt* stmt) {
-    LLVMValueRef value = cg_build_expr(cg, cg_fn, val_size, stmt->as.member_assign.value);
-    if (!value) return 0;
-    
     LLVMValueRef target = cg_build_expr(cg, cg_fn, val_size, stmt->as.member_assign.target);
     if (!target) return 0;
     
     const char* member = stmt->as.member_assign.member ? stmt->as.member_assign.member : "";
     LLVMValueRef member_ptr = cg_get_string_ptr(cg, member);
+    
+    LLVMValueRef value = NULL;
+
+    if (stmt->as.member_assign.op) {
+        // Compound
+        LLVMValueRef current = cg_alloc_value(cg, "member_curr");
+        LLVMValueRef is_opt = LLVMConstInt(cg->i32, 0, 0);
+        
+        LLVMValueRef get_args[] = {
+            cg_value_to_i8_ptr(cg, target),
+            member_ptr,
+            is_opt,
+            cg_value_to_i8_ptr(cg, current)
+        };
+        LLVMBuildCall2(cg->builder, cg->ty_member_op, cg->fn_member_op, get_args, 4, "");
+        
+        LLVMValueRef rhs = cg_build_expr(cg, cg_fn, val_size, stmt->as.member_assign.value);
+        if (!rhs) return 0;
+        
+        value = cg_alloc_value(cg, "member_compound_res");
+        LLVMValueRef op_args[] = {
+            LLVMConstInt(cg->i8, stmt->as.member_assign.op, 0),
+            cg_value_to_i8_ptr(cg, current),
+            cg_value_to_i8_ptr(cg, rhs),
+            cg_value_to_i8_ptr(cg, value)
+        };
+        LLVMBuildCall2(cg->builder, cg->ty_binary_op, cg->fn_binary_op, op_args, 4, "");
+    } else {
+        value = cg_build_expr(cg, cg_fn, val_size, stmt->as.member_assign.value);
+        if (!value) return 0;
+    }
     
     LLVMValueRef args[] = {
         cg_value_to_i8_ptr(cg, target),

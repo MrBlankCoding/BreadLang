@@ -1479,6 +1479,7 @@ ASTStmt* parse_stmt(const char** code) {
     int in_string = 0;
     int escape = 0;
     const char* eq_pos = NULL;
+    char assign_op = 0;
 
     while (*scan) {
         char c = *scan;
@@ -1502,6 +1503,13 @@ ASTStmt* parse_stmt(const char** code) {
 
         if (paren == 0 && bracket == 0 && brace == 0) {
             if (c == '=') {
+                if (*(scan + 1) != '=') {
+                    eq_pos = scan;
+                    break;
+                }
+            }
+            if ((c == '+' || c == '-' || c == '*' || c == '/' || c == '%') && *(scan + 1) == '=') {
+                assign_op = c;
                 eq_pos = scan;
                 break;
             }
@@ -1558,7 +1566,11 @@ ASTStmt* parse_stmt(const char** code) {
             }
         }
 
-        (*code)++;
+        if (assign_op) {
+            *code += 2;
+        } else {
+            (*code)++;
+        }
         skip_whitespace(code);
         ASTExpr* rhs = parse_expression_str_as_ast(code);
         if (!rhs) {
@@ -1582,6 +1594,7 @@ ASTStmt* parse_stmt(const char** code) {
             s->as.index_assign.target = lhs_index_target;
             s->as.index_assign.index = lhs_index_expr;
             s->as.index_assign.value = rhs;
+            s->as.index_assign.op = assign_op;
             free(var_name);
             return s;
         }
@@ -1598,6 +1611,7 @@ ASTStmt* parse_stmt(const char** code) {
             s->as.member_assign.target = lhs_member_target;
             s->as.member_assign.member = lhs_member_name;
             s->as.member_assign.value = rhs;
+            s->as.member_assign.op = assign_op;
             free(var_name);
             return s;
         }
@@ -1610,6 +1624,7 @@ ASTStmt* parse_stmt(const char** code) {
         }
         s->as.var_assign.var_name = var_name;
         s->as.var_assign.value = rhs;
+        s->as.var_assign.op = assign_op;
         return s;
     }
 

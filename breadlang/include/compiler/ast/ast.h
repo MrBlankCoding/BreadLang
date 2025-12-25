@@ -159,18 +159,21 @@ typedef struct {
 typedef struct {
     char* var_name;
     ASTExpr* value;
+    char op;
 } ASTStmtVarAssign;
 
 typedef struct {
     ASTExpr* target;
     ASTExpr* index;
     ASTExpr* value;
+    char op;
 } ASTStmtIndexAssign;
 
 typedef struct {
     ASTExpr* target;
     char* member;
     ASTExpr* value;
+    char op;
 } ASTStmtMemberAssign;
 
 typedef struct {
