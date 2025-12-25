@@ -3,7 +3,6 @@
 #include <stdio.h>
 #include <limits.h>
 #include <stdint.h>
-
 #include "runtime/runtime.h"
 #include "runtime/memory.h"
 #include "runtime/error.h"
@@ -11,10 +10,14 @@
 #include "core/var.h"
 #include "compiler/parser/expr.h"
 
-// Can toggle debug from here
+int declare_variable_raw(const char* name, VarType type, VarValue value, int is_const);
+
 #ifndef BREAD_DEBUG_VARS
 #define BREAD_DEBUG_VARS 0
 #endif
+
+static int coerce_and_assign(Variable* var, VarType type, VarValue value);
+
 
 #define DEBUGF(...) \
     do { if (BREAD_DEBUG_VARS) { printf(__VA_ARGS__); fflush(stdout); } } while (0)
@@ -83,65 +86,197 @@ int bread_var_decl_if_missing(const char* name, VarType type, int is_const, cons
 
 int bread_var_assign(const char* name, const BreadValue* value) {
     if (!name || !value) return 0;
-    ExprResult r = expr_from_value(value);
-    return bread_assign_variable_from_expr_result(name, &r);
+    
+    char name_buf[256];
+    size_t name_len = 0;
+    const char* p = name;
+    for (size_t i = 0; i < 255; i++) {
+        char c;
+        volatile const char* vp = (volatile const char*)p;
+        c = *vp;
+        if (c == '\0') {
+            break;
+        }
+        name_buf[i] = c;
+        name_len++;
+        p++;
+    }
+    
+    if (name_len >= 255) {
+        BREAD_ERROR_SET_UNDEFINED_VARIABLE("Variable name too long");
+        return 0;
+    }
+    
+    name_buf[name_len] = '\0';
+    Variable* var = get_variable(name_buf);
+    if (!var) {
+        char error_msg[512];
+        snprintf(error_msg, sizeof(error_msg), "Unknown variable '%s'", name_buf);
+        BREAD_ERROR_SET_UNDEFINED_VARIABLE(error_msg);
+        return 0;
+    }
+    
+    if (var->is_const) {
+        BREAD_ERROR_SET_RUNTIME("Cannot assign to constant variable");
+        return 0;
+    }
+    
+    // Convert BreadValue to VarValue and assign directly
+    VarValue var_value;
+    memset(&var_value, 0, sizeof(var_value));
+    switch (value->type) {
+        case TYPE_INT:
+            var_value.int_val = value->value.int_val;
+            break;
+        case TYPE_FLOAT:
+            var_value.float_val = value->value.float_val;
+            break;
+        case TYPE_DOUBLE:
+            var_value.double_val = value->value.double_val;
+            break;
+        case TYPE_BOOL:
+            var_value.bool_val = value->value.bool_val;
+            break;
+        case TYPE_STRING:
+            if (value->value.string_val) {
+                var_value.string_val = value->value.string_val;
+                bread_string_retain(var_value.string_val);
+            } else {
+                var_value.string_val = bread_string_new("");
+            }
+            break;
+        default:
+            BREAD_ERROR_SET_RUNTIME("Unsupported variable type for assignment");
+            return 0;
+    }
+    
+    return coerce_and_assign(var, value->type, var_value);
 }
 
-#define MAX_LEV_LEN 20
-
-static int levenshtein_distance(const char* s1, const char* s2) {
-    int len1 = (int)strlen(s1);
-    int len2 = (int)strlen(s2);
-
-    if (len1 == 0) return len2;
-    if (len2 == 0) return len1;
-    if (len1 > MAX_LEV_LEN || len2 > MAX_LEV_LEN) return len1 + len2;
-
-    int m[MAX_LEV_LEN + 1][MAX_LEV_LEN + 1];
-
-    for (int i = 0; i <= len1; i++) m[i][0] = i;
-    for (int j = 0; j <= len2; j++) m[0][j] = j;
-
-    for (int i = 1; i <= len1; i++) {
-        for (int j = 1; j <= len2; j++) {
-            int cost = (s1[i - 1] != s2[j - 1]);
-            int del  = m[i - 1][j] + 1;
-            int ins  = m[i][j - 1] + 1;
-            int sub  = m[i - 1][j - 1] + cost;
-
-            int best = del < ins ? del : ins;
-            m[i][j]  = best < sub ? best : sub;
-        }
+static int coerce_and_assign(Variable* var, VarType src_type, VarValue src) {
+    if (!var) return 0;
+    if (var->type == TYPE_STRING && var->value.string_val) {
+        bread_string_release(var->value.string_val);
+        var->value.string_val = NULL;
     }
 
-    return m[len1][len2];
-}
+    VarValue dst;
+    memset(&dst, 0, sizeof(dst));
 
-static char* find_similar_variable(const char* name) {
-    static const char* common_vars[] = {
-        "i", "j", "k", "x", "y", "z",
-        "n", "count", "index", "value",
-        "result", "temp", "data", "item",
-        "list", "array", "string", NULL
-    };
+    switch (var->type) {
+        case TYPE_INT:
+            switch (src_type) {
+                case TYPE_INT:    dst.int_val = src.int_val; break;
+                case TYPE_BOOL:   dst.int_val = src.bool_val; break;
+                case TYPE_FLOAT:  dst.int_val = (int)src.float_val; break;
+                case TYPE_DOUBLE: dst.int_val = (int)src.double_val; break;
+                case TYPE_STRING:
+                    dst.int_val = src.string_val ? atoi(bread_string_cstr(src.string_val)) : 0;
+                    break;
+                default:
+                    goto type_error;
+            }
+            break;
 
-    int best_dist = INT_MAX;
-    const char* best = NULL;
+        case TYPE_FLOAT:
+            switch (src_type) {
+                case TYPE_INT:    dst.float_val = (float)src.int_val; break;
+                case TYPE_BOOL:   dst.float_val = (float)src.bool_val; break;
+                case TYPE_FLOAT:  dst.float_val = src.float_val; break;
+                case TYPE_DOUBLE: dst.float_val = (float)src.double_val; break;
+                case TYPE_STRING:
+                    dst.float_val = src.string_val
+                        ? (float)atof(bread_string_cstr(src.string_val))
+                        : 0.0f;
+                    break;
+                default:
+                    goto type_error;
+            }
+            break;
 
-    for (int i = 0; common_vars[i]; i++) {
-        int d = levenshtein_distance(name, common_vars[i]);
-        if (d < best_dist && d <= 2) {
-            best_dist = d;
-            best = common_vars[i];
+        case TYPE_DOUBLE:
+            switch (src_type) {
+                case TYPE_INT:    dst.double_val = (double)src.int_val; break;
+                case TYPE_BOOL:   dst.double_val = (double)src.bool_val; break;
+                case TYPE_FLOAT:  dst.double_val = (double)src.float_val; break;
+                case TYPE_DOUBLE: dst.double_val = src.double_val; break;
+                case TYPE_STRING:
+                    dst.double_val = src.string_val
+                        ? atof(bread_string_cstr(src.string_val))
+                        : 0.0;
+                    break;
+                default:
+                    goto type_error;
+            }
+            break;
+
+        case TYPE_BOOL:
+            switch (src_type) {
+                case TYPE_BOOL:   dst.bool_val = src.bool_val; break;
+                case TYPE_INT:    dst.bool_val = src.int_val != 0; break;
+                case TYPE_FLOAT:  dst.bool_val = src.float_val != 0.0f; break;
+                case TYPE_DOUBLE: dst.bool_val = src.double_val != 0.0; break;
+                case TYPE_STRING:
+                    dst.bool_val = src.string_val &&
+                                   bread_string_cstr(src.string_val)[0] != '\0';
+                    break;
+                default:
+                    goto type_error;
+            }
+            break;
+
+        case TYPE_STRING: {
+            char buf[64];
+
+            switch (src_type) {
+                case TYPE_STRING:
+                    if (src.string_val) {
+                        dst.string_val = src.string_val;
+                        bread_string_retain(dst.string_val);
+                    } else {
+                        dst.string_val = bread_string_new("");
+                    }
+                    break;
+
+                case TYPE_INT:
+                    snprintf(buf, sizeof(buf), "%lld", (long long)src.int_val);
+                    dst.string_val = bread_string_new(buf);
+                    break;
+
+                case TYPE_FLOAT:
+                    snprintf(buf, sizeof(buf), "%f", src.float_val);
+                    dst.string_val = bread_string_new(buf);
+                    break;
+
+                case TYPE_DOUBLE:
+                    snprintf(buf, sizeof(buf), "%lf", src.double_val);
+                    dst.string_val = bread_string_new(buf);
+                    break;
+
+                case TYPE_BOOL:
+                    dst.string_val = bread_string_new(src.bool_val ? "true" : "false");
+                    break;
+
+                default:
+                    goto type_error;
+            }
+            break;
         }
+
+        default:
+            goto type_error;
     }
 
-    if (!best) return NULL;
+    // commit
+    var->value = dst;
+    return 1;
 
-    char* out = malloc(strlen(best) + 1);
-    if (out) strcpy(out, best);
-    return out;
+type_error:
+    BREAD_ERROR_SET_RUNTIME("Invalid type coercion in assignment");
+    return 0;
 }
+
+
 
 int bread_var_load(const char* name, BreadValue* out) {
     if (!name || !out) return 0;
@@ -153,20 +288,7 @@ int bread_var_load(const char* name, BreadValue* out) {
 
     Variable* var = get_variable((char*)name);
     if (!var) {
-        char* suggestion = find_similar_variable(name);
-        char msg[512];
-
-        if (suggestion) {
-            snprintf(msg, sizeof(msg),
-                     "Unknown variable '%s'. Did you mean '%s'?",
-                     name, suggestion);
-            free(suggestion);
-        } else {
-            snprintf(msg, sizeof(msg),
-                     "Unknown variable '%s'", name);
-        }
-
-        BREAD_ERROR_SET_UNDEFINED_VARIABLE(msg);
+        BREAD_ERROR_SET_UNDEFINED_VARIABLE("Unknown variable");
         return 0;
     }
 

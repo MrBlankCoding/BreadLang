@@ -28,6 +28,9 @@ static int handle_boxed_var_assign(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_s
         }
     } else {
         LLVMValueRef name_ptr = cg_get_string_ptr(cg, stmt->as.var_assign.var_name);
+        if (!name_ptr) {
+            return 0;
+        }
         LLVMValueRef args[] = {name_ptr, cg_value_to_i8_ptr(cg, value)};
         LLVMBuildCall2(cg->builder, cg->ty_var_assign, cg->fn_var_assign, args, 2, "");
     }
@@ -136,10 +139,46 @@ static int handle_boxed_var_decl(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_siz
         declare_var_if_missing(cg, stmt->as.var_decl.var_name, stmt->as.var_decl.type, 
                               stmt->as.var_decl.is_const, slot);
     } else {
-        LLVMValueRef name_ptr = cg_get_string_ptr(cg, stmt->as.var_decl.var_name);
+        const char* var_name = stmt->as.var_decl.var_name;
+        size_t name_len = strlen(var_name);
+        LLVMTypeRef str_buf_ty = LLVMArrayType(cg->i8, (unsigned)(name_len + 1));
+        LLVMValueRef str_buf = LLVMBuildAlloca(cg->builder, str_buf_ty, "var_decl_name_buf");
+        LLVMValueRef name_glob = cg_get_string_global(cg, var_name);
+        if (!name_glob) {
+            return 0;
+        }
+
+        LLVMValueRef zero = LLVMConstInt(cg->i32, 0, 0);
+        LLVMTypeRef arr_ty = LLVMGlobalGetValueType(name_glob);
+        LLVMValueRef glob_ptr = LLVMBuildInBoundsGEP2(cg->builder, arr_ty, name_glob, &zero, 1, "glob_ptr");
+        glob_ptr = LLVMBuildBitCast(cg->builder, glob_ptr, cg->i8_ptr, "glob_ptr_cast");
+        LLVMValueRef buf_ptr = LLVMBuildInBoundsGEP2(cg->builder, str_buf_ty, str_buf, &zero, 1, "buf_ptr");
+        buf_ptr = LLVMBuildBitCast(cg->builder, buf_ptr, cg->i8_ptr, "buf_ptr_cast");
+        LLVMBasicBlockRef copy_entry = LLVMGetInsertBlock(cg->builder);
+        LLVMBasicBlockRef copy_loop = LLVMAppendBasicBlock(LLVMGetBasicBlockParent(copy_entry), "copy_loop");
+        LLVMBasicBlockRef copy_body = LLVMAppendBasicBlock(LLVMGetBasicBlockParent(copy_entry), "copy_body");
+        LLVMBasicBlockRef copy_done = LLVMAppendBasicBlock(LLVMGetBasicBlockParent(copy_entry), "copy_done");
+        LLVMValueRef idx_slot = LLVMBuildAlloca(cg->builder, cg->i32, "copy_idx");
+        LLVMBuildStore(cg->builder, zero, idx_slot);
+        LLVMBuildBr(cg->builder, copy_loop);
+        LLVMPositionBuilderAtEnd(cg->builder, copy_loop);
+        LLVMValueRef idx = LLVMBuildLoad2(cg->builder, cg->i32, idx_slot, "idx");
+        LLVMValueRef done = LLVMBuildICmp(cg->builder, LLVMIntUGE, idx, 
+            LLVMConstInt(cg->i32, (unsigned)(name_len + 1), 0), "done");
+        LLVMBuildCondBr(cg->builder, done, copy_done, copy_body);
+        LLVMPositionBuilderAtEnd(cg->builder, copy_body);
+        LLVMValueRef idx_i64 = LLVMBuildZExt(cg->builder, idx, cg->i64, "idx_i64");
+        LLVMValueRef src_gep = LLVMBuildInBoundsGEP2(cg->builder, cg->i8, glob_ptr, &idx_i64, 1, "src_byte");
+        LLVMValueRef dst_gep = LLVMBuildInBoundsGEP2(cg->builder, cg->i8, buf_ptr, &idx_i64, 1, "dst_byte");
+        LLVMValueRef byte_val = LLVMBuildLoad2(cg->builder, cg->i8, src_gep, "byte");
+        LLVMBuildStore(cg->builder, byte_val, dst_gep);
+        LLVMValueRef next_idx = LLVMBuildAdd(cg->builder, idx, LLVMConstInt(cg->i32, 1, 0), "next_idx");
+        LLVMBuildStore(cg->builder, next_idx, idx_slot);
+        LLVMBuildBr(cg->builder, copy_loop);
+        LLVMPositionBuilderAtEnd(cg->builder, copy_done);
         LLVMValueRef type = LLVMConstInt(cg->i32, stmt->as.var_decl.type, 0);
         LLVMValueRef is_const = LLVMConstInt(cg->i32, stmt->as.var_decl.is_const, 0);
-        LLVMValueRef args[] = {name_ptr, type, is_const, cg_value_to_i8_ptr(cg, init)};
+        LLVMValueRef args[] = {buf_ptr, type, is_const, cg_value_to_i8_ptr(cg, init)};
         LLVMBuildCall2(cg->builder, cg->ty_var_decl, cg->fn_var_decl, args, 4, "");
     }
     return 1;

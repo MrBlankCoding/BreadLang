@@ -124,18 +124,8 @@ LLVMValueRef cg_get_string_ptr(Cg* cg, const char* s) {
     if (!glob) return NULL;
 
     LLVMTypeRef arr_ty = LLVMGlobalGetValueType(glob);
-
-    LLVMValueRef idxs[] = {
-        LLVMConstInt(cg->i32, 0, 0),
-        LLVMConstInt(cg->i32, 0, 0),
-    };
-
-    return LLVMBuildInBoundsGEP2(
-        cg->builder,
-        arr_ty,
-        glob,
-        idxs,
-        2,
-        ""
-    );
+    LLVMValueRef zero = LLVMConstInt(cg->i32, 0, 0);
+    LLVMValueRef gep = LLVMBuildInBoundsGEP2(cg->builder, arr_ty, glob, &zero, 1, "str_gep");
+    
+    return LLVMBuildBitCast(cg->builder, gep, cg->i8_ptr, "str_ptr");
 }

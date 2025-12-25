@@ -84,22 +84,51 @@ void pop_to_scope_depth(int target_depth) {
 }
 
 Variable* get_variable(const char* name) {
-    if (!name) return NULL;
+    if (!name) {
+        return NULL;
+    }
 
     const char* start = name;
-    while (*start && isspace((unsigned char)*start)) start++;
-
-    size_t len = strnlen(start, 255);
-    while (len > 0 && isspace((unsigned char)start[len - 1])) len--;
+    
+    size_t len = 0;
+    while (len < 255 && start[len] != '\0') {
+        len++;
+    }
+    
+    if (len == 0 || len >= 255) {
+        return NULL;
+    }
 
     for (int s = scope_depth - 1; s >= 0; s--) {
+        if (s < 0 || s >= MAX_SCOPES) break;  // Safety check
         for (int i = 0; i < scopes[s].count; i++) {
+            if (i < 0 || i >= MAX_VARS) break;  // Safety check
             const char* vname = scopes[s].vars[i].name;
-            if (vname && strncmp(vname, start, len) == 0 && vname[len] == '\0') {
-                return &scopes[s].vars[i];
+            if (vname && (uintptr_t)vname >= 0x1000) {
+                size_t vname_len = 0;
+                for (size_t k = 0; k < 255; k++) {
+                    if (vname[k] == '\0') {
+                        break;
+                    }
+                    vname_len++;
+                }
+                // Compare if lengths match
+                if (vname_len < 255 && vname_len == len) {
+                    int match = 1;
+                    for (size_t j = 0; j < len; j++) {
+                        if (vname[j] != name[j]) {
+                            match = 0;
+                            break;
+                        }
+                    }
+                    if (match) {
+                        return &scopes[s].vars[i];
+                    }
+                }
             }
         }
     }
+    
     return NULL;
 }
 
@@ -140,12 +169,32 @@ int declare_variable_raw(const char* name, VarType type, VarValue value, int is_
         return 0;
     }
 
-    VarScope* scope = &scopes[scope_depth - 1];
+    if (!name || (uintptr_t)name < 0x1000) {
+        BREAD_ERROR_SET_RUNTIME("Invalid variable name pointer");
+        return 0;
+    }
 
+    VarScope* scope = &scopes[scope_depth - 1];
     for (int i = 0; i < scope->count; i++) {
-        if (strcmp(scope->vars[i].name, name) == 0) {
+        const char* vname = scope->vars[i].name;
+        if (!vname) continue;
+        int match = 1;
+        size_t j = 0;
+        while (j < 255) {
+            char c1 = vname[j];
+            char c2 = name[j];
+            if (c1 == '\0' && c2 == '\0') {
+                break;
+            }
+            if (c1 != c2) {
+                match = 0;
+                break;
+            }
+            j++;
+        }
+        if (match && j < 255) {
             char error_msg[512];
-            snprintf(error_msg, sizeof(error_msg), "Variable '%s' already declared", name);
+            snprintf(error_msg, sizeof(error_msg), "Variable already declared");
             BREAD_ERROR_SET_RUNTIME(error_msg);
             return 0;
         }
@@ -158,11 +207,26 @@ int declare_variable_raw(const char* name, VarType type, VarValue value, int is_
 
     Variable* var = &scope->vars[scope->count];
     memset(var, 0, sizeof(Variable));
-    var->name = strdup(name);
+    size_t name_len = 0;
+    const char* p = name;
+    while (name_len < 255 && *p != '\0') {
+        name_len++;
+        p++;
+    }
+    if (name_len >= 255) {
+        BREAD_ERROR_SET_RUNTIME("Variable name too long");
+        return 0;
+    }
+    
+    var->name = (char*)malloc(name_len + 1);
     if (!var->name) {
         printf("Error: Out of memory\n");
         return 0;
     }
+    for (size_t i = 0; i < name_len; i++) {
+        var->name[i] = name[i];
+    }
+    var->name[name_len] = '\0';
     var->type = type;
     var->is_const = is_const;
     var->value = value;
