@@ -388,6 +388,40 @@ BreadValue bread_builtin_float(BreadValue* args, int arg_count) {
     
     return result;
 }
+
+// input() function - reads a line from stdin
+BreadValue bread_builtin_input(BreadValue* args, int arg_count) {
+    BreadValue result;
+    bread_value_set_nil(&result);
+    
+    if (arg_count != 1) {
+        BREAD_ERROR_SET_RUNTIME("input() expects 1 argument");
+        return result;
+    }
+    
+    BreadValue* arg = &args[0];
+    if (arg->type != TYPE_STRING) {
+        BREAD_ERROR_SET_TYPE_MISMATCH("input() argument must be a string");
+        return result;
+    }
+    
+    printf("%s", bread_string_cstr(arg->value.string_val));
+    fflush(stdout);
+    
+    char buffer[1024];
+    if (fgets(buffer, sizeof(buffer), stdin)) {
+        size_t len = strlen(buffer);
+        if (len > 0 && buffer[len-1] == '\n') {
+            buffer[len-1] = '\0';
+        }
+        bread_value_set_string(&result, buffer);
+    } else {
+        bread_value_set_string(&result, "");
+    }
+    
+    return result;
+}
+
 // Register
 static void register_builtin_functions(void) {
     // len() function
@@ -453,5 +487,18 @@ static void register_builtin_functions(void) {
             .implementation = bread_builtin_float
         };
         bread_builtin_register(&float_fn);
+    }
+
+    // input() function
+    {
+        VarType input_params[] = {TYPE_STRING};
+        BuiltinFunction input_fn = {
+            .name = "input",
+            .param_count = 1,
+            .param_types = input_params,
+            .return_type = TYPE_STRING,
+            .implementation = bread_builtin_input
+        };
+        bread_builtin_register(&input_fn);
     }
 }

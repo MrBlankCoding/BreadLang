@@ -1577,12 +1577,9 @@ int cg_analyze_stmt(Cg* cg, ASTStmt* stmt) {
             
             // Handle type inference when no explicit type is provided
             TypeDescriptor* actual_type_desc = stmt->as.var_decl.type_desc;
-            if (!actual_type_desc && stmt->as.var_decl.init && 
-                stmt->as.var_decl.init->tag.is_known && stmt->as.var_decl.init->tag.type_desc) {
-                // Infer type from initialization expression
-                actual_type_desc = type_descriptor_clone(stmt->as.var_decl.init->tag.type_desc);
-                stmt->as.var_decl.type_desc = actual_type_desc;
-                stmt->as.var_decl.type = actual_type_desc->base_type;
+            if (!actual_type_desc) {
+                cg_error_at(cg, "Type must be explicitly defined", stmt->as.var_decl.var_name, &stmt->loc);
+                return 0;
             }
             
             // Check if the declared type is actually a class (parsed as struct) BEFORE declaring the variable

@@ -2,6 +2,17 @@
 
 BreadLang provides several built-in functions for common operations.
 
+## Input Functions
+
+### input() Function
+
+Read a line of input from the user (stdin). It takes a prompt string.
+
+```breadlang
+let name: String = input("What is your name? ")
+print("Hello " + name)
+```
+
 ## Type Introspection
 
 ### type() Function

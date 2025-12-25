@@ -1,7 +1,8 @@
-let numPeople = 1
+let numPeople: Int = 0
 
 for i in range(10) {
     numPeople += 1
 }
 
 print(numPeople)
+
