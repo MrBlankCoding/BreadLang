@@ -21,7 +21,7 @@ typedef struct {
 
 // Analysis context
 typedef struct {
-    EscapeInfo* alloc_info;  // info at alloc site
+    EscapeInfo** alloc_info;  // array of pointers to EscapeInfo
     int alloc_count;
     int alloc_capacity;
     int current_stmt_index;

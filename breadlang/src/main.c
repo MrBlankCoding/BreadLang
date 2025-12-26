@@ -390,7 +390,7 @@ int main(int argc, char* argv[]) {
         printf("Parsing program...\n");
     }
     
-    ASTStmtList* program = ast_parse_program(source);
+    ASTStmtList* program = ast_parse_program(config.input_file ? config.input_file : "<string>", source);
     if (!program || bread_error_has_compilation_errors()) {
         fprintf(stderr, "\nError: Could not compile due to previous error(s)\n");
         if (bread_error_has_error()) {

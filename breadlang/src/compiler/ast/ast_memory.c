@@ -43,21 +43,23 @@ void ast_stmt_list_add(ASTStmtList* list, ASTStmt* stmt) {
     }
 }
 
-ASTExpr* ast_expr_new(ASTExprKind kind) {
+ASTExpr* ast_expr_new(ASTExprKind kind, SourceLoc loc) {
     ASTExpr* e = xmalloc(sizeof(ASTExpr));
     if (!e) return NULL;
     memset(e, 0, sizeof(ASTExpr));
     e->kind = kind;
+    e->loc = loc;
     e->tag.is_known = 0;
     e->tag.type = TYPE_NIL;
     return e;
 }
 
-ASTStmt* ast_stmt_new(ASTStmtKind kind) {
+ASTStmt* ast_stmt_new(ASTStmtKind kind, SourceLoc loc) {
     ASTStmt* s = xmalloc(sizeof(ASTStmt));
     if (!s) return NULL;
     memset(s, 0, sizeof(ASTStmt));
     s->kind = kind;
+    s->loc = loc;
     return s;
 }
 

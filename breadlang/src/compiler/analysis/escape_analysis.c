@@ -12,19 +12,21 @@ static EscapeInfo* alloc_escape_info() {
         int new_cap = g_escape_ctx->alloc_capacity * 2;
         if (new_cap < 64) new_cap = 64;
         
-        EscapeInfo* new_info = realloc(g_escape_ctx->alloc_info, 
-                                     new_cap * sizeof(EscapeInfo));
+        EscapeInfo** new_info = realloc(g_escape_ctx->alloc_info, 
+                                     new_cap * sizeof(EscapeInfo*));
         if (!new_info) return NULL;
         
         g_escape_ctx->alloc_info = new_info;
         g_escape_ctx->alloc_capacity = new_cap;
     }
     
-    EscapeInfo* info = &g_escape_ctx->alloc_info[g_escape_ctx->alloc_count++];
+    EscapeInfo* info = (EscapeInfo*)malloc(sizeof(EscapeInfo));
+    if (!info) return NULL;
     memset(info, 0, sizeof(EscapeInfo));
     info->escape_kind = ESCAPE_UNKNOWN;
     info->can_stack_allocate = 1; // Happy or sad :) 
     info->lifetime_end = -1;
+    g_escape_ctx->alloc_info[g_escape_ctx->alloc_count++] = info;
     return info;
 }
 
@@ -336,7 +338,7 @@ int escape_analysis_run(ASTStmtList* program) {
     
     memset(g_escape_ctx, 0, sizeof(EscapeAnalysisCtx));
     g_escape_ctx->alloc_capacity = 64;
-    g_escape_ctx->alloc_info = malloc(g_escape_ctx->alloc_capacity * sizeof(EscapeInfo));
+    g_escape_ctx->alloc_info = malloc(g_escape_ctx->alloc_capacity * sizeof(EscapeInfo*));
     
     if (!g_escape_ctx->alloc_info) {
         free(g_escape_ctx);

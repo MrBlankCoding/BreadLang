@@ -287,7 +287,12 @@ struct ASTStmtList {
     ASTStmt* tail;
 };
 
-ASTStmtList* ast_parse_program(const char* code);
+ASTStmtList* ast_parse_program(const char* filename, const char* code);
+
+// Parser state management
+void ast_parser_set_source(const char* filename, const char* source);
+SourceLoc ast_parser_get_loc(const char* current);
+
 void ast_free_stmt_list(ASTStmtList* stmts);
 void ast_dump_stmt_list(const ASTStmtList* stmts, FILE* out);
 

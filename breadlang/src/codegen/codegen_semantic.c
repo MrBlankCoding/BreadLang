@@ -645,12 +645,15 @@ VarType cg_infer_expr_type_simple(Cg* cg, ASTExpr* expr) {
                     return TYPE_NIL;
                 }
                 
-                if (left_type != TYPE_INT && left_type != TYPE_DOUBLE) {
+                if (left_type != TYPE_INT && left_type != TYPE_DOUBLE && left_type != TYPE_FLOAT) {
                     cg_error(cg, "Arithmetic operations require numeric types", NULL);
                     return TYPE_NIL;
                 }
                 
-                return left_type;
+                if (left_type == TYPE_FLOAT || left_type == TYPE_DOUBLE) {
+                    return TYPE_DOUBLE;
+                }
+                return TYPE_INT;
             }
             
             // Comparison operators: return Bool
@@ -686,11 +689,11 @@ VarType cg_infer_expr_type_simple(Cg* cg, ASTExpr* expr) {
             
             if (expr->as.unary.op == '-') {
                 // Numeric negation
-                if (operand_type != TYPE_INT && operand_type != TYPE_DOUBLE) {
+                if (operand_type != TYPE_INT && operand_type != TYPE_DOUBLE && operand_type != TYPE_FLOAT) {
                     cg_error(cg, "Numeric negation requires numeric type", NULL);
                     return TYPE_NIL;
                 }
-                return operand_type;
+                return (operand_type == TYPE_FLOAT || operand_type == TYPE_DOUBLE) ? TYPE_DOUBLE : TYPE_INT;
             }
             
             if (expr->as.unary.op == '!') {
@@ -972,15 +975,21 @@ TypeDescriptor* cg_infer_expr_type_desc_simple(Cg* cg, ASTExpr* expr) {
                     return NULL;
                 }
 
-                if (left->base_type != TYPE_INT && left->base_type != TYPE_DOUBLE) {
+                if (left->base_type != TYPE_INT && left->base_type != TYPE_DOUBLE && left->base_type != TYPE_FLOAT) {
                     cg_error(cg, "Arithmetic operations require numeric types", NULL);
                     type_descriptor_free(left);
                     type_descriptor_free(right);
                     return NULL;
                 }
 
-                type_descriptor_free(right);
-                return left;
+                if (left->base_type == TYPE_INT) {
+                    type_descriptor_free(right);
+                    return left;
+                } else {
+                    type_descriptor_free(left);
+                    type_descriptor_free(right);
+                    return type_descriptor_create_primitive(TYPE_DOUBLE);
+                }
             }
 
             // Comparison operators: parser encodes <= as 'l', >= as 'g', == as '=', != as '!'
@@ -1014,12 +1023,17 @@ TypeDescriptor* cg_infer_expr_type_desc_simple(Cg* cg, ASTExpr* expr) {
             if (!operand) return NULL;
 
             if (expr->as.unary.op == '-') {
-                if (operand->base_type != TYPE_INT && operand->base_type != TYPE_DOUBLE) {
+                if (operand->base_type != TYPE_INT && operand->base_type != TYPE_DOUBLE && operand->base_type != TYPE_FLOAT) {
                     cg_error(cg, "Numeric negation requires numeric type", NULL);
                     type_descriptor_free(operand);
                     return NULL;
                 }
-                return operand;
+                if (operand->base_type == TYPE_INT) {
+                    return operand;
+                } else {
+                    type_descriptor_free(operand);
+                    return type_descriptor_create_primitive(TYPE_DOUBLE);
+                }
             }
 
             if (expr->as.unary.op == '!') {
@@ -1939,8 +1953,8 @@ TypeDescriptor* cg_infer_expr_type_desc_with_function(Cg* cg, CgFunction* cg_fn,
                 case '%':
                     if (left->base_type == TYPE_INT && right->base_type == TYPE_INT) {
                         result = type_descriptor_create_primitive(TYPE_INT);
-                    } else if ((left->base_type == TYPE_DOUBLE || left->base_type == TYPE_INT) &&
-                               (right->base_type == TYPE_DOUBLE || right->base_type == TYPE_INT)) {
+                    } else if ((left->base_type == TYPE_DOUBLE || left->base_type == TYPE_INT || left->base_type == TYPE_FLOAT) &&
+                               (right->base_type == TYPE_DOUBLE || right->base_type == TYPE_INT || right->base_type == TYPE_FLOAT)) {
                         result = type_descriptor_create_primitive(TYPE_DOUBLE);
                     } else if (expr->as.binary.op == '+' && 
                                left->base_type == TYPE_STRING && right->base_type == TYPE_STRING) {

@@ -56,6 +56,46 @@ static char* bread_strdup(const char* str) {
     return copy;
 }
 
+static char* bread_read_line(const char* filename, int target_line) {
+    if (!filename || target_line <= 0) return NULL;
+    FILE* f = fopen(filename, "r");
+    if (!f) return NULL;
+    int current = 1;
+    size_t cap = 256;
+    size_t len = 0;
+    char* buf = malloc(cap);
+    if (!buf) {
+        fclose(f);
+        return NULL;
+    }
+    int c;
+    while ((c = fgetc(f)) != EOF) {
+        if (current == target_line) {
+            if (c == '\n' || c == '\r') break;
+            if (len + 1 >= cap) {
+                size_t new_cap = cap * 2;
+                char* nb = realloc(buf, new_cap);
+                if (!nb) {
+                    free(buf);
+                    fclose(f);
+                    return NULL;
+                }
+                buf = nb;
+                cap = new_cap;
+            }
+            buf[len++] = (char)c;
+        }
+        if (c == '\n') current++;
+    }
+    fclose(f);
+    if (len == 0) {
+        free(buf);
+        return NULL;
+    }
+    buf[len] = '\0';
+    return buf;
+}
+
 void bread_error_set(BreadErrorType type, const char* message, const char* filename, int line, int column) {
     bread_error_set_with_context(type, message, filename, line, column, NULL);
 }
@@ -75,6 +115,9 @@ void bread_error_set_with_context(BreadErrorType type, const char* message, cons
     g_current_error.line = line;
     g_current_error.column = column;
     g_current_error.context = bread_strdup(context);
+    if (!g_current_error.context && g_current_error.filename && g_current_error.line > 0) {
+        g_current_error.context = bread_read_line(g_current_error.filename, g_current_error.line);
+    }
     
     // Mark compilation as failed for compile-time errors
     if (type == BREAD_ERROR_TYPE_MISMATCH ||
@@ -149,6 +192,7 @@ char* bread_error_format_message(const BreadError* error) {
     if (error->message) size += strlen(error->message);
     if (error->filename) size += strlen(error->filename);
     if (error->context) size += strlen(error->context);
+    if (error->column > 0) size += (size_t)error->column + 8;
     
     char* formatted = malloc(size);
     if (!formatted) return NULL;
@@ -169,6 +213,14 @@ char* bread_error_format_message(const BreadError* error) {
     
     if (error->context) {
         pos += snprintf(formatted + pos, size - pos, "\nContext: %s", error->context);
+        if (error->column > 0) {
+            int i;
+            pos += snprintf(formatted + pos, size - pos, "\n");
+            for (i = 1; i < error->column; i++) {
+                pos += snprintf(formatted + pos, size - pos, " ");
+            }
+            pos += snprintf(formatted + pos, size - pos, "^");
+        }
     }
     
     return formatted;

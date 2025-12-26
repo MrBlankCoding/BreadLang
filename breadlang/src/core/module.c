@@ -499,7 +499,7 @@ int module_compile(Module* module) {
     source[file_size] = '\0';
     
     // Parse source code
-    module->ast = ast_parse_program(source);
+    module->ast = ast_parse_program(module->resolved_path, source);
     free(source);
     
     if (!module->ast) {
@@ -814,7 +814,7 @@ int module_preprocess_program(ASTStmtList* program, const char* entry_file_path)
             }
 
             if (st->as.import.alias) {
-                ASTStmt* decl = ast_stmt_new(AST_STMT_VAR_DECL);
+                ASTStmt* decl = ast_stmt_new(AST_STMT_VAR_DECL, st->loc);
                 if (!decl) {
                     module_set_error("Out of memory");
                     ast_free_stmt(st);
@@ -826,7 +826,7 @@ int module_preprocess_program(ASTStmtList* program, const char* entry_file_path)
                 decl->as.var_decl.type = imported->default_export_type;
                 decl->as.var_decl.type_desc = 
                     type_descriptor_clone(imported->default_export_type_desc);
-                decl->as.var_decl.init = ast_expr_new(AST_EXPR_VAR);
+                decl->as.var_decl.init = ast_expr_new(AST_EXPR_VAR, st->loc);
                 decl->as.var_decl.is_const = 1;
                 
                 if (!decl->as.var_decl.var_name || 

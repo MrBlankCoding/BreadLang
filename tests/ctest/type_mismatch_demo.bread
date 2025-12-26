@@ -1,0 +1,2 @@
+let x: Int = "hello"
+print(x)

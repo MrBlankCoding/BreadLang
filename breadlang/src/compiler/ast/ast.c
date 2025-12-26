@@ -11,8 +11,35 @@
 
 static void skip_whitespace(const char** code);
 
-ASTStmtList* ast_parse_program(const char* code) {
+static const char* g_parser_filename = NULL;
+static const char* g_parser_source = NULL;
+
+void ast_parser_set_source(const char* filename, const char* source) {
+    g_parser_filename = filename;
+    g_parser_source = source;
+}
+
+SourceLoc ast_parser_get_loc(const char* current) {
+    SourceLoc loc = {1, 1, g_parser_filename};
+    if (!g_parser_source || !current) return loc;
+    
+    const char* p = g_parser_source;
+    while (p < current && *p) {
+        if (*p == '\n') {
+            loc.line++;
+            loc.column = 1;
+        } else {
+            loc.column++;
+        }
+        p++;
+    }
+    return loc;
+}
+
+ASTStmtList* ast_parse_program(const char* filename, const char* code) {
     bread_error_reset_compilation_state();
+    
+    ast_parser_set_source(filename, code);
     
     ASTStmtList* list = ast_stmt_list_new();
     if (!list) {

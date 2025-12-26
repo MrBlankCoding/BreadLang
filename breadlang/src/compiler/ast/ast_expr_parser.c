@@ -34,8 +34,8 @@ static ASTExpr* parse_postfix(const char** expr, ASTExpr* base);
  static ASTExpr* parse_identifier_expr(const char** expr);
  static ASTExpr* parse_array_or_dict(const char** expr);
 
-static ASTExpr* create_binary_expr(ASTExpr* left, ASTExpr* right, char op) {
-    ASTExpr* out = ast_expr_new(AST_EXPR_BINARY);
+static ASTExpr* create_binary_expr(ASTExpr* left, ASTExpr* right, char op, SourceLoc loc) {
+    ASTExpr* out = ast_expr_new(AST_EXPR_BINARY, loc);
     if (!out) {
         ast_free_expr(left);
         ast_free_expr(right);
@@ -48,7 +48,8 @@ static ASTExpr* create_binary_expr(ASTExpr* left, ASTExpr* right, char op) {
 }
 
  static ASTExpr* parse_identifier_expr(const char** expr) {
-     skip_whitespace(expr);
+    SourceLoc loc = ast_parser_get_loc(*expr);
+    skip_whitespace(expr);
      if (!is_ident_start(**expr)) return NULL;
 
      const char* start = *expr;
@@ -63,11 +64,11 @@ static ASTExpr* create_binary_expr(ASTExpr* left, ASTExpr* right, char op) {
 
      if (strcmp(name, "self") == 0) {
          free(name);
-         return ast_expr_new(AST_EXPR_SELF);
+         return ast_expr_new(AST_EXPR_SELF, loc);
      }
      if (strcmp(name, "super") == 0) {
          free(name);
-         return ast_expr_new(AST_EXPR_SUPER);
+         return ast_expr_new(AST_EXPR_SUPER, loc);
      }
 
      skip_whitespace(expr);
@@ -193,7 +194,7 @@ static ASTExpr* create_binary_expr(ASTExpr* left, ASTExpr* right, char op) {
          }
          (*expr)++; // consume '}'
 
-         ASTExpr* out = ast_expr_new(AST_EXPR_STRUCT_LITERAL);
+         ASTExpr* out = ast_expr_new(AST_EXPR_STRUCT_LITERAL, loc);
          if (!out) {
              for (int i = 0; i < count; i++) {
                  free(field_names[i]);
@@ -220,7 +221,7 @@ static ASTExpr* create_binary_expr(ASTExpr* left, ASTExpr* right, char op) {
              return NULL;
          }
 
-         ASTExpr* out = ast_expr_new(AST_EXPR_CALL);
+         ASTExpr* out = ast_expr_new(AST_EXPR_CALL, loc);
          if (!out) {
              ast_free_expr_list(args, count);
              free(name);
@@ -232,7 +233,7 @@ static ASTExpr* create_binary_expr(ASTExpr* left, ASTExpr* right, char op) {
          return out;
      }
 
-     ASTExpr* out = ast_expr_new(AST_EXPR_VAR);
+     ASTExpr* out = ast_expr_new(AST_EXPR_VAR, loc);
      if (!out) {
          free(name);
          return NULL;
@@ -242,7 +243,7 @@ static ASTExpr* create_binary_expr(ASTExpr* left, ASTExpr* right, char op) {
  }
 
  static ASTExpr* parse_array_or_dict(const char** expr) {
-     // Expects current char to be '['
+    SourceLoc loc = ast_parser_get_loc(*expr);     // Expects current char to be '['
      skip_whitespace(expr);
      if (**expr != '[') return NULL;
      (*expr)++; // consume '['
@@ -257,7 +258,7 @@ static ASTExpr* create_binary_expr(ASTExpr* left, ASTExpr* right, char op) {
              return NULL;
          }
          (*expr)++;
-         ASTExpr* out = ast_expr_new(AST_EXPR_DICT);
+         ASTExpr* out = ast_expr_new(AST_EXPR_DICT, loc);
          if (!out) return NULL;
          out->as.dict.entry_count = 0;
          out->as.dict.entries = NULL;
@@ -267,7 +268,7 @@ static ASTExpr* create_binary_expr(ASTExpr* left, ASTExpr* right, char op) {
      // Empty array literal: []
      if (**expr == ']') {
          (*expr)++;
-         ASTExpr* out = ast_expr_new(AST_EXPR_ARRAY_LITERAL);
+         ASTExpr* out = ast_expr_new(AST_EXPR_ARRAY_LITERAL, loc);
          if (!out) return NULL;
          out->as.array_literal.element_count = 0;
          out->as.array_literal.elements = NULL;
@@ -371,7 +372,7 @@ static ASTExpr* create_binary_expr(ASTExpr* left, ASTExpr* right, char op) {
      (*expr)++;
 
      if (is_dict) {
-         ASTExpr* out = ast_expr_new(AST_EXPR_DICT);
+         ASTExpr* out = ast_expr_new(AST_EXPR_DICT, loc);
          if (!out) goto fail;
          out->as.dict.entry_count = entry_count;
          out->as.dict.entries = entries;
@@ -382,7 +383,7 @@ static ASTExpr* create_binary_expr(ASTExpr* left, ASTExpr* right, char op) {
          return out;
      }
 
-     ASTExpr* out = ast_expr_new(AST_EXPR_ARRAY_LITERAL);
+     ASTExpr* out = ast_expr_new(AST_EXPR_ARRAY_LITERAL, loc);
      if (!out) goto fail;
      out->as.array_literal.element_count = elem_count;
      out->as.array_literal.elements = elems;
@@ -411,8 +412,8 @@ static ASTExpr* create_binary_expr(ASTExpr* left, ASTExpr* right, char op) {
      return NULL;
  }
 
-static ASTExpr* create_unary_expr(ASTExpr* operand, char op) {
-    ASTExpr* out = ast_expr_new(AST_EXPR_UNARY);
+static ASTExpr* create_unary_expr(ASTExpr* operand, char op, SourceLoc loc) {
+    ASTExpr* out = ast_expr_new(AST_EXPR_UNARY, loc);
     if (!out) {
         ast_free_expr(operand);
         return NULL;
@@ -495,10 +496,10 @@ ASTExpr* parse_expression_str_as_ast(const char** code) {
     skip_whitespace(&p);
     if (*p != '\0') {
         ast_free_expr(e);
-        free(expr_src);
         char error_msg[256];
         snprintf(error_msg, sizeof(error_msg), 
                 "Unexpected characters in expression: '%s'", p);
+        free(expr_src);
         BREAD_ERROR_SET_PARSE_ERROR(error_msg);
         return NULL;
     }
@@ -534,6 +535,7 @@ static int is_expression_brace(const char* look) {
 }
 
 static ASTExpr* parse_logical_or(const char** expr) {
+    SourceLoc loc = ast_parser_get_loc(*expr);
     ASTExpr* left = parse_logical_and(expr);
     if (!left) return NULL;
 
@@ -545,7 +547,7 @@ static ASTExpr* parse_logical_or(const char** expr) {
             ast_free_expr(left);
             return NULL;
         }
-        left = create_binary_expr(left, right, '|');
+        left = create_binary_expr(left, right, '|', loc);
         if (!left) return NULL;
         skip_whitespace(expr);
     }
@@ -554,6 +556,7 @@ static ASTExpr* parse_logical_or(const char** expr) {
 }
 
 static ASTExpr* parse_logical_and(const char** expr) {
+    SourceLoc loc = ast_parser_get_loc(*expr);
     ASTExpr* left = parse_comparison(expr);
     if (!left) return NULL;
 
@@ -565,7 +568,7 @@ static ASTExpr* parse_logical_and(const char** expr) {
             ast_free_expr(left);
             return NULL;
         }
-        left = create_binary_expr(left, right, '&');
+        left = create_binary_expr(left, right, '&', loc);
         if (!left) return NULL;
         skip_whitespace(expr);
     }
@@ -574,6 +577,7 @@ static ASTExpr* parse_logical_and(const char** expr) {
 }
 
 static ASTExpr* parse_comparison(const char** expr) {
+    SourceLoc loc = ast_parser_get_loc(*expr);
     ASTExpr* left = parse_term(expr);
     if (!left) return NULL;
 
@@ -591,7 +595,7 @@ static ASTExpr* parse_comparison(const char** expr) {
             ast_free_expr(left);
             return NULL;
         }
-        return create_binary_expr(left, right, op);
+        return create_binary_expr(left, right, op, loc);
     }
 
     if (**expr == '<' || **expr == '>') {
@@ -602,13 +606,14 @@ static ASTExpr* parse_comparison(const char** expr) {
             ast_free_expr(left);
             return NULL;
         }
-        return create_binary_expr(left, right, op);
+        return create_binary_expr(left, right, op, loc);
     }
 
     return left;
 }
 
 static ASTExpr* parse_term(const char** expr) {
+    SourceLoc loc = ast_parser_get_loc(*expr);
     ASTExpr* left = parse_factor(expr);
     if (!left) return NULL;
 
@@ -621,7 +626,7 @@ static ASTExpr* parse_term(const char** expr) {
             ast_free_expr(left);
             return NULL;
         }
-        left = create_binary_expr(left, right, op);
+        left = create_binary_expr(left, right, op, loc);
         if (!left) return NULL;
         skip_whitespace(expr);
     }
@@ -630,6 +635,7 @@ static ASTExpr* parse_term(const char** expr) {
 }
 
 static ASTExpr* parse_factor(const char** expr) {
+    SourceLoc loc = ast_parser_get_loc(*expr);
     ASTExpr* left = parse_unary(expr);
     if (!left) return NULL;
 
@@ -642,7 +648,7 @@ static ASTExpr* parse_factor(const char** expr) {
             ast_free_expr(left);
             return NULL;
         }
-        left = create_binary_expr(left, right, op);
+        left = create_binary_expr(left, right, op, loc);
         if (!left) return NULL;
         skip_whitespace(expr);
     }
@@ -651,6 +657,7 @@ static ASTExpr* parse_factor(const char** expr) {
 }
 
 static ASTExpr* parse_unary(const char** expr) {
+    SourceLoc loc = ast_parser_get_loc(*expr);
     skip_whitespace(expr);
     
     if (**expr == '!' || **expr == '-') {
@@ -658,15 +665,14 @@ static ASTExpr* parse_unary(const char** expr) {
         (*expr)++;
         ASTExpr* operand = parse_unary(expr);
         if (!operand) return NULL;
-        return create_unary_expr(operand, op);
+        return create_unary_expr(operand, op, loc);
     }
 
-    ASTExpr* prim = parse_primary(expr);
-    if (!prim) return NULL;
-    return parse_postfix(expr, prim);
+    return parse_postfix(expr, parse_primary(expr));
 }
 
 static ASTExpr* parse_string_literal(const char** expr) {
+    SourceLoc loc = ast_parser_get_loc(*expr);
     (*expr)++;  // Skip opening quote
     
     size_t capacity = INITIAL_STRING_CAPACITY;
@@ -736,7 +742,7 @@ static ASTExpr* parse_string_literal(const char** expr) {
     }
     buffer[length] = '\0';
     
-    ASTExpr* e = ast_expr_new(AST_EXPR_STRING_LITERAL);
+    ASTExpr* e = ast_expr_new(AST_EXPR_STRING_LITERAL, loc);
     if (!e) {
         free(buffer);
         return NULL;
@@ -749,6 +755,7 @@ static ASTExpr* parse_string_literal(const char** expr) {
 }
 
 static ASTExpr* parse_number(const char** expr) {
+    SourceLoc loc = ast_parser_get_loc(*expr);
     const char* start = *expr;
     int has_dot = 0;
     
@@ -774,13 +781,13 @@ static ASTExpr* parse_number(const char** expr) {
     ASTExpr* e;
     if (has_dot) {
         double val = strtod(num_str, NULL);
-        e = ast_expr_new(AST_EXPR_DOUBLE);
+        e = ast_expr_new(AST_EXPR_DOUBLE, loc);
         if (!e) return NULL;
         e->as.double_val = val;
         e->tag.type = TYPE_DOUBLE;
     } else {
         int val = atoi(num_str);
-        e = ast_expr_new(AST_EXPR_INT);
+        e = ast_expr_new(AST_EXPR_INT, loc);
         if (!e) return NULL;
         e->as.int_val = val;
         e->tag.type = TYPE_INT;
@@ -790,15 +797,16 @@ static ASTExpr* parse_number(const char** expr) {
 }
 
 static ASTExpr* parse_primary(const char** expr) {
+    SourceLoc loc = ast_parser_get_loc(*expr);
     skip_whitespace(expr);
     if (strncmp(*expr, "nil", 3) == 0 && !is_ident_char(*(*expr + 3))) {
         *expr += 3;
-        return ast_expr_new(AST_EXPR_NIL);
+        return ast_expr_new(AST_EXPR_NIL, loc);
     }
 
     if (strncmp(*expr, "true", 4) == 0 && !is_ident_char(*(*expr + 4))) {
         *expr += 4;
-        ASTExpr* e = ast_expr_new(AST_EXPR_BOOL);
+        ASTExpr* e = ast_expr_new(AST_EXPR_BOOL, loc);
         if (!e) return NULL;
         e->as.bool_val = 1;
         e->tag.is_known = 1;
@@ -808,7 +816,7 @@ static ASTExpr* parse_primary(const char** expr) {
 
     if (strncmp(*expr, "false", 5) == 0 && !is_ident_char(*(*expr + 5))) {
         *expr += 5;
-        ASTExpr* e = ast_expr_new(AST_EXPR_BOOL);
+        ASTExpr* e = ast_expr_new(AST_EXPR_BOOL, loc);
         if (!e) return NULL;
         e->as.bool_val = 0;
         e->tag.is_known = 1;
@@ -854,6 +862,7 @@ static ASTExpr* parse_primary(const char** expr) {
 }
 
 static ASTExpr* parse_postfix(const char** expr, ASTExpr* base) {
+    SourceLoc loc = ast_parser_get_loc(*expr);
     while (1) {
         skip_whitespace(expr);
         if (**expr == '[') {
@@ -872,7 +881,7 @@ static ASTExpr* parse_postfix(const char** expr, ASTExpr* base) {
             }
             (*expr)++;
 
-            ASTExpr* out = ast_expr_new(AST_EXPR_INDEX);
+            ASTExpr* out = ast_expr_new(AST_EXPR_INDEX, loc);
             if (!out) {
                 ast_free_expr(idx);
                 ast_free_expr(base);
@@ -923,7 +932,7 @@ static ASTExpr* parse_postfix(const char** expr, ASTExpr* base) {
                 return NULL;
             }
 
-            ASTExpr* out = ast_expr_new(AST_EXPR_METHOD_CALL);
+            ASTExpr* out = ast_expr_new(AST_EXPR_METHOD_CALL, loc);
             if (!out) {
                 ast_free_expr_list(args, count);
                 free(member);
@@ -940,7 +949,7 @@ static ASTExpr* parse_postfix(const char** expr, ASTExpr* base) {
         }
 
         // Member access
-        ASTExpr* out = ast_expr_new(AST_EXPR_MEMBER);
+        ASTExpr* out = ast_expr_new(AST_EXPR_MEMBER, loc);
         if (!out) {
             free(member);
             ast_free_expr(base);

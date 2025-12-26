@@ -342,52 +342,6 @@ BreadValue bread_builtin_int(BreadValue* args, int arg_count) {
     return result;
 }
 
-// float() function - converts compatible values to floats
-BreadValue bread_builtin_float(BreadValue* args, int arg_count) {
-    BreadValue result;
-    bread_value_set_nil(&result);
-    
-    if (arg_count != 1) {
-        BREAD_ERROR_SET_RUNTIME("float() expects 1 argument");
-        return result;
-    }
-    
-    BreadValue* arg = &args[0];
-    
-    switch (arg->type) {
-        case TYPE_INT:
-            bread_value_set_double(&result, (double)arg->value.int_val);
-            break;
-        case TYPE_FLOAT:
-            bread_value_set_double(&result, (double)arg->value.float_val);
-            break;
-        case TYPE_DOUBLE:
-            bread_value_set_double(&result, arg->value.double_val);
-            break;
-        case TYPE_BOOL:
-            bread_value_set_double(&result, arg->value.bool_val ? 1.0 : 0.0);
-            break;
-        case TYPE_STRING: {
-            const char* str = bread_string_cstr(arg->value.string_val);
-            char* endptr;
-            double val = strtod(str, &endptr);
-            if (*endptr == '\0') {
-                bread_value_set_double(&result, val);
-            } else {
-                char error_msg[256];
-                snprintf(error_msg, sizeof(error_msg), 
-                        "Cannot convert string '%s' to float", str);
-                BREAD_ERROR_SET_RUNTIME(error_msg);
-            }
-            break;
-        }
-        default:
-            BREAD_ERROR_SET_RUNTIME("Cannot convert this type to float");
-            break;
-    }
-    
-    return result;
-}
 
 // input() function - reads a line from stdin
 BreadValue bread_builtin_input(BreadValue* args, int arg_count) {
@@ -417,6 +371,94 @@ BreadValue bread_builtin_input(BreadValue* args, int arg_count) {
         bread_value_set_string(&result, buffer);
     } else {
         bread_value_set_string(&result, "");
+    }
+    
+    return result;
+}
+
+BreadValue bread_builtin_float(BreadValue* args, int arg_count) {
+    BreadValue result;
+    bread_value_set_nil(&result);
+    if (arg_count != 1) {
+        BREAD_ERROR_SET_RUNTIME("float() expects 1 argument");
+        return result;
+    }
+    BreadValue* arg = &args[0];
+    switch (arg->type) {
+        case TYPE_INT:
+            bread_value_set_float(&result, (float)arg->value.int_val);
+            break;
+        case TYPE_FLOAT:
+            bread_value_set_float(&result, arg->value.float_val);
+            break;
+        case TYPE_DOUBLE:
+            bread_value_set_float(&result, (float)arg->value.double_val);
+            break;
+        case TYPE_BOOL:
+            bread_value_set_float(&result, arg->value.bool_val ? 1.0f : 0.0f);
+            break;
+        case TYPE_STRING: {
+            const char* str = bread_string_cstr(arg->value.string_val);
+            char* endptr;
+            double val = strtod(str, &endptr);
+            if (*endptr == '\0') {
+                bread_value_set_float(&result, (float)val);
+            } else {
+                char error_msg[256];
+                snprintf(error_msg, sizeof(error_msg),
+                        "Cannot convert string '%s' to float", str);
+                BREAD_ERROR_SET_RUNTIME(error_msg);
+            }
+            break;
+        }
+        default:
+            BREAD_ERROR_SET_RUNTIME("Cannot convert this type to float");
+            break;
+    }
+    return result;
+}
+
+BreadValue bread_builtin_double(BreadValue* args, int arg_count) {
+    BreadValue result;
+    bread_value_set_nil(&result);
+    
+    if (arg_count != 1) {
+        BREAD_ERROR_SET_RUNTIME("double() expects 1 argument");
+        return result;
+    }
+    
+    BreadValue* arg = &args[0];
+    
+    switch (arg->type) {
+        case TYPE_INT:
+            bread_value_set_double(&result, (double)arg->value.int_val);
+            break;
+        case TYPE_FLOAT:
+            bread_value_set_double(&result, (double)arg->value.float_val);
+            break;
+        case TYPE_DOUBLE:
+            bread_value_set_double(&result, arg->value.double_val);
+            break;
+        case TYPE_BOOL:
+            bread_value_set_double(&result, arg->value.bool_val ? 1.0 : 0.0);
+            break;
+        case TYPE_STRING: {
+            const char* str = bread_string_cstr(arg->value.string_val);
+            char* endptr;
+            double val = strtod(str, &endptr);
+            if (*endptr == '\0') {
+                bread_value_set_double(&result, val);
+            } else {
+                char error_msg[256];
+                snprintf(error_msg, sizeof(error_msg), 
+                        "Cannot convert string '%s' to double", str);
+                BREAD_ERROR_SET_RUNTIME(error_msg);
+            }
+            break;
+        }
+        default:
+            BREAD_ERROR_SET_RUNTIME("Cannot convert this type to double");
+            break;
     }
     
     return result;
@@ -476,17 +518,28 @@ static void register_builtin_functions(void) {
         bread_builtin_register(&int_fn);
     }
     
-    // float() function
     {
         VarType float_params[] = {TYPE_NIL};
         BuiltinFunction float_fn = {
             .name = "float",
             .param_count = 1,
             .param_types = float_params,
-            .return_type = TYPE_DOUBLE,
+            .return_type = TYPE_FLOAT,
             .implementation = bread_builtin_float
         };
         bread_builtin_register(&float_fn);
+    }
+
+    {
+        VarType double_params[] = {TYPE_NIL};
+        BuiltinFunction double_fn = {
+            .name = "double",
+            .param_count = 1,
+            .param_types = double_params,
+            .return_type = TYPE_DOUBLE,
+            .implementation = bread_builtin_double
+        };
+        bread_builtin_register(&double_fn);
     }
 
     // input() function

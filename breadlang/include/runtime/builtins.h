@@ -15,6 +15,7 @@ BreadValue bread_builtin_type(BreadValue* args, int arg_count);
 BreadValue bread_builtin_str(BreadValue* args, int arg_count);
 BreadValue bread_builtin_int(BreadValue* args, int arg_count);
 BreadValue bread_builtin_float(BreadValue* args, int arg_count);
+BreadValue bread_builtin_double(BreadValue* args, int arg_count);
 BreadValue bread_builtin_input(BreadValue* args, int arg_count);
 
 #endif

@@ -34,11 +34,12 @@ ASTStmtList* parse_block(const char** code) {
 
 ASTStmt* parse_stmt(const char** code) {
     skip_whitespace(code);
+    SourceLoc loc = ast_parser_get_loc(*code);
     if (strncmp(*code, "import ", 7) == 0) {
         *code += 7;
         skip_whitespace(code);
         
-        ASTStmt* stmt = ast_stmt_new(AST_STMT_IMPORT);
+        ASTStmt* stmt = ast_stmt_new(AST_STMT_IMPORT, loc);
         if (!stmt) return NULL;
         
         stmt->as.import.module_path = NULL;
@@ -158,7 +159,7 @@ ASTStmt* parse_stmt(const char** code) {
         *code += 7;
         skip_whitespace(code);
         
-        ASTStmt* stmt = ast_stmt_new(AST_STMT_EXPORT);
+        ASTStmt* stmt = ast_stmt_new(AST_STMT_EXPORT, loc);
         if (!stmt) return NULL;
         
         stmt->as.export.is_default = 0;
@@ -397,8 +398,8 @@ ASTStmt* parse_stmt(const char** code) {
         }
         (*code)++;
 
-        VarType ret_type = TYPE_INT;
-        TypeDescriptor* ret_type_desc = type_descriptor_create_primitive(TYPE_INT);
+        VarType ret_type = TYPE_NIL;
+        TypeDescriptor* ret_type_desc = type_descriptor_create_primitive(TYPE_NIL);
         skip_whitespace(code);
         if (**code == '-' && *(*code + 1) == '>') {
             *code += 2;
@@ -466,7 +467,7 @@ ASTStmt* parse_stmt(const char** code) {
         }
         (*code)++;
 
-        ASTStmt* s = ast_stmt_new(AST_STMT_FUNC_DECL);
+        ASTStmt* s = ast_stmt_new(AST_STMT_FUNC_DECL, loc);
         if (!s) {
             free(fn_name);
             type_descriptor_free(ret_type_desc);
@@ -497,7 +498,7 @@ ASTStmt* parse_stmt(const char** code) {
         skip_whitespace(code);
         ASTExpr* e = parse_expression_str_as_ast(code);
         if (!e) return NULL;
-        ASTStmt* s = ast_stmt_new(AST_STMT_RETURN);
+        ASTStmt* s = ast_stmt_new(AST_STMT_RETURN, loc);
         if (!s) {
             ast_free_expr(e);
             return NULL;
@@ -650,7 +651,7 @@ ASTStmt* parse_stmt(const char** code) {
         (*code)++;
 
         // Create AST node
-        ASTStmt* s = ast_stmt_new(AST_STMT_STRUCT_DECL);
+        ASTStmt* s = ast_stmt_new(AST_STMT_STRUCT_DECL, loc);
         if (!s) {
             free(struct_name);
             for (int i = 0; i < field_count; i++) {
@@ -1205,7 +1206,7 @@ ASTStmt* parse_stmt(const char** code) {
         }
 
         // Create AST node
-        ASTStmt* s = ast_stmt_new(AST_STMT_CLASS_DECL);
+        ASTStmt* s = ast_stmt_new(AST_STMT_CLASS_DECL, loc);
         if (!s) {
             free(class_name);
             free(parent_name);
@@ -1265,7 +1266,7 @@ ASTStmt* parse_stmt(const char** code) {
             return NULL;
         }
 
-        ASTStmt* s = ast_stmt_new(AST_STMT_VAR_DECL);
+        ASTStmt* s = ast_stmt_new(AST_STMT_VAR_DECL, loc);
         if (!s) {
             free(var_name);
             type_descriptor_free(type_desc);
@@ -1292,7 +1293,7 @@ ASTStmt* parse_stmt(const char** code) {
         if (*lookahead == '\n' || *lookahead == '\0' || *lookahead == '}' || *lookahead == ';') {
             *code = lookahead;
             if (**code == '\n' || **code == ';') (*code)++;
-            ASTStmt* s = ast_stmt_new(AST_STMT_PRINT);
+            ASTStmt* s = ast_stmt_new(AST_STMT_PRINT, loc);
             if (!s) {
                 ast_free_expr(e);
                 return NULL;
@@ -1368,7 +1369,7 @@ ASTStmt* parse_stmt(const char** code) {
             }
         }
 
-        ASTStmt* s = ast_stmt_new(AST_STMT_IF);
+        ASTStmt* s = ast_stmt_new(AST_STMT_IF, loc);
         if (!s) {
             ast_free_expr(cond);
             ast_free_stmt_list(then_branch);
@@ -1400,7 +1401,7 @@ ASTStmt* parse_stmt(const char** code) {
         }
         (*code)++;
 
-        ASTStmt* s = ast_stmt_new(AST_STMT_WHILE);
+        ASTStmt* s = ast_stmt_new(AST_STMT_WHILE, loc);
         if (!s) {
             ast_free_expr(cond);
             ast_free_stmt_list(body);
@@ -1448,7 +1449,7 @@ ASTStmt* parse_stmt(const char** code) {
         }
         (*code)++;
 
-        ASTStmt* s = ast_stmt_new(AST_STMT_FOR_IN);
+        ASTStmt* s = ast_stmt_new(AST_STMT_FOR_IN, loc);
         if (!s) {
             free(var_name);
             ast_free_expr(range_expr);
@@ -1463,12 +1464,12 @@ ASTStmt* parse_stmt(const char** code) {
 
     if (strncmp(*code, "break", 5) == 0 && !isalnum((unsigned char)*(*code + 5))) {
         *code += 5;
-        return ast_stmt_new(AST_STMT_BREAK);
+        return ast_stmt_new(AST_STMT_BREAK, loc);
     }
 
     if (strncmp(*code, "continue", 8) == 0 && !isalnum((unsigned char)*(*code + 8))) {
         *code += 8;
-        return ast_stmt_new(AST_STMT_CONTINUE);
+        return ast_stmt_new(AST_STMT_CONTINUE, loc);
     }
 
     const char* start = *code;
@@ -1583,7 +1584,7 @@ ASTStmt* parse_stmt(const char** code) {
         }
 
         if (lhs_index_target && lhs_index_expr) {
-            ASTStmt* s = ast_stmt_new(AST_STMT_INDEX_ASSIGN);
+            ASTStmt* s = ast_stmt_new(AST_STMT_INDEX_ASSIGN, loc);
             if (!s) {
                 ast_free_expr(lhs_index_target);
                 ast_free_expr(lhs_index_expr);
@@ -1600,7 +1601,7 @@ ASTStmt* parse_stmt(const char** code) {
         }
         
         if (lhs_member_target && lhs_member_name) {
-            ASTStmt* s = ast_stmt_new(AST_STMT_MEMBER_ASSIGN);
+            ASTStmt* s = ast_stmt_new(AST_STMT_MEMBER_ASSIGN, loc);
             if (!s) {
                 ast_free_expr(lhs_member_target);
                 free(lhs_member_name);
@@ -1616,7 +1617,7 @@ ASTStmt* parse_stmt(const char** code) {
             return s;
         }
 
-        ASTStmt* s = ast_stmt_new(AST_STMT_VAR_ASSIGN);
+        ASTStmt* s = ast_stmt_new(AST_STMT_VAR_ASSIGN, loc);
         if (!s) {
             free(var_name);
             ast_free_expr(rhs);
@@ -1631,7 +1632,7 @@ ASTStmt* parse_stmt(const char** code) {
     ASTExpr* expr = parse_expression_str_as_ast(code);
     if (!expr) return NULL;
 
-    ASTStmt* s = ast_stmt_new(AST_STMT_EXPR);
+    ASTStmt* s = ast_stmt_new(AST_STMT_EXPR, loc);
     if (!s) {
         ast_free_expr(expr);
         return NULL;

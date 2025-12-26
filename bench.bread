@@ -1,8 +1,53 @@
-let numPeople: Int = 0
-
-for i in range(10) {
-    numPeople += 1
+def sayHello() {
+    print("Welcome to breadlang!")
+    print("type numbers to analyze them")
+    print("type 'exit' to leave the program")
 }
 
-print(numPeople)
+sayHello()
 
+def main() {
+    let total: Int = 0
+    let count: Int = 0
+
+    let largest: Int = 0
+    let smallest: Int = 0
+
+    while true {
+        let input: String = input("Enter a number: ")
+
+        if input == "exit" {
+            break
+        }
+
+        let number: Int = int(input)
+
+        total = total + number
+        count = count + 1
+
+        if number > largest || count == 1 {
+            largest = number
+        }
+
+        if number < smallest || count == 1 {
+            smallest = number
+        }
+
+        print("Stats so far:")
+        print("Total: " + str(total))
+        print("Count: " + str(count))
+        print("Largest: " + str(largest))
+        print("Smallest: " + str(smallest))
+
+        if count > 0 {
+            let average: Double = float(total) / float(count)
+            print("Average: " + str(average))
+        } else {
+            print("No numbers entered yet.")
+        }
+
+    }
+}
+
+sayHello()
+main()
