@@ -563,8 +563,24 @@ int cg_declare_class_from_ast(Cg* cg, const ASTStmtClassDecl* class_decl, const 
     new_class->name = strdup(class_decl->name);
     new_class->parent_name = class_decl->parent_name ? strdup(class_decl->parent_name) : NULL;
     new_class->field_count = class_decl->field_count;
-    new_class->field_names = class_decl->field_names;
-    new_class->field_types = class_decl->field_types;
+    new_class->field_names = NULL;
+    new_class->field_types = NULL;
+    if (new_class->field_count > 0) {
+        new_class->field_names = malloc(sizeof(char*) * new_class->field_count);
+        new_class->field_types = malloc(sizeof(TypeDescriptor*) * new_class->field_count);
+        if (!new_class->field_names || !new_class->field_types) {
+            free(new_class->field_names);
+            free(new_class->field_types);
+            free(new_class->name);
+            free(new_class->parent_name);
+            free(new_class);
+            return 0;
+        }
+        for (int i = 0; i < new_class->field_count; i++) {
+            new_class->field_names[i] = class_decl->field_names[i] ? strdup(class_decl->field_names[i]) : NULL;
+            new_class->field_types[i] = class_decl->field_types[i] ? type_descriptor_clone(class_decl->field_types[i]) : NULL;
+        }
+    }
     new_class->method_count = class_decl->method_count;
     new_class->methods = class_decl->methods;
     new_class->constructor = class_decl->constructor;
@@ -596,6 +612,10 @@ int cg_declare_class_from_ast(Cg* cg, const ASTStmtClassDecl* class_decl, const 
             new_class->method_names[i] = strdup(new_class->methods[i]->name);
         }
     }
+    
+    fprintf(stderr, "Codegen: declare class '%s'%s\n",
+            new_class->name ? new_class->name : "",
+            new_class->parent_name ? " with parent" : "");
     
     cg->classes = new_class;
     

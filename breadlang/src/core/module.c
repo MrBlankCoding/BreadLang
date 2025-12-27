@@ -913,16 +913,10 @@ int process_import_statement(const ASTStmtImport* import_stmt, const char* curre
         
         ModuleSymbol* current = module->exports;
         while (current) {
-            char* qualified_name = (char*)malloc(strlen(module_alias) + strlen(current->name) + 2);
-            sprintf(qualified_name, "%s.%s", module_alias, current->name);
-            
             if (!module_register_qualified_symbol(module_alias, current->name, 
                                                  current->type, current->symbol_ptr)) {
-                free(qualified_name);
                 return 0;
             }
-            
-            free(qualified_name);
             current = current->next;
         }
     }

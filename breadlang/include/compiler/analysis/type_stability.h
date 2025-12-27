@@ -21,7 +21,7 @@ typedef struct {
 
 // Analysis context
 typedef struct {
-    TypeStabilityInfo* expr_info;  // Parallel array to expressions
+    TypeStabilityInfo** expr_info;
     int expr_count;
     int expr_capacity;
     int current_function_depth;

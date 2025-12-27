@@ -307,6 +307,11 @@ static void init_method_function(CgFunction* cg_fn, char* name, LLVMValueRef fn,
     cg_fn->current_class = class;
     cg_fn->self_param = LLVMGetParam(fn, 1);
     cg_fn->is_method = 1;
+    if (!class) {
+        fprintf(stderr, "Codegen: init_method_function '%s' with NULL class\n", name ? name : "");
+    } else {
+        fprintf(stderr, "Codegen: init_method_function '%s' for class '%s'\n", name ? name : "", class->name ? class->name : "");
+    }
 }
 
 static void setup_method_scope(Cg* cg, CgFunction* cg_fn) {
@@ -675,15 +680,20 @@ static int build_while_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AS
     return 1;
 }
 
-static void declare_loop_variable(Cg* cg, const char* var_name, int initial_value) {
+static void declare_loop_variable(Cg* cg, const char* var_name, VarType var_type, int initial_int_value) {
     LLVMValueRef name_ptr = cg_get_string_ptr(cg, var_name);
     LLVMValueRef init_tmp = cg_alloc_value(cg, "loop.init");
 
-    LLVMValueRef init_val = LLVMConstInt(cg->i64, initial_value, 0);
-    LLVMValueRef set_args[] = {cg_value_to_i8_ptr(cg, init_tmp), init_val};
-    LLVMBuildCall2(cg->builder, cg->ty_value_set_int, cg->fn_value_set_int, set_args, 2, "");
+    if (var_type == TYPE_INT) {
+        LLVMValueRef init_val = LLVMConstInt(cg->i64, initial_int_value, 0);
+        LLVMValueRef set_args[] = {cg_value_to_i8_ptr(cg, init_tmp), init_val};
+        LLVMBuildCall2(cg->builder, cg->ty_value_set_int, cg->fn_value_set_int, set_args, 2, "");
+    } else {
+        LLVMValueRef set_nil_args[] = {cg_value_to_i8_ptr(cg, init_tmp)};
+        LLVMBuildCall2(cg->builder, cg->ty_value_set_nil, cg->fn_value_set_nil, set_nil_args, 1, "");
+    }
     
-    LLVMValueRef decl_type = LLVMConstInt(cg->i32, TYPE_INT, 0);
+    LLVMValueRef decl_type = LLVMConstInt(cg->i32, var_type, 0);
     LLVMValueRef decl_const = LLVMConstInt(cg->i32, 0, 0);
     LLVMValueRef decl_args[] = {name_ptr, decl_type, decl_const, cg_value_to_i8_ptr(cg, init_tmp)};
     LLVMBuildCall2(cg->builder, cg->ty_var_decl_if_missing, cg->fn_var_decl_if_missing, decl_args, 4, "");
@@ -723,7 +733,7 @@ static int build_for_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, ASTS
     LLVMValueRef i_slot = LLVMBuildAlloca(cg->builder, cg->i32, "for.i");
     LLVMBuildStore(cg->builder, LLVMConstInt(cg->i32, start, 0), i_slot);
 
-    declare_loop_variable(cg, stmt->as.for_stmt.var_name, start);
+    declare_loop_variable(cg, stmt->as.for_stmt.var_name, TYPE_INT, start);
     LLVMBuildBr(cg->builder, cond_block);
 
     LLVMPositionBuilderAtEnd(cg->builder, cond_block);
@@ -828,7 +838,15 @@ static int build_for_in_stmt(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, A
     LLVMBuildCondBr(cg->builder, length_check, valid_length_block, end_block);
 
     LLVMPositionBuilderAtEnd(cg->builder, valid_length_block);
-    declare_loop_variable(cg, stmt->as.for_in_stmt.var_name, 0);
+    VarType element_var_type = TYPE_INT;
+    if (iterable_type) {
+        if (iterable_type->base_type == TYPE_ARRAY && iterable_type->params.array.element_type) {
+            element_var_type = iterable_type->params.array.element_type->base_type;
+        } else if (iterable_type->base_type == TYPE_DICT && iterable_type->params.dict.key_type) {
+            element_var_type = iterable_type->params.dict.key_type->base_type;
+        }
+    }
+    declare_loop_variable(cg, stmt->as.for_in_stmt.var_name, TYPE_NIL, 0);
     LLVMBuildBr(cg->builder, cond_block);
 
     LLVMPositionBuilderAtEnd(cg->builder, cond_block);

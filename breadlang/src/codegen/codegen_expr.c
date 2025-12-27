@@ -79,7 +79,6 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
             if (var) {
                 // Check if its stored unboxed
                 if (var->unboxed_type != UNBOXED_NONE) {
-                    // Directly load the unboxed value and box it using cg_box_value
                     LLVMTypeRef load_type;
                     CgValueType result_type;
                     
@@ -109,19 +108,39 @@ LLVMValueRef cg_build_expr(Cg* cg, CgFunction* cg_fn, LLVMValueRef val_size, AST
                 return cg_clone_value(cg, var->alloca, expr->as.var_name);
             }
 
-            // In methods, treat bare identifiers that match class fields as implicit self.<field> access.
-            if (cg_fn && cg_fn->is_method && cg_fn->current_class && expr->as.var_name) {
+            // treat as self.<field> access.
+            if (cg_fn && cg_fn->is_method && cg_fn->self_param && cg_fn->current_class && expr->as.var_name) {
                 int is_field = 0;
-                for (CgClass* cls = cg_fn->current_class; cls && !is_field; ) {
-                    for (int i = 0; i < cls->field_count; i++) {
-                        if (cls->field_names[i] && strcmp(cls->field_names[i], expr->as.var_name) == 0) {
+                int depth_limit = 64;
+                CgClass* cls = NULL;
+                for (CgClass* c = cg->classes; c; c = c->next) {
+                    if (c == cg_fn->current_class) {
+                        cls = c;
+                        break;
+                    }
+                }
+                if ((uintptr_t)cls < 4096) {
+                    cls = NULL;
+                }
+                for (; cls && !is_field && depth_limit-- > 0; ) {
+                    int fc = cls->field_count;
+                    if (fc <= 0 || fc > 4096 || !cls->field_names || (uintptr_t)cls->field_names < 4096) {
+                        fc = 0;
+                    }
+                    for (int i = 0; i < fc; i++) {
+                        const char* fname = cls->field_names[i];
+                        if (fname && strcmp(fname, expr->as.var_name) == 0) {
                             is_field = 1;
                             break;
                         }
                     }
 
                     if (!is_field && cls->parent_name) {
-                        cls = cg_find_class(cg, cls->parent_name);
+                        CgClass* parent = cg_find_class(cg, cls->parent_name);
+                        if (!parent || (uintptr_t)parent < 4096) {
+                            break;
+                        }
+                        cls = parent;
                     } else {
                         break;
                     }

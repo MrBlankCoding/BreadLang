@@ -93,8 +93,8 @@ static TypeStabilityInfo* alloc_info(void) {
         if (new_cap < INITIAL_EXPR_CAPACITY)
             new_cap = INITIAL_EXPR_CAPACITY;
 
-        TypeStabilityInfo* resized =
-            realloc(g_ctx->expr_info, new_cap * sizeof(TypeStabilityInfo));
+        TypeStabilityInfo** resized =
+            realloc(g_ctx->expr_info, new_cap * sizeof(TypeStabilityInfo*));
 
         if (!resized) return NULL;
 
@@ -102,10 +102,10 @@ static TypeStabilityInfo* alloc_info(void) {
         g_ctx->expr_capacity = new_cap;
     }
 
-    TypeStabilityInfo* info =
-        &g_ctx->expr_info[g_ctx->expr_count++];
+    TypeStabilityInfo* info = calloc(1, sizeof(TypeStabilityInfo));
+    if (!info) return NULL;
+    g_ctx->expr_info[g_ctx->expr_count++] = info;
 
-    memset(info, 0, sizeof(*info));
     info->type = TYPE_NIL;
     info->stability = STABILITY_UNKNOWN;
     return info;
@@ -296,7 +296,7 @@ int type_stability_analyze(ASTStmtList* program) {
 
     g_ctx->expr_capacity = INITIAL_EXPR_CAPACITY;
     g_ctx->expr_info =
-        calloc(g_ctx->expr_capacity, sizeof(TypeStabilityInfo));
+        calloc(g_ctx->expr_capacity, sizeof(TypeStabilityInfo*));
 
     if (!g_ctx->expr_info) {
         free(g_ctx);

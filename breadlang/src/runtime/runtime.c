@@ -120,37 +120,9 @@ int bread_var_assign(const char* name, const BreadValue* value) {
         BREAD_ERROR_SET_RUNTIME("Cannot assign to constant variable");
         return 0;
     }
-    
-    // Convert BreadValue to VarValue and assign directly
-    VarValue var_value;
-    memset(&var_value, 0, sizeof(var_value));
-    switch (value->type) {
-        case TYPE_INT:
-            var_value.int_val = value->value.int_val;
-            break;
-        case TYPE_FLOAT:
-            var_value.float_val = value->value.float_val;
-            break;
-        case TYPE_DOUBLE:
-            var_value.double_val = value->value.double_val;
-            break;
-        case TYPE_BOOL:
-            var_value.bool_val = value->value.bool_val;
-            break;
-        case TYPE_STRING:
-            if (value->value.string_val) {
-                var_value.string_val = value->value.string_val;
-                bread_string_retain(var_value.string_val);
-            } else {
-                var_value.string_val = bread_string_new("");
-            }
-            break;
-        default:
-            BREAD_ERROR_SET_RUNTIME("Unsupported variable type for assignment");
-            return 0;
-    }
-    
-    return coerce_and_assign(var, value->type, var_value);
+ 
+    ExprResult r = bread_expr_result_from_value(*value);
+    return bread_assign_variable_from_expr_result(name_buf, &r);
 }
 
 static int coerce_and_assign(Variable* var, VarType src_type, VarValue src) {

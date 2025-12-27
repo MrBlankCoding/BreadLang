@@ -22,13 +22,31 @@ typedef struct BreadObjectNode {
     struct BreadObjectNode* next;
 } BreadObjectNode;
 
-typedef struct {
+typedef struct BreadMemoryChunk BreadMemoryChunk;
+typedef struct BreadMemoryPool {
+    BreadMemoryChunk* chunks;
+    size_t total_chunks;
+} BreadMemoryPool;
+
+typedef struct BreadMemoryManager {
     BreadObjectNode* all_objects;
-    BreadMemoryStats stats;
+    BreadMemoryPool small_pool;
+    
+    // gc state
     int cycle_collection_enabled;
-    int cycle_collection_threshold;  
-    int allocations_since_gc;
+    size_t gc_threshold;
+    size_t allocations_since_gc;
+    size_t bytes_threshold;
+    size_t bytes_since_gc;
+    
+    // stats for debugging
+    BreadMemoryStats stats;
+    
     int debug_mode;
+    int auto_gc_enabled;
+    void** gc_roots;
+    size_t gc_root_count;
+    size_t gc_root_capacity;
 } BreadMemoryManager;
 
 void bread_memory_init(void);
@@ -52,8 +70,6 @@ void bread_memory_print_stats(void);
 int bread_memory_check_leaks(void);
 void bread_memory_print_leak_report(void);
 void bread_memory_enable_debug_mode(int enable);
-
-// exit and clean. Could be improved
 void bread_memory_cleanup_all(void);
 void bread_memory_cleanup_on_error(void);
 

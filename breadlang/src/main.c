@@ -303,6 +303,12 @@ static int compile_or_execute(ASTStmtList* program, const CompilerConfig* config
                 printf("Executing with JIT compilation...\n");
             }
             result = bread_llvm_jit_exec(program);
+            printf("\n=== Memory Statistics ===\n");
+            bread_memory_print_stats();
+            if (bread_memory_check_leaks()) {
+                printf("\n=== Memory Leaks Detected ===\n");
+                bread_memory_print_leak_report();
+            }
             break;
             
         case MODE_EMIT_LLVM: {
