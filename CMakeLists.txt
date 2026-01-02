@@ -9,71 +9,71 @@ set(CMAKE_C_COMPILER clang)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra")
 set(CMAKE_C_FLAGS_DEBUG "-g -O0")
 set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG")
-include_directories(${CMAKE_SOURCE_DIR}/breadlang/include)
+include_directories(${CMAKE_SOURCE_DIR}/include)
 separate_arguments(LLVM_DEFINITIONS_LIST NATIVE_COMMAND ${LLVM_DEFINITIONS})
 add_definitions(${LLVM_DEFINITIONS_LIST})
 add_definitions(-DBREAD_HAVE_LLVM=1)
 
 # Sources
 set(BREADLANG_SOURCES
-    breadlang/src/main.c
+    src/main.c
     
-    breadlang/src/core/function.c
-    breadlang/src/core/module.c
-    breadlang/src/core/value_core.c
-    breadlang/src/core/value_array.c
-    breadlang/src/core/value_dict.c
-    breadlang/src/core/value_optional.c
-    breadlang/src/core/value_struct.c
-    breadlang/src/core/value_class.c
-    breadlang/src/core/var.c
-    breadlang/src/core/type_descriptor.c
+    src/core/function.c
+    src/core/module.c
+    src/core/value_core.c
+    src/core/value_array.c
+    src/core/value_dict.c
+    src/core/value_optional.c
+    src/core/value_struct.c
+    src/core/value_class.c
+    src/core/var.c
+    src/core/type_descriptor.c
     
-    breadlang/src/compiler/ast/ast.c
-    breadlang/src/compiler/ast/ast_memory.c
-    breadlang/src/compiler/ast/ast_types.c
-    breadlang/src/compiler/ast/ast_expr_parser.c
-    breadlang/src/compiler/ast/ast_stmt_parser.c
-    breadlang/src/compiler/ast/ast_dump.c
-    breadlang/src/compiler/parser/expr.c
-    breadlang/src/compiler/parser/expr_ops.c
-    breadlang/src/compiler/analysis/type_stability.c
-    breadlang/src/compiler/analysis/escape_analysis.c
-    breadlang/src/compiler/optimization/optimization.c
+    src/compiler/ast/ast.c
+    src/compiler/ast/ast_memory.c
+    src/compiler/ast/ast_types.c
+    src/compiler/ast/ast_expr_parser.c
+    src/compiler/ast/ast_stmt_parser.c
+    src/compiler/ast/ast_dump.c
+    src/compiler/parser/expr.c
+    src/compiler/parser/expr_ops.c
+    src/compiler/analysis/type_stability.c
+    src/compiler/analysis/escape_analysis.c
+    src/compiler/optimization/optimization.c
     
-    breadlang/src/backends/llvm_backend.c
-    breadlang/src/backends/llvm_backend_utils.c
-    breadlang/src/backends/llvm_backend_codegen.c
-    breadlang/src/backends/llvm_backend_emit.c
-    breadlang/src/backends/llvm_backend_link.c
-    breadlang/src/backends/llvm_backend_jit.c
-    breadlang/src/codegen/codegen.c
-    breadlang/src/codegen/codegen_helpers.c
-    breadlang/src/codegen/codegen_scope.c
-    breadlang/src/codegen/codegen_unboxing.c
-    breadlang/src/codegen/codegen_expr.c
-    breadlang/src/codegen/codegen_stmt.c
-    breadlang/src/codegen/codegen_semantic.c
-    breadlang/src/codegen/optimized_codegen.c
+    src/backends/llvm_backend.c
+    src/backends/llvm_backend_utils.c
+    src/backends/llvm_backend_codegen.c
+    src/backends/llvm_backend_emit.c
+    src/backends/llvm_backend_link.c
+    src/backends/llvm_backend_jit.c
+    src/codegen/codegen.c
+    src/codegen/codegen_helpers.c
+    src/codegen/codegen_scope.c
+    src/codegen/codegen_unboxing.c
+    src/codegen/codegen_expr.c
+    src/codegen/codegen_stmt.c
+    src/codegen/codegen_semantic.c
+    src/codegen/optimized_codegen.c
     
-    breadlang/src/runtime/array_utils.c
-    breadlang/src/runtime/builtins.c
-    breadlang/src/runtime/error.c
-    breadlang/src/runtime/memory.c
-    breadlang/src/runtime/operators.c
-    breadlang/src/runtime/print.c
-    breadlang/src/runtime/runtime.c
-    breadlang/src/runtime/string_ops.c
-    breadlang/src/runtime/value_ops.c
+    src/runtime/array_utils.c
+    src/runtime/builtins.c
+    src/runtime/error.c
+    src/runtime/memory.c
+    src/runtime/operators.c
+    src/runtime/print.c
+    src/runtime/runtime.c
+    src/runtime/string_ops.c
+    src/runtime/value_ops.c
     
-    breadlang/src/codegen/codegen_runtime_bridge.c
+    src/codegen/codegen_runtime_bridge.c
 )
 
 # Exec for breadlang
 add_executable(breadlang ${BREADLANG_SOURCES})
 include_directories(
     ${LLVM_INCLUDE_DIRS}
-    ${CMAKE_SOURCE_DIR}/breadlang/include
+    ${CMAKE_SOURCE_DIR}/include
 )
 
 # Link librarys
