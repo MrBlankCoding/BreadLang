@@ -1,0 +1,6 @@
+hello Alice!
+sum: 30
+start 10 middle 20 end
+nested: inner
+recursive: val: 10
+escaped: \(ignored)

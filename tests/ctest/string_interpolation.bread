@@ -1,0 +1,15 @@
+
+let name: String = "Alice"
+print("hello \(name)!")
+
+let a: Int = 10
+let b: Int = 20
+print("sum: \(a + b)")
+
+print("start \(a) middle \(b) end")
+
+print("nested: \( "inner" )")
+
+print("recursive: \( "val: \(a)" )")
+
+print("escaped: \\(ignored)")

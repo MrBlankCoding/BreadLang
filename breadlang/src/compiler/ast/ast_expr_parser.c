@@ -675,6 +675,8 @@ static ASTExpr* parse_string_literal(const char** expr) {
     SourceLoc loc = ast_parser_get_loc(*expr);
     (*expr)++;  // Skip opening quote
     
+    ASTExpr* result_expr = NULL;
+    
     size_t capacity = INITIAL_STRING_CAPACITY;
     char* buffer = malloc(capacity);
     if (!buffer) {
@@ -689,12 +691,120 @@ static ASTExpr* parse_string_literal(const char** expr) {
             char* new_buffer = realloc(buffer, capacity);
             if (!new_buffer) {
                 free(buffer);
+                ast_free_expr(result_expr);
                 BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory parsing string literal");
                 return NULL;
             }
             buffer = new_buffer;
         }
-        
+
+        // Check for interpolation: \(
+        if (**expr == '\\' && *(*expr + 1) == '(') {
+            if (length > 0 || result_expr == NULL) {
+                // woah. 
+            }
+            
+            if (length > 0) {
+                buffer[length] = '\0';
+                char* str_val = strdup(buffer);
+                if (!str_val) {
+                    free(buffer);
+                    ast_free_expr(result_expr);
+                    BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory");
+                    return NULL;
+                }
+                
+                ASTExpr* str_node = ast_expr_new(AST_EXPR_STRING_LITERAL, loc);
+                if (!str_node) {
+                    free(str_val);
+                    free(buffer);
+                    ast_free_expr(result_expr);
+                    return NULL;
+                }
+                str_node->as.string_literal.value = str_val;
+                str_node->as.string_literal.length = length;
+                str_node->tag.is_known = 1;
+                str_node->tag.type = TYPE_STRING;
+                
+                if (result_expr) {
+                    ASTExpr* combined = create_binary_expr(result_expr, str_node, '+', loc);
+                    if (!combined) {
+                         ast_free_expr(str_node); // Helper might not free right if fails?
+                         free(buffer);
+                         return NULL;
+                    }
+                    result_expr = combined;
+                } else {
+                    result_expr = str_node;
+                }
+                length = 0;
+            }
+            
+            *expr += 2; // Skip \ and (
+            
+            // 2. Parse expression inside ()
+            ASTExpr* interpolated_expr = parse_expression(expr);
+            if (!interpolated_expr) {
+                free(buffer);
+                ast_free_expr(result_expr);
+                return NULL;
+            }
+            
+            skip_whitespace(expr);
+            if (**expr != ')') {
+                free(buffer);
+                ast_free_expr(interpolated_expr);
+                ast_free_expr(result_expr);
+                BREAD_ERROR_SET_SYNTAX_ERROR("Missing closing ')' in string interpolation");
+                return NULL;
+            }
+            (*expr)++; // Skip )
+            
+            ASTExpr* call_node = ast_expr_new(AST_EXPR_CALL, loc);
+            if (!call_node) {
+                free(buffer);
+                ast_free_expr(interpolated_expr);
+                ast_free_expr(result_expr);
+                return NULL;
+            }
+            call_node->as.call.name = strdup("str");
+            if (!call_node->as.call.name) {
+                free(buffer);
+                ast_free_expr(interpolated_expr);
+                ast_free_expr(result_expr);
+                free(call_node); // ast_free_expr would work too
+                BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory");
+                return NULL;
+            }
+            call_node->as.call.arg_count = 1;
+            call_node->as.call.args = malloc(sizeof(ASTExpr*));
+            if (!call_node->as.call.args) {
+                 free(buffer);
+                 free(call_node->as.call.name);
+                 free(call_node);
+                 ast_free_expr(interpolated_expr);
+                 ast_free_expr(result_expr);
+                 BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory");
+                 return NULL;
+            }
+            call_node->as.call.args[0] = interpolated_expr;
+            
+            // 4. Concatenate
+            if (result_expr) {
+                ASTExpr* combined = create_binary_expr(result_expr, call_node, '+', loc);
+                if (!combined) {
+                    free(buffer);
+                    return NULL;
+                }
+                result_expr = combined;
+            } else {
+                result_expr = call_node;
+            }
+            
+            continue;
+        }
+
+        // Regular character or escape sequence
         char c = **expr;
         if (c == '\\' && *(*expr + 1)) {
             (*expr)++;
@@ -709,6 +819,7 @@ static ASTExpr* parse_string_literal(const char** expr) {
                 case '"': c = '"'; break;
                 case '\\': c = '\\'; break;
                 case '/': c = '/'; break;
+                case '(': c = '('; break;
                 case 'u':
                     buffer[length++] = '\\';
                     c = 'u';
@@ -726,32 +837,49 @@ static ASTExpr* parse_string_literal(const char** expr) {
     
     if (**expr != '"') {
         free(buffer);
+        ast_free_expr(result_expr);
         BREAD_ERROR_SET_SYNTAX_ERROR("Unterminated string literal");
         return NULL;
     }
     (*expr)++;  // Skip closing quote
     
-    if (length + 1 > capacity) {
-        char* new_buffer = realloc(buffer, length + 1);
-        if (!new_buffer) {
+    // Add final segment
+    if (length > 0 || result_expr == NULL) {
+        buffer[length] = '\0';
+        char* str_val = strdup(buffer);
+        if (!str_val) {
             free(buffer);
-            BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory parsing string literal");
+            ast_free_expr(result_expr);
+            BREAD_ERROR_SET_MEMORY_ALLOCATION("Out of memory");
             return NULL;
         }
-        buffer = new_buffer;
+        
+        ASTExpr* str_node = ast_expr_new(AST_EXPR_STRING_LITERAL, loc);
+        if (!str_node) {
+            free(str_val);
+            free(buffer);
+            ast_free_expr(result_expr);
+            return NULL;
+        }
+        str_node->as.string_literal.value = str_val;
+        str_node->as.string_literal.length = length;
+        str_node->tag.is_known = 1;
+        str_node->tag.type = TYPE_STRING;
+        
+        if (result_expr) {
+            ASTExpr* combined = create_binary_expr(result_expr, str_node, '+', loc);
+            if (!combined) {
+                free(buffer);
+                return NULL;
+            }
+            result_expr = combined;
+        } else {
+            result_expr = str_node;
+        }
     }
-    buffer[length] = '\0';
     
-    ASTExpr* e = ast_expr_new(AST_EXPR_STRING_LITERAL, loc);
-    if (!e) {
-        free(buffer);
-        return NULL;
-    }
-    e->as.string_literal.value = buffer;
-    e->as.string_literal.length = length;
-    e->tag.is_known = 1;
-    e->tag.type = TYPE_STRING;
-    return e;
+    free(buffer);
+    return result_expr;
 }
 
 static ASTExpr* parse_number(const char** expr) {
